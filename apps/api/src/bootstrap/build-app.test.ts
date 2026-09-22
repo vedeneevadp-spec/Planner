@@ -133,7 +133,6 @@ const guestSessionRepository: SessionRepository = {
         energyMode: 'normal',
         lastSeenTimeZone: null,
         timeZoneMode: 'device',
-        voiceAssistantEnabled: true,
       },
       workspace: {
         id: 'workspace-guest',
@@ -145,7 +144,6 @@ const guestSessionRepository: SessionRepository = {
       workspaceSettings: {
         defaultTimeZone: null,
         taskCompletionConfettiEnabled: true,
-        wakeWordTrainingModeEnabled: false,
       },
       workspaces: [
         {
@@ -269,7 +267,6 @@ const guestSessionRepository: SessionRepository = {
       energyMode: input.energyMode ?? 'normal',
       lastSeenTimeZone: input.lastSeenTimeZone ?? null,
       timeZoneMode: input.timeZoneMode ?? 'device',
-      voiceAssistantEnabled: input.voiceAssistantEnabled ?? true,
     })
   },
   updateUserProfile() {
@@ -539,7 +536,6 @@ void describe('buildApiApp', () => {
       method: 'PATCH',
       payload: {
         taskCompletionConfettiEnabled: false,
-        wakeWordTrainingModeEnabled: true,
       },
       url: '/api/v1/admin/workspace-settings',
     })
@@ -548,7 +544,6 @@ void describe('buildApiApp', () => {
     assert.deepEqual(workspaceSettingsSchema.parse(response.json()), {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: false,
-      wakeWordTrainingModeEnabled: true,
     })
 
     const sessionResponse = await app.inject({
@@ -565,11 +560,6 @@ void describe('buildApiApp', () => {
       sessionResponseSchema.parse(sessionResponse.json()).workspaceSettings
         .taskCompletionConfettiEnabled,
       false,
-    )
-    assert.equal(
-      sessionResponseSchema.parse(sessionResponse.json()).workspaceSettings
-        .wakeWordTrainingModeEnabled,
-      true,
     )
   })
 
@@ -606,7 +596,6 @@ void describe('buildApiApp', () => {
       sharedTaskCreatedNotificationsEnabled: false,
       sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     })
 
     const energyResponse = await app.inject({
@@ -631,10 +620,9 @@ void describe('buildApiApp', () => {
       sharedTaskCreatedNotificationsEnabled: false,
       sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     })
 
-    const voiceResponse = await app.inject({
+    const notificationsResponse = await app.inject({
       headers: {
         'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
         'x-workspace-id': '22222222-2222-4222-8222-222222222222',
@@ -643,23 +631,24 @@ void describe('buildApiApp', () => {
       payload: {
         sharedTaskAssignedNotificationsEnabled: false,
         sharedTaskReadyForReviewNotificationsEnabled: false,
-        voiceAssistantEnabled: false,
       },
       url: '/api/v1/preferences',
     })
 
-    assert.equal(voiceResponse.statusCode, 200)
-    assert.deepEqual(userPreferencesSchema.parse(voiceResponse.json()), {
-      calendarViewMode: 'schedule',
-      defaultTimeZone: null,
-      energyMode: 'maximum',
-      lastSeenTimeZone: null,
-      sharedTaskAssignedNotificationsEnabled: false,
-      sharedTaskCreatedNotificationsEnabled: false,
-      sharedTaskReadyForReviewNotificationsEnabled: false,
-      timeZoneMode: 'device',
-      voiceAssistantEnabled: false,
-    })
+    assert.equal(notificationsResponse.statusCode, 200)
+    assert.deepEqual(
+      userPreferencesSchema.parse(notificationsResponse.json()),
+      {
+        calendarViewMode: 'schedule',
+        defaultTimeZone: null,
+        energyMode: 'maximum',
+        lastSeenTimeZone: null,
+        sharedTaskAssignedNotificationsEnabled: false,
+        sharedTaskCreatedNotificationsEnabled: false,
+        sharedTaskReadyForReviewNotificationsEnabled: false,
+        timeZoneMode: 'device',
+      },
+    )
 
     const sessionResponse = await app.inject({
       headers: {
@@ -682,7 +671,6 @@ void describe('buildApiApp', () => {
         sharedTaskCreatedNotificationsEnabled: false,
         sharedTaskReadyForReviewNotificationsEnabled: false,
         timeZoneMode: 'device',
-        voiceAssistantEnabled: false,
       },
     )
   })
@@ -707,7 +695,6 @@ void describe('buildApiApp', () => {
       method: 'PATCH',
       payload: {
         taskCompletionConfettiEnabled: false,
-        wakeWordTrainingModeEnabled: false,
       },
       url: '/api/v1/admin/workspace-settings',
     })

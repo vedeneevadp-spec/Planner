@@ -75,6 +75,7 @@ function createAuthState(
     authNotice: null,
     canUseProtectedApi: userId !== null,
     clearAuthNotice: vi.fn(),
+    cancelPasswordRecovery: vi.fn(),
     email: userId ? 'user@example.test' : null,
     expireSession: vi.fn(),
     isAuthEnabled: true,

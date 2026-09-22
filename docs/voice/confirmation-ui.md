@@ -1,5 +1,7 @@
 # Voice Confirmation UI
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 Статус: v1 smart confirmation UI для web/client voice flow.
 
 ## Responsibility

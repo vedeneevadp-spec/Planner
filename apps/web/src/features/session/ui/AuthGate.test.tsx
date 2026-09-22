@@ -14,6 +14,7 @@ interface SessionAuthStub {
   accessToken: string | null
   authNotice: string | null
   canUseProtectedApi: boolean
+  cancelPasswordRecovery: () => void
   clearAuthNotice: () => void
   email: string | null
   expireSession: () => Promise<void>
@@ -83,6 +84,9 @@ describe('AuthGate', () => {
       accessToken: null,
       authNotice: null,
       canUseProtectedApi: false,
+      cancelPasswordRecovery: vi.fn(() => {
+        auth.isPasswordRecovery = false
+      }),
       clearAuthNotice: vi.fn(),
       email: null,
       expireSession: vi.fn(() => Promise.resolve()),
@@ -299,7 +303,7 @@ describe('AuthGate', () => {
     })
   })
 
-  it('validates login fields and offers password reset after failed login', async () => {
+  it('validates login fields and keeps password reset available after failed login', async () => {
     const loginError = Object.assign(new Error('Invalid login credentials'), {
       code: 'auth_invalid_credentials',
     })
@@ -343,6 +347,78 @@ describe('AuthGate', () => {
       ),
     ).toBeVisible()
   })
+
+  it('requests a password reset without a failed login first', async () => {
+    render(<AuthGate>Planner content</AuthGate>)
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'known@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Забыли пароль?' }))
+    await waitFor(() =>
+      expect(auth.requestPasswordReset).toHaveBeenCalledWith(
+        'known@example.com',
+      ),
+    )
+    expect(auth.signInWithPassword).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])(
+    'offers a new recovery link after an expired token with an existing session: %s',
+    async (hasExistingSession) => {
+      auth.isPasswordRecovery = true
+      if (hasExistingSession) {
+        auth.accessToken = 'access-token'
+        auth.canUseProtectedApi = true
+        auth.email = 'existing@example.com'
+        auth.lifecycleStatus = 'authenticated'
+        plannerSessionQuery.data = {
+          actorUserId: 'user-1',
+          workspaceId: 'workspace-1',
+        }
+      }
+      const returnLabel = hasExistingSession ? 'Вернуться в планер' : 'Ко входу'
+      auth.updatePassword = vi.fn().mockRejectedValue(
+        Object.assign(new Error('Expired token'), {
+          code: 'auth_password_reset_token_invalid',
+        }),
+      )
+      render(<AuthGate>Planner content</AuthGate>)
+      fireEvent.change(screen.getByLabelText('Новый пароль'), {
+        target: { value: 'new-password' },
+      })
+      fireEvent.change(screen.getByLabelText('Повторите новый пароль'), {
+        target: { value: 'new-password' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить пароль' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Ссылка восстановления устарела',
+      )
+      expect(screen.getByRole('button', { name: returnLabel })).toBeVisible()
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Запросить новую ссылку' }),
+      )
+      expect(auth.cancelPasswordRecovery).toHaveBeenCalledOnce()
+      expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Email'), {
+        target: { value: 'recover@example.com' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Отправить ссылку' }))
+      await waitFor(() =>
+        expect(auth.requestPasswordReset).toHaveBeenCalledWith(
+          'recover@example.com',
+        ),
+      )
+      expect(auth.signOut).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: returnLabel }))
+      if (hasExistingSession) {
+        expect(screen.getByText('Planner content')).toBeVisible()
+        expect(auth.accessToken).toBe('access-token')
+      } else {
+        expect(screen.getByRole('button', { name: 'Войти' })).toBeVisible()
+        expect(screen.getByLabelText('Пароль')).toHaveValue('')
+      }
+    },
+  )
 
   it('creates an account and switches back to login when email confirmation is required', async () => {
     auth.signUpWithPassword = vi.fn(() =>

@@ -9,7 +9,7 @@ import {
 } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { Task } from '@/entities/task'
+import type { Task, TaskUpdateInput } from '@/entities/task'
 
 import { TaskEditDialog } from './TaskEditDialog'
 
@@ -218,6 +218,132 @@ describe('TaskEditDialog', () => {
         }),
       )
     })
+  })
+
+  it('keeps the recurrence anchor when renaming a clamped monthly occurrence', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(true)
+    const recurrence: NonNullable<Task['recurrence']> = {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'monthly',
+      interval: 1,
+      isActive: true,
+      seriesId: 'monthly-series',
+      startDate: '2027-01-31',
+    }
+    render(
+      <TaskEditDialog
+        task={createTask({ plannedDate: '2027-02-28', recurrence })}
+        todayKey="2027-02-28"
+        spheres={[]}
+        uploadedIcons={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Задача'), {
+      target: { value: 'Переименованная задача' },
+    })
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+    )
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        'task-1',
+        expect.objectContaining({
+          plannedDate: '2027-02-28',
+          recurrence,
+          title: 'Переименованная задача',
+        }),
+      ),
+    )
+  })
+
+  it('lets the planner request timezone govern reminder edits instead of the device timezone', async () => {
+    const onUpdate = vi
+      .fn<(taskId: string, input: TaskUpdateInput) => Promise<boolean>>()
+      .mockResolvedValue(true)
+    render(
+      <TaskEditDialog
+        task={createTask({
+          plannedStartTime: '10:00',
+          plannedEndTime: '11:00',
+          reminderOffsets: [15],
+          remindBeforeStart: true,
+        })}
+        todayKey="2026-05-19"
+        spheres={[]}
+        uploadedIcons={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Задача'), {
+      target: { value: 'Новое название' },
+    })
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+    )
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalled())
+    expect(onUpdate.mock.calls[0]![1]).toMatchObject({
+      plannedStartTime: '10:00',
+      plannedEndTime: '11:00',
+      reminderOffsets: [15],
+    })
+    expect(onUpdate.mock.calls[0]![1].reminderTimeZone).toBeUndefined()
+  })
+
+  it('clears both sphere identifiers when selecting no sphere', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(true)
+    render(
+      <TaskEditDialog
+        task={createTask({
+          project: 'Дом',
+          projectId: 'sphere-1',
+          sphereId: 'sphere-1',
+        })}
+        todayKey="2026-05-19"
+        spheres={[
+          {
+            color: '#2f6f62',
+            createdAt: '2026-05-01T08:00:00Z',
+            deletedAt: null,
+            description: '',
+            icon: 'folder',
+            id: 'sphere-1',
+            isActive: true,
+            isDefault: false,
+            name: 'Дом',
+            sortOrder: 1,
+            updatedAt: '2026-05-01T08:00:00Z',
+            userId: 'user-1',
+            version: 1,
+            workspaceId: 'workspace-1',
+          },
+        ]}
+        uploadedIcons={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Дом/ }))
+    fireEvent.click(screen.getByRole('option', { name: 'Без сферы' }))
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+    )
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        'task-1',
+        expect.objectContaining({
+          project: '',
+          projectId: null,
+          sphereId: null,
+        }),
+      ),
+    )
   })
 
   it('submits a slow edit once and exposes its pending state', async () => {

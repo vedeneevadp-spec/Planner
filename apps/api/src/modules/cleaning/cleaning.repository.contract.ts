@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
+  addDateDays,
   cleaningSeedInputSchema,
   cleaningTaskActionInputSchema,
   cleaningTaskUpdateInputSchema,
@@ -25,6 +26,212 @@ export function defineCleaningRepositoryContractSuite(input: {
   name: string
 }): void {
   void describe(input.name, () => {
+    void test('reconciles changed recurrence and preserves a manual postponement', async () => {
+      const harness = await input.createHarness()
+      try {
+        const task = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            title: 'Annual cleaning',
+            scope: 'general',
+            frequencyType: 'monthly',
+            frequencyInterval: 12,
+          }),
+        })
+        const completed = await harness.repository.recordTaskAction({
+          context: harness.context,
+          taskId: task.id,
+          action: 'completed',
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-09-22',
+            occurredAt: '2026-09-22T10:00:00Z',
+          }),
+        })
+        await harness.repository.updateTask({
+          context: harness.context,
+          taskId: task.id,
+          input: cleaningTaskUpdateInputSchema.parse({
+            frequencyType: 'custom',
+            frequencyInterval: 1,
+            customIntervalDays: 1,
+          }),
+        })
+        let state = (
+          await harness.repository.listByWorkspace(harness.context)
+        ).states.find((item) => item.taskId === task.id)!
+        assert.equal(state.nextDueAt, '2026-09-23')
+        assert.equal(state.version, completed.state.version + 1)
+        const tomorrow = await harness.repository.getToday({
+          context: harness.context,
+          date: '2026-09-23',
+        })
+        assert.ok(
+          tomorrow.generalItems.some((item) => item.task.id === task.id),
+        )
+        await harness.repository.updateTask({
+          context: harness.context,
+          taskId: task.id,
+          input: cleaningTaskUpdateInputSchema.parse({ title: 'Renamed' }),
+        })
+        assert.deepEqual(
+          (
+            await harness.repository.listByWorkspace(harness.context)
+          ).states.find((item) => item.taskId === task.id),
+          state,
+        )
+        await harness.repository.recordTaskAction({
+          context: harness.context,
+          taskId: task.id,
+          action: 'postponed',
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-09-23',
+            targetDate: '2026-10-12',
+            occurredAt: '2026-09-23T10:00:00Z',
+          }),
+        })
+        await harness.repository.updateTask({
+          context: harness.context,
+          taskId: task.id,
+          input: cleaningTaskUpdateInputSchema.parse({
+            frequencyType: 'weekly',
+            frequencyInterval: 2,
+          }),
+        })
+        state = (
+          await harness.repository.listByWorkspace(harness.context)
+        ).states.find((item) => item.taskId === task.id)!
+        assert.equal(state.nextDueAt, '2026-10-12')
+        await harness.repository.recordTaskAction({
+          context: harness.context,
+          taskId: task.id,
+          action: 'skipped',
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-10-12',
+            occurredAt: '2026-10-12T10:00:00Z',
+          }),
+        })
+        await harness.repository.updateTask({
+          context: harness.context,
+          taskId: task.id,
+          input: cleaningTaskUpdateInputSchema.parse({ frequencyInterval: 1 }),
+        })
+        state = (
+          await harness.repository.listByWorkspace(harness.context)
+        ).states.find((item) => item.taskId === task.id)!
+        assert.equal(state.nextDueAt, '2026-10-19')
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('reconciles zone weekdays while retaining explicit task postponements', async () => {
+      const harness = await input.createHarness()
+      try {
+        const zone = await harness.repository.createZone({
+          context: harness.context,
+          input: newCleaningZoneInputSchema.parse({
+            title: 'Tuesday',
+            dayOfWeek: 2,
+          }),
+        })
+        const tasks: Awaited<ReturnType<CleaningRepository['createTask']>>[] =
+          []
+        for (const title of ['Daily cleaning', 'Postponed cleaning']) {
+          tasks.push(
+            await harness.repository.createTask({
+              context: harness.context,
+              input: newCleaningTaskInputSchema.parse({
+                title,
+                zoneId: zone.id,
+                frequencyType: 'custom',
+                frequencyInterval: 1,
+                customIntervalDays: 1,
+              }),
+            }),
+          )
+        }
+        await harness.repository.recordTaskAction({
+          context: harness.context,
+          taskId: tasks[0]!.id,
+          action: 'completed',
+          input: cleaningTaskActionInputSchema.parse({ date: '2026-09-22' }),
+        })
+        await harness.repository.recordTaskAction({
+          context: harness.context,
+          taskId: tasks[1]!.id,
+          action: 'postponed',
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-09-22',
+            targetDate: '2026-10-12',
+          }),
+        })
+        await harness.repository.updateZone({
+          context: harness.context,
+          zoneId: zone.id,
+          input: cleaningZoneUpdateInputSchema.parse({ dayOfWeek: 3 }),
+        })
+        const plan = await harness.repository.listByWorkspace(harness.context)
+        assert.equal(
+          plan.states.find((item) => item.taskId === tasks[0]!.id)?.nextDueAt,
+          '2026-09-23',
+        )
+        assert.equal(
+          plan.states.find((item) => item.taskId === tasks[1]!.id)?.nextDueAt,
+          '2026-10-12',
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('includes the latest action of rare tasks beyond the recent history window', async () => {
+      const harness = await input.createHarness()
+      try {
+        const rare = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            title: 'Rare task',
+            scope: 'general',
+            frequencyType: 'monthly',
+            frequencyInterval: 12,
+          }),
+        })
+        const frequent = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            title: 'Frequent task',
+            scope: 'general',
+            frequencyType: 'custom',
+            frequencyInterval: 1,
+          }),
+        })
+        await harness.repository.recordTaskAction({
+          context: harness.context,
+          taskId: rare.id,
+          action: 'completed',
+          input: cleaningTaskActionInputSchema.parse({ date: '2025-01-01' }),
+        })
+        for (let index = 0; index < 241; index += 1) {
+          await harness.repository.recordTaskAction({
+            context: harness.context,
+            taskId: frequent.id,
+            action: 'completed',
+            input: cleaningTaskActionInputSchema.parse({
+              date: addDateDays('2025-02-01', index),
+            }),
+          })
+        }
+        const plan = await harness.repository.listByWorkspace(harness.context)
+        assert.ok(
+          plan.history.some(
+            (item) => item.taskId === rare.id && item.date === '2025-01-01',
+          ),
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('keeps cleaning zone and task lifecycle consistent', async () => {
       const harness = await input.createHarness()
 

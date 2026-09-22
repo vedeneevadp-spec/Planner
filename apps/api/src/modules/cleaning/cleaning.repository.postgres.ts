@@ -28,6 +28,10 @@ import type {
 } from './cleaning.model.js'
 import type { CleaningRepository } from './cleaning.repository.js'
 import {
+  hasCleaningScheduleChanged,
+  reconcileCleaningDueDate,
+} from './cleaning.schedule-reconciliation.js'
+import {
   buildCleaningTodayResponse,
   calculateNextCleaningDueDate,
   calculateNextCleaningZoneCycleDate,
@@ -121,6 +125,14 @@ export class PostgresCleaningRepository implements CleaningRepository {
     command: UpdateCleaningZoneCommand,
   ): Promise<StoredCleaningZoneRecord> {
     return this.withOperation(command, async (trx) => {
+      const previous = await trx
+        .selectFrom('app.cleaning_zones')
+        .selectAll()
+        .where('id', '=', command.zoneId)
+        .where('workspace_id', '=', command.context.workspaceId)
+        .where('deleted_at', 'is', null)
+        .forUpdate()
+        .executeTakeFirst()
       let updateQuery = trx
         .updateTable('app.cleaning_zones')
         .set({
@@ -164,7 +176,28 @@ export class PostgresCleaningRepository implements CleaningRepository {
         )
       }
 
-      return this.mapZoneRecord(updated)
+      const zone = this.mapZoneRecord(updated)
+      if (previous && Number(previous.day_of_week) !== zone.dayOfWeek) {
+        const tasks = await trx
+          .selectFrom('app.cleaning_tasks')
+          .selectAll()
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('zone_id', '=', zone.id)
+          .where('scope', '=', 'zone')
+          .where('deleted_at', 'is', null)
+          .orderBy('id', 'asc')
+          .forUpdate()
+          .execute()
+        for (const task of tasks) {
+          await this.reconcileTaskSchedule(
+            trx,
+            command.context,
+            this.mapTaskRecord(task),
+            zone,
+          )
+        }
+      }
+      return zone
     })
   }
 
@@ -279,7 +312,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
     command: UpdateCleaningTaskCommand,
   ): Promise<StoredCleaningTaskRecord> {
     return this.withOperation(command, async (trx) => {
-      const current = await this.loadActiveTaskRow(
+      const current = await this.loadActiveTaskRowForUpdate(
         trx,
         command.context.workspaceId,
         command.taskId,
@@ -403,8 +436,62 @@ export class PostgresCleaningRepository implements CleaningRepository {
         )
       }
 
-      return this.mapTaskRecord(updated)
+      const task = this.mapTaskRecord(updated)
+      if (hasCleaningScheduleChanged(this.mapTaskRecord(current), task)) {
+        const zoneRow = task.zoneId
+          ? await this.loadActiveZoneRow(
+              trx,
+              command.context.workspaceId,
+              task.zoneId,
+            )
+          : undefined
+        await this.reconcileTaskSchedule(
+          trx,
+          command.context,
+          task,
+          zoneRow ? this.mapZoneRecord(zoneRow) : null,
+        )
+      }
+      return task
     })
+  }
+
+  private async reconcileTaskSchedule(
+    trx: Transaction<DatabaseSchema>,
+    context: CleaningWriteContext,
+    task: StoredCleaningTaskRecord,
+    zone: StoredCleaningZoneRecord | null,
+  ): Promise<void> {
+    const row = await this.loadStateRowForUpdate(
+      trx,
+      context.workspaceId,
+      task.id,
+    )
+    if (!row) return
+    const state = this.mapStateRecord(row)
+    const latestRow = await trx
+      .selectFrom('app.cleaning_task_history')
+      .selectAll()
+      .where('workspace_id', '=', context.workspaceId)
+      .where('task_id', '=', task.id)
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .limit(1)
+      .executeTakeFirst()
+    const nextDueAt = reconcileCleaningDueDate(
+      task,
+      zone,
+      state,
+      latestRow ? this.mapHistoryRecord(latestRow) : undefined,
+    )
+    if (nextDueAt !== state.nextDueAt) {
+      await trx
+        .updateTable('app.cleaning_task_states')
+        .set({ next_due_at: nextDueAt, updated_by: context.actorUserId })
+        .where('workspace_id', '=', context.workspaceId)
+        .where('task_id', '=', task.id)
+        .execute()
+    }
   }
 
   async removeTask(command: DeleteCleaningTaskCommand): Promise<void> {
@@ -1099,18 +1186,39 @@ export class PostgresCleaningRepository implements CleaningRepository {
       .execute()
   }
 
-  private loadHistoryRows(
+  private async loadHistoryRows(
     executor: DatabaseExecutor,
     workspaceId: string,
   ): Promise<CleaningTaskHistoryRow[]> {
-    return executor
-      .selectFrom('app.cleaning_task_history')
-      .selectAll()
-      .where('workspace_id', '=', workspaceId)
-      .orderBy('date', 'desc')
-      .orderBy('created_at', 'desc')
-      .limit(240)
-      .execute()
+    const [recent, scheduleAnchors] = await Promise.all([
+      executor
+        .selectFrom('app.cleaning_task_history')
+        .selectAll()
+        .where('workspace_id', '=', workspaceId)
+        .orderBy('date', 'desc')
+        .orderBy('created_at', 'desc')
+        .limit(240)
+        .execute(),
+      executor
+        .selectFrom('app.cleaning_task_history as history')
+        .innerJoin('app.cleaning_tasks as task', 'task.id', 'history.task_id')
+        .selectAll('history')
+        .where('history.workspace_id', '=', workspaceId)
+        .where('task.workspace_id', '=', workspaceId)
+        .where('task.deleted_at', 'is', null)
+        .distinctOn('history.task_id')
+        .orderBy('history.task_id', 'asc')
+        .orderBy('history.created_at', 'desc')
+        .orderBy('history.id', 'desc')
+        .execute(),
+    ])
+    // Keep the last action of every task available to offline rescheduling,
+    // including rare tasks absent from the recent activity window.
+    return [
+      ...new Map(
+        [...recent, ...scheduleAnchors].map((row) => [row.id, row]),
+      ).values(),
+    ]
   }
 
   private loadActionHistoryRow(

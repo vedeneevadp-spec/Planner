@@ -3,6 +3,7 @@ import {
   getDateKeyInTimeZone,
   getTimeInTimeZone,
   type LifeSphereRecord,
+  makeFixedZoneDateTime,
   type TaskNextStageInput,
   type TaskNextStageResponse,
   type TaskRecord,
@@ -61,6 +62,43 @@ export function toPlannerTask(task: TaskRecord, displayTimeZone: string): Task {
     status: task.status,
     title: task.title,
     urgency: task.urgency,
+  }
+}
+
+export function prepareTaskUpdateInput(
+  task: TaskRecord,
+  input: TaskUpdateInput,
+  plannerTimeZone: string,
+): TaskUpdateInput {
+  if (input.reminderTimeZone) {
+    return input
+  }
+
+  const displayedSchedule = getDisplayedTaskSchedule(task, plannerTimeZone)
+
+  if (
+    task.schedule?.kind === 'fixed_zone_datetime' &&
+    input.plannedDate === displayedSchedule.plannedDate &&
+    input.plannedStartTime === displayedSchedule.plannedStartTime &&
+    input.plannedEndTime === displayedSchedule.plannedEndTime
+  ) {
+    // A details-only edit keeps the original fixed-zone schedule, including
+    // when the planner currently displays it in another zone or calendar day.
+    return {
+      ...input,
+      plannedDate: task.schedule.localDate,
+      plannedEndTime: task.plannedEndTime,
+      plannedStartTime: task.schedule.localTime,
+      reminderTimeZone: task.schedule.timeZone,
+    }
+  }
+
+  // Persist the editing context with the command: replay can happen after the
+  // user has switched the planner timezone while offline.
+  return {
+    ...input,
+    reminderTimeZone:
+      input.plannedDate && input.plannedStartTime ? plannerTimeZone : undefined,
   }
 }
 
@@ -422,7 +460,16 @@ export function createOptimisticUpdatedTaskRecord(
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
     routine: input.routine ?? null,
-    schedule: null,
+    schedule:
+      normalizedSchedule.plannedDate &&
+      normalizedSchedule.plannedStartTime &&
+      input.reminderTimeZone
+        ? makeFixedZoneDateTime({
+            localDate: normalizedSchedule.plannedDate,
+            localTime: normalizedSchedule.plannedStartTime,
+            timeZone: input.reminderTimeZone,
+          })
+        : null,
     sphereId: input.sphereId,
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',

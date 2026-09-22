@@ -78,6 +78,9 @@ try {
     '/api/v1/auth/sign-in',
     '/api/v1/auth/sign-up',
     '/api/v1/session',
+    '/api/v1/alice/webhook',
+    '/api/v1/oauth/alice/authorize',
+    '/api/v1/oauth/alice/token',
     '/api/v1/backups/export',
     '/api/v1/backups/import/preview',
     '/api/v1/backups/import/restore',
@@ -112,6 +115,18 @@ try {
     'SelfCareSettingsResponse',
   ]
 
+  for (const path of ['/api/voice/command', '/api/voice/metrics']) {
+    assert.equal(
+      document.paths?.[path],
+      undefined,
+      `Retired route is documented: ${path}`,
+    )
+    assert.ok(
+      !registeredRoutes.some((route) => route.path === path),
+      `Retired route is registered: ${path}`,
+    )
+  }
+
   for (const path of requiredPaths) {
     assert.ok(document.paths?.[path], `OpenAPI path is missing: ${path}`)
   }
@@ -123,6 +138,10 @@ try {
     )
   }
 
+  assert.deepEqual(
+    document.components.schemas.WorkspaceSettingsUpdateInput.required,
+    ['taskCompletionConfettiEnabled'],
+  )
   assertSchemaProperties(document, 'NewTaskInput', ['resource', 'sphereId'])
   assertSchemaProperties(document, 'UserBackupArchive', [
     'assets',

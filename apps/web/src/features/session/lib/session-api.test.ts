@@ -32,7 +32,6 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
       energyMode: 'normal',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       id: 'workspace-1',
@@ -44,7 +43,6 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
     workspaceSettings: {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [
       {

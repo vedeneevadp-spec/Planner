@@ -93,6 +93,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     accessToken,
     authNotice,
     canUseProtectedApi,
+    cancelPasswordRecovery,
     clearAuthNotice,
     email,
     expireSession,
@@ -121,10 +122,19 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({})
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [hasLoginFailure, setHasLoginFailure] = useState(false)
+  const [isRequestingPasswordReset, setIsRequestingPasswordReset] =
+    useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
-  const modeContent = AUTH_MODE_CONTENT[screenMode]
+  const modeContent = isRequestingPasswordReset
+    ? {
+        copy: 'Введите email аккаунта, чтобы получить новую ссылку для восстановления.',
+        helper: 'Письмо поможет задать новый пароль.',
+        pendingLabel: 'Отправляем письмо...',
+        submitLabel: 'Отправить ссылку',
+        title: 'Восстановите доступ',
+      }
+    : AUTH_MODE_CONTENT[screenMode]
   const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
   const shouldShowRememberMe = !isNativeSessionRuntime
   const [isRecovering, setIsRecovering] = useState(false)
@@ -137,23 +147,29 @@ export function AuthGate({ children }: PropsWithChildren) {
     config: plannerApiConfig,
     isAuthEnabled,
   })
-  const authGateView = resolveAuthGateView({
-    accessToken,
-    canResolvePlannerSession,
-    canUseProtectedApi,
-    hasAuthNotice: Boolean(authNotice),
-    hasPlannerSession: Boolean(plannerSessionQuery.data),
-    hasPlannerSessionError: Boolean(plannerSessionError),
-    hasUnauthorizedPlannerSessionError,
-    isAuthEnabled,
-    isLoading,
-    isNativeSessionRuntime,
-    isPasswordRecovery,
-    isPlannerSessionPending: plannerSessionQuery.isPending,
-    isRecovering,
-    isSignInRequired,
-    lifecycleStatus,
-  })
+  const authGateView = isRequestingPasswordReset
+    ? { type: 'auth_form' as const }
+    : resolveAuthGateView({
+        accessToken,
+        canResolvePlannerSession,
+        canUseProtectedApi,
+        hasAuthNotice: Boolean(authNotice),
+        hasPlannerSession: Boolean(plannerSessionQuery.data),
+        hasPlannerSessionError: Boolean(plannerSessionError),
+        hasUnauthorizedPlannerSessionError,
+        isAuthEnabled,
+        isLoading,
+        isNativeSessionRuntime,
+        isPasswordRecovery,
+        isPlannerSessionPending: plannerSessionQuery.isPending,
+        isRecovering,
+        isSignInRequired,
+        lifecycleStatus,
+      })
+  const recoveryReturnLabel =
+    canUseProtectedApi && plannerSessionQuery.data
+      ? 'Вернуться в планер'
+      : 'Ко входу'
 
   useEffect(() => {
     if (!isAuthEnabled || !accessToken || !hasUnauthorizedPlannerSessionError) {
@@ -326,6 +342,11 @@ export function AuthGate({ children }: PropsWithChildren) {
     event.preventDefault()
     clearAuthNotice()
 
+    if (isRequestingPasswordReset) {
+      await handlePasswordResetRequest()
+      return
+    }
+
     const normalizedEmail = effectiveFormEmail.trim().toLowerCase()
     const validationErrors = validateAuthForm({
       email: normalizedEmail,
@@ -349,7 +370,6 @@ export function AuthGate({ children }: PropsWithChildren) {
       if (screenMode === 'recover') {
         await updatePassword(password)
         clearSensitiveFields()
-        setHasLoginFailure(false)
         setStatusMessage('Пароль обновлен. Открываем ваш планер...')
         return
       }
@@ -358,7 +378,6 @@ export function AuthGate({ children }: PropsWithChildren) {
 
       if (screenMode === 'login') {
         await signInWithPassword(normalizedEmail, password)
-        setHasLoginFailure(false)
         setStatusMessage('Вход выполнен. Открываем ваш планер...')
         return
       }
@@ -373,20 +392,14 @@ export function AuthGate({ children }: PropsWithChildren) {
 
       if (signUpResult.requiresEmailConfirmation) {
         setMode('login')
-        setHasLoginFailure(false)
         setStatusMessage(
           `Аккаунт для ${normalizedEmail} создан. Подтвердите email по ссылке из письма и затем войдите.`,
         )
         return
       }
 
-      setHasLoginFailure(false)
       setStatusMessage('Аккаунт создан. Открываем ваш планер...')
     } catch (error) {
-      if (screenMode === 'login') {
-        setHasLoginFailure(true)
-      }
-
       setErrorMessage(getFriendlyAuthErrorMessage(error, screenMode))
     } finally {
       setIsSubmitting(false)
@@ -424,7 +437,6 @@ export function AuthGate({ children }: PropsWithChildren) {
     try {
       await requestPasswordReset(normalizedEmail)
       clearSensitiveFields()
-      setHasLoginFailure(false)
       setStatusMessage(
         `Письмо для восстановления отправлено на ${normalizedEmail}. Проверьте почту и задайте новый пароль.`,
       )
@@ -446,7 +458,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     setFieldErrors({})
     setErrorMessage(null)
     setStatusMessage(null)
-    setHasLoginFailure(false)
+    setIsRequestingPasswordReset(false)
     clearSensitiveFields()
 
     if (nextMode !== 'register') {
@@ -478,10 +490,16 @@ export function AuthGate({ children }: PropsWithChildren) {
     }
   }
 
+  function leavePasswordRecovery(requestNewLink: boolean) {
+    cancelPasswordRecovery()
+    handleModeChange('login')
+    setIsRequestingPasswordReset(requestNewLink)
+  }
+
   return (
     <AuthShell>
       <div className={styles.formCardHeader}>
-        {!isPasswordRecovery ? (
+        {!isPasswordRecovery && !isRequestingPasswordReset ? (
           <div
             className={styles.modeSwitch}
             role="tablist"
@@ -551,24 +569,26 @@ export function AuthGate({ children }: PropsWithChildren) {
           </div>
         )}
 
-        <FormField
-          autoComplete={
-            screenMode === 'register' || screenMode === 'recover'
-              ? 'new-password'
-              : 'current-password'
-          }
-          error={fieldErrors.password}
-          label={screenMode === 'recover' ? 'Новый пароль' : 'Пароль'}
-          name="password"
-          placeholder={
-            screenMode === 'register' || screenMode === 'recover'
-              ? 'Минимум 6 символов'
-              : 'Введите пароль'
-          }
-          type="password"
-          value={password}
-          onChange={handleFieldChange}
-        />
+        {!isRequestingPasswordReset ? (
+          <FormField
+            autoComplete={
+              screenMode === 'register' || screenMode === 'recover'
+                ? 'new-password'
+                : 'current-password'
+            }
+            error={fieldErrors.password}
+            label={screenMode === 'recover' ? 'Новый пароль' : 'Пароль'}
+            name="password"
+            placeholder={
+              screenMode === 'register' || screenMode === 'recover'
+                ? 'Минимум 6 символов'
+                : 'Введите пароль'
+            }
+            type="password"
+            value={password}
+            onChange={handleFieldChange}
+          />
+        ) : null}
 
         {screenMode === 'register' || screenMode === 'recover' ? (
           <FormField
@@ -591,7 +611,9 @@ export function AuthGate({ children }: PropsWithChildren) {
           />
         ) : null}
 
-        {screenMode === 'login' && shouldShowRememberMe ? (
+        {screenMode === 'login' &&
+        !isRequestingPasswordReset &&
+        shouldShowRememberMe ? (
           <label className={styles.rememberRow}>
             <input
               checked={rememberMe}
@@ -639,7 +661,7 @@ export function AuthGate({ children }: PropsWithChildren) {
           )}
         </button>
 
-        {screenMode === 'login' && hasLoginFailure ? (
+        {screenMode === 'login' && !isRequestingPasswordReset ? (
           <button
             className={styles.inlineLink}
             disabled={isSubmitting}
@@ -652,7 +674,30 @@ export function AuthGate({ children }: PropsWithChildren) {
           </button>
         ) : null}
 
-        {!isPasswordRecovery ? (
+        {isPasswordRecovery || isRequestingPasswordReset ? (
+          <div className={styles.actionRow}>
+            {isPasswordRecovery ? (
+              <button
+                className={styles.inlineLink}
+                disabled={isSubmitting}
+                type="button"
+                onClick={() => leavePasswordRecovery(true)}
+              >
+                Запросить новую ссылку
+              </button>
+            ) : null}
+            <button
+              className={styles.inlineLink}
+              disabled={isSubmitting}
+              type="button"
+              onClick={() => leavePasswordRecovery(false)}
+            >
+              {recoveryReturnLabel}
+            </button>
+          </div>
+        ) : null}
+
+        {!isPasswordRecovery && !isRequestingPasswordReset ? (
           <button
             className={styles.mobileModeLink}
             disabled={isSubmitting}

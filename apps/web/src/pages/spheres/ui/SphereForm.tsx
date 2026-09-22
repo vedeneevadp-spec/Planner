@@ -1,4 +1,4 @@
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 
 import type { Sphere } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
@@ -74,31 +74,57 @@ export function SphereForm({
   const [description, setDescription] = useState(sphere?.description ?? '')
   const [color, setColor] = useState(sphere?.color ?? SPHERE_COLORS[0])
   const [icon, setIcon] = useState(sphere?.icon ?? DEFAULT_SPHERE_ICON)
+  const submittingRef = useRef(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (submittingRef.current) {
+      return
+    }
+
     const normalizedName = name.trim()
 
     if (!normalizedName) {
+      setErrorMessage('Введите название сферы.')
       return
     }
 
-    const isSaved = await onSubmit({
-      color,
-      description,
-      icon,
-      name: normalizedName,
-    })
+    submittingRef.current = true
+    setIsSubmitting(true)
+    setErrorMessage(null)
 
-    if (!isSaved || sphere) {
-      return
+    try {
+      const isSaved = await onSubmit({
+        color,
+        description,
+        icon,
+        name: normalizedName,
+      })
+
+      if (!isSaved) {
+        setErrorMessage(
+          'Не удалось сохранить сферу. Проверьте подключение и повторите попытку.',
+        )
+        return
+      }
+
+      if (!sphere) {
+        setName('')
+        setDescription('')
+        setColor(SPHERE_COLORS[0])
+        setIcon(DEFAULT_SPHERE_ICON)
+      }
+    } catch {
+      setErrorMessage(
+        'Не удалось сохранить сферу. Проверьте подключение и повторите попытку.',
+      )
+    } finally {
+      submittingRef.current = false
+      setIsSubmitting(false)
     }
-
-    setName('')
-    setDescription('')
-    setColor(SPHERE_COLORS[0])
-    setIcon(DEFAULT_SPHERE_ICON)
   }
 
   return (
@@ -178,8 +204,13 @@ export function SphereForm({
         />
       </div>
 
-      <button className={styles.primaryButton} type="submit">
-        {submitLabel}
+      {errorMessage ? <p role="alert">{errorMessage}</p> : null}
+      <button
+        className={styles.primaryButton}
+        disabled={isSubmitting}
+        type="submit"
+      >
+        {isSubmitting ? 'Сохраняем...' : submitLabel}
       </button>
     </form>
   )

@@ -113,6 +113,24 @@ describe('SelfCarePage states', () => {
     cleanup()
   })
 
+  it('offers previous periods and a direct history date even when the period is empty', () => {
+    const selectHistoryDate = vi.fn()
+    mocks.useSelfCarePageData.mockReturnValue(
+      createPageData({
+        historyRange: { from: '2026-07-07', to: '2026-08-06' },
+        selectHistoryDate,
+      }),
+    )
+    renderPage('/self-care?tab=history')
+    fireEvent.click(screen.getByRole('button', { name: 'Раньше' }))
+    expect(selectHistoryDate).toHaveBeenCalledWith('2026-07-06')
+    fireEvent.change(screen.getByLabelText('История по дату'), {
+      target: { value: '2026-05-01' },
+    })
+    expect(selectHistoryDate).toHaveBeenCalledWith('2026-05-01')
+    expect(screen.getByRole('button', { name: 'Позже' })).toBeDisabled()
+  })
+
   it('shows a page skeleton while the initial data is loading', () => {
     mocks.useSelfCarePageData.mockReturnValue(
       createPageData({

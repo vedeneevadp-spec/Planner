@@ -58,9 +58,9 @@ export const userBackupRowSchema = z.record(z.string(), z.unknown())
 
 const USER_BACKUP_V1_COLUMNS = {
   users:
-    'id,email,display_name,avatar_url,timezone,locale,default_time_zone,last_seen_time_zone,time_zone_mode,calendar_view_mode,energy_mode,voice_assistant_enabled,created_at,updated_at,deleted_at,version',
+    'id,email,display_name,avatar_url,timezone,locale,default_time_zone,last_seen_time_zone,time_zone_mode,calendar_view_mode,energy_mode,created_at,updated_at,deleted_at,version',
   workspaces:
-    'id,owner_user_id,name,slug,kind,description,default_time_zone,task_completion_confetti_enabled,wake_word_training_mode_enabled,created_at,updated_at,deleted_at,version',
+    'id,owner_user_id,name,slug,kind,description,default_time_zone,task_completion_confetti_enabled,created_at,updated_at,deleted_at,version',
   workspace_members:
     'id,workspace_id,user_id,role,group_role,invited_by,joined_at,created_at,updated_at,deleted_at,version',
   projects:
@@ -179,8 +179,20 @@ function createUserBackupV1RowSchema(
     ]),
   )
 
+  // V1 archives may contain these retired settings. Validate only the known
+  // boolean fields, then discard them before any restore SQL is constructed.
+  const retiredColumn =
+    tableName === 'users'
+      ? 'voice_assistant_enabled'
+      : tableName === 'workspaces'
+        ? 'wake_word_training_mode_enabled'
+        : null
+
   return z
-    .object(shape)
+    .object({
+      ...shape,
+      ...(retiredColumn ? { [retiredColumn]: z.boolean().optional() } : {}),
+    })
     .strict()
     .superRefine((row, ctx) => {
       const identifierColumn =
@@ -224,6 +236,13 @@ function createUserBackupV1RowSchema(
           })
         }
       }
+    })
+    .transform((row) => {
+      if (retiredColumn) {
+        delete row[retiredColumn]
+      }
+
+      return row
     })
 }
 
@@ -298,7 +317,9 @@ export const userBackupArchiveSchema = z.object({
         for (const [index, row] of rows.entries()) {
           const result = rowSchema.safeParse(row)
 
-          if (!result.success) {
+          if (result.success) {
+            rows[index] = result.data
+          } else {
             for (const issue of result.error.issues) {
               ctx.addIssue({
                 code: 'custom',

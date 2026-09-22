@@ -9,13 +9,11 @@ import {
   updateSharedWorkspaceInputSchema,
   updateUserProfileInputSchema,
   userPreferencesSchema,
-  userPreferencesUpdateInputSchema,
   userProfileSchema,
   workspaceInvitationCreateInputSchema,
   workspaceInvitationListResponseSchema,
   workspaceInvitationRecordSchema,
   workspaceSettingsSchema,
-  workspaceSettingsUpdateInputSchema,
   workspaceUserGroupRoleUpdateInputSchema,
   workspaceUserListResponseSchema,
   workspaceUserRecordSchema,
@@ -27,6 +25,13 @@ import { HttpError } from '../../bootstrap/http-error.js'
 import { getRequestAuth } from '../../bootstrap/request-auth.js'
 import { areLegacySessionOverridesAllowed } from '../../bootstrap/route-context.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
+import {
+  legacyUserPreferencesUpdateInputSchema,
+  legacyWorkspaceSettingsUpdateInputSchema,
+  withLegacySessionPreferences,
+  withLegacyUserPreferences,
+  withLegacyWorkspaceSettings,
+} from './session.legacy-preferences.js'
 import type { SessionService } from './session.service.js'
 
 const PROFILE_BODY_LIMIT_BYTES = 3 * 1024 * 1024
@@ -69,7 +74,7 @@ export function registerSessionRoutes(
     const context = resolveOptionalSessionContext(request)
     const session = await service.resolveSession(context)
 
-    return sessionResponseSchema.parse(session)
+    return withLegacySessionPreferences(sessionResponseSchema.parse(session))
   })
 
   app.patch(
@@ -99,13 +104,16 @@ export function registerSessionRoutes(
   app.patch('/api/v1/preferences', async (request) => {
     const context = resolveRequiredSessionContext(request)
     const input = parseOrThrow(
-      userPreferencesUpdateInputSchema,
+      legacyUserPreferencesUpdateInputSchema,
       request.body ?? {},
       'invalid_body',
     )
-    const preferences = await service.updateUserPreferences(context, input)
+    const preferences =
+      Object.keys(input).length === 0
+        ? (await service.resolveSession(context)).userPreferences
+        : await service.updateUserPreferences(context, input)
 
-    return userPreferencesSchema.parse(preferences)
+    return withLegacyUserPreferences(userPreferencesSchema.parse(preferences))
   })
 
   app.post('/api/v1/workspaces/shared', async (request, reply) => {
@@ -194,13 +202,13 @@ export function registerSessionRoutes(
   app.patch('/api/v1/admin/workspace-settings', async (request) => {
     const context = resolveRequiredSessionContext(request)
     const input = parseOrThrow(
-      workspaceSettingsUpdateInputSchema,
+      legacyWorkspaceSettingsUpdateInputSchema,
       request.body,
       'invalid_body',
     )
     const settings = await service.updateWorkspaceSettings(context, input)
 
-    return workspaceSettingsSchema.parse(settings)
+    return withLegacyWorkspaceSettings(workspaceSettingsSchema.parse(settings))
   })
 
   app.get('/api/v1/workspace-users', async (request) => {

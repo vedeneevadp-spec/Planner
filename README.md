@@ -99,7 +99,6 @@ version-specific директорию и поднимет fresh dev-базу. Д
 | `npm run audit:dev-tooling`                             | контроль известных dev-only audit исключений             |
 | `npm run build`                                         | production-сборка web                                    |
 | `npm run build:analyze`                                 | production-сборка web + `tmp/web-bundle-stats.html`      |
-| `npm run wakeword:audit`                                | standalone-аудит wake-word training артефактов           |
 | `npm run mobile:sync`                                   | production build web + sync в `ios/` и `android/`        |
 | `npm run mobile:release -- --api-url=...`               | подготовить и при флагах собрать native release          |
 | `npm run mobile:release:rustore -- --api-url=...`       | собрать signed APK для RuStore                           |
@@ -193,14 +192,6 @@ scripts/       локальные DB, mobile и deploy workflows
   preview и same-scope merge restore
 - [docs/release-notes.md](docs/release-notes.md) - пользовательские заметки к
   релизам
-- [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
-  сценарии и roadmap голосового помощника
-- [docs/voice/action-layer.md](docs/voice/action-layer.md) - action layer,
-  preview/execute contract и правила безопасности голосовых действий
-- [docs/voice/confirmation-ui.md](docs/voice/confirmation-ui.md) - smart
-  confirmation UI, clarify loop, Undo и auto-confirm policy
-- [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
-  Android wake-word provider и модель `Хаотика`
 - [docs/mcp-haotika-chatgpt.md](docs/mcp-haotika-chatgpt.md) - подключение
   Haotika MCP Connector в ChatGPT Developer Mode
 
@@ -272,9 +263,7 @@ Lite через OpenAI-compatible Chat Completions: `ALICE_LLM_PROVIDER=yandex`,
 только структурированный intent, исполнение остается в backend-сервисах
 Chaotika.
 
-Этот fallback относится только к Yandex Dialogs/Alice parser. Voice/web
-`PlannerIntentParser` использует отдельный v1-контракт и отдельный backend
-fallback hook; production LLM provider для него пока не подключен.
+LLM fallback Алисы сохраняется. Встроенный голосовой ввод web/Android удалён.
 
 `/api/v1/life-spheres` - текущий основной API для сфер жизни. Таблица
 `app.projects` остается compatibility-хранилищем для старых task-полей
@@ -405,11 +394,12 @@ Web-клиент работает через backend HTTP API и не пишет
 - Android-клиент сам регистрирует FCM token после входа в приложение и может
   принимать тестовый push через `POST /api/v1/push/test`
 
-## Голосовой помощник
+## Интеграция с Алисой
 
-Подробное описание функциональности, сценариев, примеров команд, поведения
-`clarify` и production roadmap вынесено в
-[docs/voice-assistant.md](docs/voice-assistant.md).
+Алиса продолжает создавать задачи и покупки после привязки аккаунта.
+Встроенная запись с микрофона, фоновое прослушивание и wake word удалены.
+Системная диктовка клавиатуры продолжает работать. План перехода и проверки:
+[docs/voice-removal/report.md](docs/voice-removal/report.md).
 
 ## Production Data Platform
 
@@ -483,12 +473,6 @@ Workspace`: роли, права, жизненный цикл и правила 
   разработки до production web/PWA/store release
 - [docs/codex-release-instruction.md](docs/codex-release-instruction.md) -
   готовая инструкция для Codex: commit, push, deploy, APK и Telegram-отчет
-- [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
-  сценарии уточнения и production roadmap голосового помощника
-- [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
-  выбранный Android wake-word provider и требования к модели
-- [docs/voice/confirmation-ui.md](docs/voice/confirmation-ui.md) - smart
-  confirmation UI, clarify loop, Undo и auto-confirm policy
 - [docs/adr/0001-platform-foundation.md](docs/adr/0001-platform-foundation.md)
   - базовое архитектурное решение по платформе
 - [DEPLOY_RU.md](DEPLOY_RU.md) - production deployment на текущий VPS

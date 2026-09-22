@@ -1,5 +1,7 @@
 # Web Voice Mode v1
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 Web voice input is push-to-talk only. It does not implement wake word,
 background listening, audio signals, TTS, cloud TTS, or client-side STT/LLM
 provider keys.

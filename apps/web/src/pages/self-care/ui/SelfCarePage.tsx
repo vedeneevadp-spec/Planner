@@ -19,6 +19,7 @@ import {
   isBrowserRetryableOfflineError,
   useBrowserOffline,
 } from '@/shared/lib/offline-sync'
+import { addDateDays } from '@/shared/time/time.service'
 import pageStyles from '@/shared/ui/Page'
 import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
@@ -99,6 +100,8 @@ export function SelfCarePage() {
     dashboard,
     defaultCurrency,
     history,
+    historyRange,
+    selectHistoryDate,
     hasActiveTabData,
     hasCreateDialogData,
     hasCreateDialogReadError,
@@ -785,6 +788,56 @@ export function SelfCarePage() {
     <section className={`${pageStyles.page} ${styles.page}`}>
       <h1 className={pageStyles.visuallyHidden}>Забота о себе</h1>
       <SelfCarePageTabs activeTab={activeTab} onSelectTab={setActiveTab} />
+
+      {activeTab === 'history' && historyRange ? (
+        <section className={styles.historyPeriod} aria-label="Период истории">
+          <p aria-live="polite">
+            {formatDate(historyRange.from)} — {formatDate(historyRange.to)}
+          </p>
+          <div className={styles.historyPeriodActions}>
+            <button
+              type="button"
+              className={styles.cardTextButton}
+              onClick={() =>
+                selectHistoryDate(addDateDays(historyRange.from, -1))
+              }
+            >
+              Раньше
+            </button>
+            <label>
+              По дату
+              <input
+                type="date"
+                aria-label="История по дату"
+                value={historyRange.to}
+                max={todayKey}
+                onChange={(event) => {
+                  if (event.target.value) selectHistoryDate(event.target.value)
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className={styles.cardTextButton}
+              disabled={historyRange.to >= todayKey}
+              onClick={() =>
+                selectHistoryDate(addDateDays(historyRange.to, 31))
+              }
+            >
+              Позже
+            </button>
+            {historyRange.to < todayKey ? (
+              <button
+                type="button"
+                className={styles.cardTextButton}
+                onClick={() => selectHistoryDate(null)}
+              >
+                Текущий период
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {blockingState === 'loading' ? (
         <PageStateView

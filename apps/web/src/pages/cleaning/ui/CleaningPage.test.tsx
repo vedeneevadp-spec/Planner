@@ -504,6 +504,8 @@ describe('CleaningSettingsPage', () => {
 
     renderCleaningSettingsPage()
 
+    expect(screen.getByText(/Следующий срок: 16\.05\.2026/)).toBeInTheDocument()
+
     fireEvent.click(
       screen.getByRole('button', {
         name: 'Редактировать задачу «Протереть пол»',

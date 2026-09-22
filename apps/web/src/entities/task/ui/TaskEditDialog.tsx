@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
-import { resolveClientTimeZone } from '@/shared/lib/date'
 import { CheckIcon, type UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
@@ -231,22 +230,18 @@ export function TaskEditDialog({
         recurrence: canEditRecurrence
           ? buildTaskRecurrenceFromForm(
               recurrenceForm,
-              resolvedPlannedDate || todayKey,
+              task.recurrence?.startDate ?? (resolvedPlannedDate || todayKey),
               task.recurrence?.seriesId,
             )
           : null,
         remindBeforeStart: resolvedReminderOffsets.length > 0,
         reminderOffsets: resolvedReminderOffsets,
-        reminderTimeZone:
-          resolvedReminderOffsets.length > 0
-            ? resolveClientTimeZone()
-            : undefined,
         resource: getResourceFromValue(resource),
         requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
         routine: isRoutineTask
           ? buildRoutineTaskFromForm(routineForm, task.routine?.seriesId)
           : null,
-        sphereId: task.sphereId,
+        sphereId: projectInput.projectId,
         title: normalizedTitle,
         urgency: isRoutineTask ? 'urgent' : 'not_urgent',
       })

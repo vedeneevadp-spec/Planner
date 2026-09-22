@@ -389,6 +389,8 @@ export function PlannerTopTabs() {
                   isActive && styles.topSegmentTabActive,
                 )}
                 type="button"
+                aria-label={filter.label}
+                title={filter.label}
                 aria-pressed={isActive}
                 onClick={() => toggleShoppingCategory(filter.value)}
               >

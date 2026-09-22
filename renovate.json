@@ -44,13 +44,6 @@
       "platformAutomerge": true
     },
     {
-      "description": "LiteRT 2.1.6 publishes litert and litert-api AARs with the same Android namespace, which breaks manifest merging.",
-      "matchManagers": ["gradle"],
-      "matchPackageNames": ["com.google.ai.edge.litert:litert"],
-      "matchNewValue": "2.1.6",
-      "enabled": false
-    },
-    {
       "description": "Require approval for high-impact npm updates while keeping unrelated dependencies in separate PRs.",
       "matchManagers": ["npm"],
       "matchPackageNames": [

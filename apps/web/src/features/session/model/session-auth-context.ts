@@ -22,6 +22,7 @@ export interface SessionAuthState {
   accessToken: string | null
   authNotice: string | null
   canUseProtectedApi: boolean
+  cancelPasswordRecovery: () => void
   clearAuthNotice: () => void
   email: string | null
   expireSession: (message?: string) => Promise<void>

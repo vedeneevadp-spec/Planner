@@ -3,18 +3,68 @@ import type {
   SelfCareListResponse,
   SelfCarePlanResponse,
 } from '@planner/contracts'
+import { selfCareCompletionSchema } from '@planner/contracts'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  SelfCareHistoryTab,
   SelfCarePlanTab,
   SelfCareRitualsTab,
   SelfCareTodayTab,
 } from './SelfCarePage.components'
 
+vi.mock('@/features/session', () => ({
+  usePlannerTimeZone: () => 'Asia/Novosibirsk',
+}))
+
 describe('Self-care tab states', () => {
   afterEach(() => {
     cleanup()
+  })
+
+  it('shows an early morning completion on the planner local date', () => {
+    const completedAt = '2026-09-21T18:00:00Z'
+    const completion = selfCareCompletionSchema.parse({
+      id: 'completion',
+      itemId: 'care',
+      userId: 'user',
+      completedAt,
+      createdAt: completedAt,
+      updatedAt: completedAt,
+      alternativeTitle: null,
+      completedVariant: null,
+      durationMinutes: null,
+      measurementUnit: null,
+      measurementValue: null,
+      note: '',
+      occurrenceId: null,
+      scheduledFor: null,
+      status: 'done',
+      version: 1,
+    })
+    const { container } = render(
+      <SelfCareHistoryTab
+        canAddCare
+        defaultCurrency="RUB"
+        history={{
+          appointmentDetails: [],
+          procedureDetails: [],
+          items: [],
+          completions: [completion],
+          stepCompletions: [],
+        }}
+        isBusy={false}
+        isAddingCare={false}
+        onAddCare={vi.fn()}
+        onEditCompletion={vi.fn()}
+      />,
+    )
+    expect(container.querySelector('time')).toHaveAttribute(
+      'datetime',
+      '2026-09-22',
+    )
+    expect(screen.getByText(/вторник, 22 сентября/)).toBeInTheDocument()
   })
 
   it('shows a meaningful single-action empty state for All care', () => {

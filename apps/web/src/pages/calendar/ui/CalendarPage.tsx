@@ -41,6 +41,7 @@ import {
   addDateDays,
   getDateDayOfMonth,
   getIsoWeekStartDate,
+  getTimeInTimeZone,
   getTodayDate,
 } from '@/shared/time/time.service'
 import {
@@ -475,6 +476,7 @@ function getCurrentTimeMarkerStyle(
   currentTime: Date,
   startHour: number,
   endHour: number,
+  timeZone: string,
 ): CSSProperties | null {
   const calendarStartMinutes = startHour * 60
   const calendarEndMinutes = endHour * 60
@@ -484,10 +486,13 @@ function getCurrentTimeMarkerStyle(
     return null
   }
 
-  const currentMinutes =
-    currentTime.getHours() * 60 +
-    currentTime.getMinutes() +
-    currentTime.getSeconds() / 60
+  const currentMinutes = parseTimeMinutes(
+    getTimeInTimeZone(currentTime, timeZone),
+  )
+
+  if (currentMinutes === null) {
+    return null
+  }
 
   if (
     currentMinutes < calendarStartMinutes ||
@@ -505,12 +510,19 @@ function CurrentTimeMarker({
   currentTime,
   endHour,
   startHour,
+  timeZone,
 }: {
   currentTime: Date
   endHour: number
   startHour: number
+  timeZone: string
 }) {
-  const markerStyle = getCurrentTimeMarkerStyle(currentTime, startHour, endHour)
+  const markerStyle = getCurrentTimeMarkerStyle(
+    currentTime,
+    startHour,
+    endHour,
+    timeZone,
+  )
 
   if (!markerStyle) {
     return null
@@ -635,7 +647,10 @@ export function CalendarPage() {
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
-  const clientTimeZoneLabel = formatTimeZoneOffsetLabel(currentTime)
+  const calendarTimeZoneLabel = formatTimeZoneOffsetLabel(
+    currentTime,
+    plannerTimeZone,
+  )
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
@@ -925,6 +940,21 @@ export function CalendarPage() {
       ]),
     )
   }, [calendarTasks, viewMode, weekDateKeys])
+  const weekUntimedTasks = useMemo(
+    () =>
+      new Map(
+        weekDateKeys.map((dateKey) => [
+          dateKey,
+          getTasksForDate(calendarTasks, dateKey).filter(
+            (task) => !task.plannedStartTime,
+          ),
+        ]),
+      ),
+    [calendarTasks, weekDateKeys],
+  )
+  const hasWeekUntimedTasks = [...weekUntimedTasks.values()].some(
+    (items) => items.length > 0,
+  )
   const dayUnscheduledTasks = useMemo(() => {
     const scheduledTaskIds = new Set(
       buildTimelineLayout(plannerCalendarTasks, anchorDate).map(
@@ -1447,6 +1477,7 @@ export function CalendarPage() {
                           currentTime={currentTime}
                           endHour={timeRange.endHour}
                           startHour={timeRange.startHour}
+                          timeZone={plannerTimeZone}
                         />
                       ) : null}
                     </div>
@@ -1467,7 +1498,7 @@ export function CalendarPage() {
               >
                 <div className={styles.weekHeaderGrid}>
                   <div className={styles.timeZoneLabel} title={plannerTimeZone}>
-                    {clientTimeZoneLabel}
+                    {calendarTimeZoneLabel}
                   </div>
                   {weekDateKeys.map((dateKey, index) => {
                     const isToday = dateKey === todayKey
@@ -1485,6 +1516,30 @@ export function CalendarPage() {
                       </div>
                     )
                   })}
+                  {hasWeekUntimedTasks ? (
+                    <>
+                      <span className={styles.weekUntimedLabel}>
+                        Без времени
+                      </span>
+                      {weekDateKeys.map((dateKey) => (
+                        <div
+                          key={dateKey}
+                          className={styles.weekUntimedTasks}
+                          role="group"
+                          aria-label={`Без времени, ${formatLongDate(dateKey)}`}
+                        >
+                          {(weekUntimedTasks.get(dateKey) ?? []).map((task) => (
+                            <CalendarTaskPill
+                              key={task.id}
+                              compact
+                              onOpenTask={openTaskCard}
+                              task={task}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </>
+                  ) : null}
                 </div>
 
                 <div
@@ -1556,6 +1611,7 @@ export function CalendarPage() {
                               currentTime={currentTime}
                               endHour={timeRange.endHour}
                               startHour={timeRange.startHour}
+                              timeZone={plannerTimeZone}
                             />
                           ) : null}
                         </div>

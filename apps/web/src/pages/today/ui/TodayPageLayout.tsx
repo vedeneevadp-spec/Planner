@@ -20,6 +20,7 @@ export function TodayPageLayout({
 }: TodayPageLayoutProps) {
   return (
     <section className={`${pageStyles.page} ${styles.todayPage}`}>
+      <h1 className={pageStyles.visuallyHidden}>Сегодня</h1>
       <TaskComposer
         desktopOpenButtonHidden
         initialPlannedDate={todayKey}
@@ -39,6 +40,7 @@ export function TodayPageLayout({
 export function TodayPageStateLayout({ children }: { children: ReactNode }) {
   return (
     <section className={`${pageStyles.page} ${styles.todayPage}`}>
+      <h1 className={pageStyles.visuallyHidden}>Сегодня</h1>
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>{children}</div>
       </div>

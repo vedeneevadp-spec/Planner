@@ -403,7 +403,7 @@ test('keeps task composer field layout stable on desktop and mobile', async ({
   expect(consoleErrors).toEqual([])
 })
 
-test('keeps auth after reload and exposes password reset after failed sign-in', async ({
+test('keeps auth after reload and exposes password reset before and after failed sign-in', async ({
   page,
 }) => {
   const user = createE2eUser('e2e-auth')
@@ -425,6 +425,10 @@ test('keeps auth after reload and exposes password reset after failed sign-in', 
   await page.getByRole('button', { name: 'Выйти' }).click()
   await expect(page.getByRole('tab', { name: 'Вход' })).toBeVisible()
 
+  await expect(
+    page.getByRole('button', { name: 'Забыли пароль?' }),
+  ).toBeVisible()
+
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Пароль', { exact: true }).fill('wrong-password')
   await page.getByRole('button', { name: 'Войти' }).click()
@@ -437,6 +441,36 @@ test('keeps auth after reload and exposes password reset after failed sign-in', 
 
   await expect(
     page.getByText(`Письмо для восстановления отправлено на ${user.email}.`),
+  ).toBeVisible()
+})
+
+test('recovers from an expired password reset link without editing the URL', async ({
+  page,
+}) => {
+  await page.goto('/today?reset_token=expired-e2e-reset-token')
+  await page.getByLabel('Новый пароль', { exact: true }).fill('new-password')
+  await page.getByLabel('Повторите новый пароль').fill('new-password')
+  await page.getByRole('button', { name: 'Сохранить пароль' }).click()
+  await expect(page.getByRole('alert')).toContainText(
+    'Ссылка восстановления устарела',
+  )
+  await page.getByRole('button', { name: 'Запросить новую ссылку' }).click()
+  await expect(page).not.toHaveURL(/reset_token/)
+  await page.getByLabel('Email').fill('recovery-e2e@example.test')
+  await page.getByRole('button', { name: 'Отправить ссылку' }).click()
+  await expect(
+    page.getByText(
+      'Письмо для восстановления отправлено на recovery-e2e@example.test.',
+      { exact: false },
+    ),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Ко входу' }).click()
+  await expect(
+    page.getByRole('button', { name: 'Войти', exact: true }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(
+    page.getByRole('button', { name: 'Войти', exact: true }),
   ).toBeVisible()
 })
 

@@ -254,6 +254,51 @@ describe('ShoppingPage', () => {
     expect(input).toHaveValue('')
   })
 
+  it.each([
+    { selectedCategory: 'Продукты', expectedCategory: 'groceries' },
+    { selectedCategory: 'Бытовое', expectedCategory: 'household' },
+    { selectedCategory: null, expectedCategory: undefined },
+  ])(
+    'reactivates a completed purchase using the explicit category $selectedCategory',
+    async ({ selectedCategory, expectedCategory }) => {
+      mocks.useShoppingListSummary.mockReturnValue(
+        createShoppingListSummary({
+          completedItems: [
+            createShoppingItem({
+              id: 'completed-milk',
+              text: 'Молоко',
+              status: 'archived',
+              shoppingCategory: 'other',
+            }),
+          ],
+        }),
+      )
+      renderShoppingPage('/shopping')
+      const input = screen.getByPlaceholderText('Добавить покупку')
+      fireEvent.change(input, { target: { value: '  молоко  ' } })
+      if (selectedCategory) {
+        fireEvent.click(
+          screen.getByRole('button', {
+            name: `Выбрать вид: ${selectedCategory}`,
+          }),
+        )
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Добавить покупку' }))
+
+      await waitFor(() => {
+        expect(input).toHaveValue('')
+      })
+      expect(mocks.updateItem).toHaveBeenCalledExactlyOnceWith({
+        itemId: 'completed-milk',
+        patch: {
+          status: 'new',
+          ...(expectedCategory ? { shoppingCategory: expectedCategory } : {}),
+        },
+      })
+      expect(mocks.createItem).not.toHaveBeenCalled()
+    },
+  )
+
   it('locks only the shopping row being changed', async () => {
     const save = createDeferred<void>()
     mocks.updateItem.mockReturnValue(save.promise)

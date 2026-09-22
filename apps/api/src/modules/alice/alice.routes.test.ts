@@ -2,11 +2,12 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 
 import {
+  chaosInboxItemRecordSchema,
   chaosInboxListRecordResponseSchema,
   sessionResponseSchema,
   taskListResponseSchema,
 } from '@planner/contracts'
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, LightMyRequestResponse } from 'fastify'
 import { SignJWT } from 'jose'
 import { z } from 'zod'
 
@@ -24,8 +25,12 @@ const JWT_SECRET = 'planner-test-jwt-secret-with-at-least-32-chars'
 const USER_ID = '99999999-9999-4999-8999-999999999999'
 const aliceResponseSchema = z
   .object({
-    response: z.object({ text: z.string() }).passthrough().optional(),
+    response: z
+      .object({ end_session: z.boolean(), text: z.string() })
+      .passthrough()
+      .optional(),
     start_account_linking: z.unknown().optional(),
+    version: z.literal('1.0'),
   })
   .passthrough()
 
@@ -37,6 +42,103 @@ void describe('alice routes', () => {
       await app.close()
       app = null
     }
+  })
+
+  for (const scenario of [
+    {
+      name: 'offers help without requiring account linking',
+      command: 'помощь',
+      authenticated: false,
+      endSession: false,
+      text: /Я добавляю задачи и покупки в Chaotika/u,
+    },
+    {
+      name: 'ends the dialogue without requiring account linking',
+      command: 'выход',
+      authenticated: false,
+      endSession: true,
+      text: /Готово, выхожу/u,
+    },
+    {
+      name: 'greets a linked account on an empty launch',
+      command: '',
+      authenticated: true,
+      endSession: false,
+      text: /Могу добавить задачу или покупку/u,
+    },
+    {
+      name: 'asks to clarify an incomplete task instead of creating it',
+      command: 'добавь задачу завтра',
+      authenticated: true,
+      endSession: false,
+      text: /Что добавить/u,
+    },
+  ]) {
+    void it(scenario.name, async () => {
+      const config = createTestConfig()
+      const token = await createAccessToken(config)
+      app = buildTestApp(config)
+
+      const response = await app.inject({
+        method: 'POST',
+        payload: createAliceRequest(scenario.command, {
+          ...(scenario.authenticated ? { token } : {}),
+        }),
+        url: '/api/v1/alice/webhook',
+      })
+      const body = aliceResponseSchema.parse(response.json())
+
+      assert.equal(response.statusCode, 200)
+      assert.equal(response.headers['cache-control'], 'no-store')
+      assert.equal(body.start_account_linking, undefined)
+      assert.equal(body.response?.end_session, scenario.endSession)
+      assert.match(body.response?.text ?? '', scenario.text)
+
+      const sessionResponse = await app.inject({
+        headers: { authorization: `Bearer ${token}` },
+        method: 'GET',
+        url: '/api/v1/session',
+      })
+      const session = sessionResponseSchema.parse(sessionResponse.json())
+      const headers = {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': session.workspaceId,
+      }
+      const tasksResponse = await app.inject({
+        headers,
+        method: 'GET',
+        url: '/api/v1/tasks',
+      })
+      const shoppingResponse = await app.inject({
+        headers,
+        method: 'GET',
+        url: '/api/v1/chaos-inbox?kind=shopping',
+      })
+
+      assert.equal(tasksResponse.statusCode, 200)
+      assert.deepEqual(taskListResponseSchema.parse(tasksResponse.json()), [])
+      assert.equal(shoppingResponse.statusCode, 200)
+      assert.deepEqual(
+        chaosInboxListRecordResponseSchema.parse(shoppingResponse.json()).items,
+        [],
+      )
+    })
+  }
+
+  void it('starts account linking for an unlinked empty launch', async () => {
+    app = buildTestApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: createAliceRequest(''),
+      url: '/api/v1/alice/webhook',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(aliceResponseSchema.parse(response.json()), {
+      start_account_linking: {},
+      version: '1.0',
+    })
   })
 
   void it('returns account linking response when a task command has no token', async () => {
@@ -203,6 +305,39 @@ void describe('alice routes', () => {
     assert.equal(shoppingList.items[0]?.kind, 'shopping')
     assert.equal(shoppingList.items[0]?.source, 'voice')
     assert.equal(shoppingList.items[0]?.text, 'молоко')
+
+    const item = shoppingList.items[0]
+    assert.ok(item)
+    const headers = {
+      authorization: `Bearer ${token}`,
+      'x-workspace-id': session.workspaceId,
+    }
+    const updateResponse = await app.inject({
+      headers,
+      method: 'PATCH',
+      payload: { isFavorite: true, shoppingCategory: 'groceries' },
+      url: `/api/v1/chaos-inbox/${item.id}`,
+    })
+    const updated = chaosInboxItemRecordSchema.parse(updateResponse.json())
+
+    assert.equal(updateResponse.statusCode, 200)
+    assert.equal(updated.id, item.id)
+    assert.equal(updated.isFavorite, true)
+    assert.equal(updated.shoppingCategory, 'groceries')
+    assert.equal(updated.source, 'voice')
+    assert.equal(updated.text, 'молоко')
+
+    const rereadResponse = await app.inject({
+      headers,
+      method: 'GET',
+      url: '/api/v1/chaos-inbox?kind=shopping',
+    })
+
+    assert.equal(rereadResponse.statusCode, 200)
+    assert.deepEqual(
+      chaosInboxListRecordResponseSchema.parse(rereadResponse.json()).items,
+      [updated],
+    )
   })
 
   void it('understands reversed shopping phrasing', async () => {
@@ -318,7 +453,95 @@ void describe('alice routes', () => {
     assert.match(responseText, /позвонить маме/u)
     assert.match(responseText, /09:00/u)
   })
+
+  void it('creates and reads today using the Alice timezone across UTC midnight', async (context) => {
+    context.mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2026-09-18T23:30:00.000Z'),
+    })
+    const config = createTestConfig()
+    const token = await createAccessToken(config)
+    app = buildTestApp(config)
+
+    for (const [timeZone, title] of [
+      ['Asia/Novosibirsk', 'позвонить маме'],
+      ['UTC', 'проверить отчет'],
+    ] as const) {
+      const createResponse: LightMyRequestResponse = await app.inject({
+        method: 'POST',
+        payload: createAliceRequest(
+          `добавь задачу ${title} сегодня в 9 часов`,
+          {
+            timeZone,
+            token,
+          },
+        ),
+        url: '/api/v1/alice/webhook',
+      })
+
+      assert.equal(createResponse.statusCode, 200)
+      assert.match(
+        aliceResponseSchema.parse(createResponse.json()).response?.text ?? '',
+        /Добавила задачу/u,
+      )
+    }
+
+    const sessionResponse = await app.inject({
+      headers: { authorization: `Bearer ${token}` },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+    const session = sessionResponseSchema.parse(sessionResponse.json())
+    const tasksResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': session.workspaceId,
+      },
+      method: 'GET',
+      url: '/api/v1/tasks',
+    })
+    const tasks = taskListResponseSchema.parse(tasksResponse.json())
+    assert.equal(tasks.length, 2)
+    const localTask = tasks.find((task) => task.title === 'позвонить маме')
+    assert.equal(localTask?.plannedDate, '2026-09-19')
+    assert.equal(localTask?.plannedStartTime, '09:00')
+    assert.equal(
+      tasks.find((task) => task.title === 'проверить отчет')?.plannedDate,
+      '2026-09-18',
+    )
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: createAliceRequest('прочитай задачи на сегодня', {
+        timeZone: 'Asia/Novosibirsk',
+        token,
+      }),
+      url: '/api/v1/alice/webhook',
+    })
+    const body = aliceResponseSchema.parse(response.json())
+
+    assert.equal(response.statusCode, 200)
+    assert.equal(body.response?.end_session, false)
+    assert.match(body.response?.text ?? '', /На сегодня/u)
+    assert.match(body.response?.text ?? '', /09:00 позвонить маме/u)
+    assert.doesNotMatch(body.response?.text ?? '', /проверить отчет/u)
+  })
 })
+
+function createAliceRequest(
+  command: string,
+  { token, timeZone = 'UTC' }: { token?: string; timeZone?: string } = {},
+) {
+  return {
+    meta: { interfaces: { account_linking: {} }, timezone: timeZone },
+    request: { command, type: 'SimpleUtterance' },
+    session: {
+      new: !command,
+      ...(token ? { user: { access_token: token } } : {}),
+    },
+    version: '1.0',
+  }
+}
 
 function buildTestApp(config = createTestConfig()): FastifyInstance {
   const taskService = new TaskService(new MemoryTaskRepository())

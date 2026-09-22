@@ -1,5 +1,7 @@
 # Android Voice Runtime
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 Android runtime отвечает только за wake word, foreground service, локальные
 non-verbal audio signals, короткую запись команды и bridge в WebView.
 Parser/action behavior не меняется.

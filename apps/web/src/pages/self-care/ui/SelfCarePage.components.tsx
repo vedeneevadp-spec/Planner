@@ -12,6 +12,7 @@ import type {
 } from '@/features/self-care'
 import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
+import { getDateKeyInTimeZone } from '@/shared/time/time.service'
 import {
   CheckIcon,
   EditIcon,
@@ -727,6 +728,7 @@ export function SelfCareHistoryTab({
   onAddCare: () => void
   onEditCompletion: (completion: SelfCareCompletion) => void
 }) {
+  const plannerTimeZone = usePlannerTimeZone()
   const itemById = new Map(
     (history?.items ?? []).map((item) => [item.id, item]),
   )
@@ -746,9 +748,9 @@ export function SelfCareHistoryTab({
               }
             : undefined
         }
-        description="Здесь появятся завершённые заботы и заметки о них."
+        description="Выберите более ранний период, чтобы посмотреть прошлые заботы."
         kind="empty"
-        title="История пока пуста"
+        title="Нет записей за этот период"
       />
     )
   }
@@ -771,7 +773,16 @@ export function SelfCareHistoryTab({
         )
         return (
           <article key={completion.id} className={styles.historyCard}>
-            <time>{formatDate(completion.completedAt.slice(0, 10))}</time>
+            <time
+              dateTime={getDateKeyInTimeZone(
+                completion.completedAt,
+                plannerTimeZone,
+              )}
+            >
+              {formatDate(
+                getDateKeyInTimeZone(completion.completedAt, plannerTimeZone),
+              )}
+            </time>
             <div>
               <h3>{item?.title ?? 'Забота о себе'}</h3>
               <p>{STATUS_LABELS[completion.status]}</p>

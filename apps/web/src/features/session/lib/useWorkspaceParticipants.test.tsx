@@ -280,6 +280,7 @@ function createAuthState(
     authNotice: null,
     canUseProtectedApi: true,
     clearAuthNotice: vi.fn(),
+    cancelPasswordRecovery: vi.fn(),
     email: 'user@example.test',
     expireSession: vi.fn(() => Promise.resolve()),
     isAuthEnabled: true,
@@ -321,7 +322,6 @@ function createSessionResponse(): SessionResponse {
       energyMode: 'normal',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       id: 'workspace-1',
@@ -333,7 +333,6 @@ function createSessionResponse(): SessionResponse {
     workspaceSettings: {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [],
   }

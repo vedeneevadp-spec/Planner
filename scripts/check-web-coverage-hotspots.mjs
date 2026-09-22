@@ -49,11 +49,6 @@ const HOTSPOTS = [
   },
   {
     metric: 'lines',
-    min: 45,
-    path: 'apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts',
-  },
-  {
-    metric: 'lines',
     min: 8,
     path: 'apps/web/src/pages/spheres/ui/SphereForm.tsx',
   },

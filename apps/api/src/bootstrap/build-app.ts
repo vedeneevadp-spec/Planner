@@ -57,8 +57,6 @@ import type { TaskTemplateService } from '../modules/task-templates/index.js'
 import { registerTaskTemplateRoutes } from '../modules/task-templates/index.js'
 import type { TaskService } from '../modules/tasks/index.js'
 import { registerTaskRoutes } from '../modules/tasks/index.js'
-import type { VoiceCommandService } from '../modules/voice/index.js'
-import { registerVoiceRoutes } from '../modules/voice/index.js'
 import type { ApiConfig } from './config.js'
 import { HttpError } from './http-error.js'
 import {
@@ -105,7 +103,6 @@ export interface BuildApiAppOptions {
   taskTemplateService?: TaskTemplateService
   taskService: TaskService
   userBackupService?: UserBackupService
-  voiceCommandService?: VoiceCommandService
 }
 
 const PROTECTED_API_RATE_LIMIT_PER_MINUTE = 600
@@ -133,7 +130,6 @@ export function buildApiApp({
   taskTemplateService,
   taskService,
   userBackupService,
-  voiceCommandService,
 }: BuildApiAppOptions) {
   const app = Fastify({
     bodyLimit: DEFAULT_API_BODY_LIMIT_BYTES,
@@ -296,9 +292,6 @@ export function buildApiApp({
     }
     if (chaosInboxService) {
       registerChaosInboxRoutes(instance, sessionService, chaosInboxService)
-    }
-    if (voiceCommandService) {
-      registerVoiceRoutes(instance, sessionService, voiceCommandService)
     }
   })
 

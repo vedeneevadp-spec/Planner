@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { IconChoicePicker } from './IconChoicePicker'
+import { IconMark } from './IconMark'
 
 describe('IconChoicePicker', () => {
   afterEach(() => {
@@ -30,4 +31,14 @@ describe('IconChoicePicker', () => {
 
     expect(firstButton).toHaveAttribute('aria-label', 'Моя иконка')
   })
+
+  it.each(['mic', 'svg:mic'])(
+    'renders the saved %s icon for user entities',
+    (value) => {
+      const { container } = render(<IconMark value={value} />)
+
+      expect(container.querySelector('svg')).toBeInTheDocument()
+      expect(container).not.toHaveTextContent('?')
+    },
+  )
 })

@@ -219,7 +219,6 @@ const TABLE_EXPORT_QUERIES: TableExportQuery[] = [
               time_zone_mode,
               calendar_view_mode,
               energy_mode,
-              voice_assistant_enabled,
               created_at,
               updated_at,
               deleted_at,

@@ -62,7 +62,6 @@ const ADMIN_SECTIONS: Array<{ id: AdminSection; label: string }> = [
 
 const DEFAULT_WORKSPACE_SETTINGS = {
   taskCompletionConfettiEnabled: true,
-  wakeWordTrainingModeEnabled: false,
 }
 const NEW_ICON_SET_TARGET = 'new'
 const MANAGEABLE_APP_ROLES = [
@@ -412,8 +411,6 @@ export function AdminPage() {
     try {
       await updateWorkspaceSettings.mutateAsync({
         taskCompletionConfettiEnabled: enabled,
-        wakeWordTrainingModeEnabled:
-          workspaceSettings.wakeWordTrainingModeEnabled,
       })
     } catch (error) {
       setSettingsError(

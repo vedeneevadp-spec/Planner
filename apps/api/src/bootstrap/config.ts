@@ -1,10 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { isIP } from 'node:net'
 
-import {
-  type StorageDriver,
-  VOICE_COMMAND_STT_TIMEOUT_MS,
-} from '@planner/contracts'
+import type { StorageDriver } from '@planner/contracts'
 
 import type { JwtAuthRuntimeConfig } from '../infrastructure/auth/jwt-request-authenticator.js'
 import type { PlannerAuthRuntimeConfig } from '../modules/auth/index.js'
@@ -51,15 +48,6 @@ export interface AliceCommandLlmConfig {
   timeoutMs: number
 }
 
-export interface VoiceSttConfig {
-  apiKey: string | null
-  endpoint: string
-  folderId: string | null
-  iamToken: string | null
-  language: string
-  timeoutMs: number
-}
-
 export interface ApiConfig {
   aliceCommandLlm: AliceCommandLlmConfig | null
   aliceOAuth: AliceOAuthConfig | null
@@ -77,7 +65,6 @@ export interface ApiConfig {
   taskRemindersRuntime: TaskRemindersRuntimeMode
   trustedProxies: ApiTrustedProxies
   userBackupRestoreHelper: UserBackupRestoreHelperClientConfig | null
-  voiceStt: VoiceSttConfig
 }
 
 export interface UserBackupRestoreHelperClientConfig {
@@ -490,32 +477,6 @@ function getAliceCommandLlmApiFormat(
   }
 }
 
-function createVoiceSttConfig(env: NodeJS.ProcessEnv): VoiceSttConfig {
-  return {
-    apiKey:
-      env.VOICE_STT_YANDEX_API_KEY?.trim() ||
-      env.YANDEX_API_KEY?.trim() ||
-      null,
-    endpoint:
-      env.VOICE_STT_YANDEX_ENDPOINT?.trim() ||
-      'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize',
-    folderId:
-      env.VOICE_STT_YANDEX_FOLDER_ID?.trim() ||
-      env.YANDEX_FOLDER_ID?.trim() ||
-      null,
-    iamToken:
-      env.VOICE_STT_YANDEX_IAM_TOKEN?.trim() ||
-      env.YANDEX_IAM_TOKEN?.trim() ||
-      null,
-    language: env.VOICE_STT_LANGUAGE?.trim() || 'ru-RU',
-    timeoutMs: parsePositiveInteger(
-      env.VOICE_STT_TIMEOUT_MS,
-      VOICE_COMMAND_STT_TIMEOUT_MS,
-      'VOICE_STT_TIMEOUT_MS',
-    ),
-  }
-}
-
 function createMcpHaotikaConfig(
   env: NodeJS.ProcessEnv,
 ): McpHaotikaRuntimeConfig {
@@ -635,7 +596,6 @@ export function createApiConfig(
     ),
     trustedProxies: parseTrustedProxies(env),
     userBackupRestoreHelper,
-    voiceStt: createVoiceSttConfig(env),
   }
 }
 

@@ -138,7 +138,10 @@ function CleaningSettingsSideAction() {
     return null
   }
 
-  return createPortal(action, document.body)
+  return createPortal(
+    <nav aria-label="Действия с уборкой">{action}</nav>,
+    document.body,
+  )
 }
 
 function matchesRoute(pathname: string, route: string): boolean {

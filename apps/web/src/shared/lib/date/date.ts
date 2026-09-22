@@ -12,7 +12,23 @@ export function resolveClientTimeZone(): string | undefined {
   }
 }
 
-export function formatTimeZoneOffsetLabel(date: Date = new Date()): string {
+export function formatTimeZoneOffsetLabel(
+  date: Date = new Date(),
+  timeZone?: string,
+): string {
+  if (timeZone) {
+    const label = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'shortOffset',
+    })
+      .formatToParts(date)
+      .find((part) => part.type === 'timeZoneName')?.value
+
+    if (label) {
+      return label === 'GMT' ? 'GMT+0' : label
+    }
+  }
+
   const offsetMinutes = -date.getTimezoneOffset()
   const sign = offsetMinutes >= 0 ? '+' : '-'
   const absoluteOffsetMinutes = Math.abs(offsetMinutes)

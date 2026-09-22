@@ -34,6 +34,7 @@ const CONTACT_LINKS = [
 export function ContactsPage() {
   return (
     <section className={cx(pageStyles.page, styles.contactsPage)}>
+      <h1 className={pageStyles.visuallyHidden}>Контакты</h1>
       <PageHeader kicker="Раздел" title="Контакты" />
 
       <section className={styles.contactList} aria-label="Контакты">

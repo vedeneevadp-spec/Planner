@@ -16,6 +16,7 @@ export {
   type QueueCleaningTaskCompletionInput,
   type QueueCleaningTaskCompletionResult,
 } from './lib/cleaning-offline-command'
+export { previewCleaningTaskDueDate } from './lib/offline-cleaning-projection'
 export {
   CLEANING_OFFLINE_DATABASE_NAME,
   CLEANING_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,

@@ -150,7 +150,6 @@ function createSessionResponse(workspaceId: string): SessionResponse {
       energyMode: 'normal',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       id: workspaceId,
@@ -162,7 +161,6 @@ function createSessionResponse(workspaceId: string): SessionResponse {
     workspaceSettings: {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [
       {

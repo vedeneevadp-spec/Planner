@@ -102,6 +102,10 @@ export function useSessionAuthController(): SessionAuthState {
   const [{ lifecycleStatus, sessionVersion, snapshot }, dispatchAuthState] =
     useReducer(sessionAuthReducer, isAuthEnabled, createInitialSessionAuthState)
   const isPasswordRecovery = passwordResetToken !== null
+  const cancelPasswordRecovery = useCallback(() => {
+    setPasswordResetToken(null)
+    clearPasswordResetUrlParams()
+  }, [])
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current === null) {
@@ -171,8 +175,6 @@ export function useSessionAuthController(): SessionAuthState {
       deferredRefreshRetryCountRef.current = 0
       clearRefreshTimer()
       blockedNativeRefreshTokenRef.current = null
-      setPasswordResetToken(null)
-      clearPasswordResetUrlParams()
       setAuthNotice(null)
       setIsSignInRequired(false)
       dispatchAuthState({
@@ -199,9 +201,10 @@ export function useSessionAuthController(): SessionAuthState {
       })
 
       await writeStoredAuthSession(storedSession)
+      cancelPasswordRecovery()
       restoreStoredAuthSession(storedSession)
     },
-    [isNativeSessionRuntime, restoreStoredAuthSession],
+    [cancelPasswordRecovery, isNativeSessionRuntime, restoreStoredAuthSession],
   )
 
   const persistRefreshedAuthSession = useCallback(
@@ -262,20 +265,12 @@ export function useSessionAuthController(): SessionAuthState {
           actorUserId,
           apiBaseUrl: plannerApiConfig.apiBaseUrl,
         })
-
-        const { clearAndroidVoiceAssistantSessionContext } =
-          await import('@/features/voice-assistant/native')
-
-        await clearAndroidVoiceAssistantSessionContext().catch((error) => {
-          console.error('Failed to clear native voice session context.', error)
-        })
       }
 
       pendingSignOutNoticeRef.current = notice
       blockedNativeRefreshTokenRef.current = null
       setAuthNotice(notice === false ? null : notice)
       setIsSignInRequired(false)
-      setPasswordResetToken(null)
       clearCachedPlannerSession(actorUserId)
       clearSelectedWorkspaceId(actorUserId)
       clearLastActorUserId()
@@ -832,8 +827,9 @@ export function useSessionAuthController(): SessionAuthState {
   )
 
   const signOut = useCallback(async () => {
+    cancelPasswordRecovery()
     await clearAuthSession(false)
-  }, [clearAuthSession])
+  }, [cancelPasswordRecovery, clearAuthSession])
 
   const updatePassword = useCallback(
     async (password: string, currentPassword?: string) => {
@@ -884,6 +880,7 @@ export function useSessionAuthController(): SessionAuthState {
         accessToken,
         isAuthEnabled,
       }),
+      cancelPasswordRecovery,
       clearAuthNotice,
       email: snapshot.email,
       expireSession,
@@ -904,6 +901,7 @@ export function useSessionAuthController(): SessionAuthState {
     }
   }, [
     authNotice,
+    cancelPasswordRecovery,
     clearAuthNotice,
     expireSession,
     isAuthEnabled,

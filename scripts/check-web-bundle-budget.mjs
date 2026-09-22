@@ -58,20 +58,6 @@ const routeAssetBudgets = [
     variable: 'WEB_BUNDLE_CALENDAR_CSS_MAX_KB',
   },
   {
-    defaultMaxKb: 110,
-    extension: '.js',
-    label: 'voice assistant JS',
-    prefix: 'VoiceAssistant-',
-    variable: 'WEB_BUNDLE_VOICE_ASSISTANT_JS_MAX_KB',
-  },
-  {
-    defaultMaxKb: 15,
-    extension: '.css',
-    label: 'voice assistant CSS',
-    prefix: 'VoiceAssistant-',
-    variable: 'WEB_BUNDLE_VOICE_ASSISTANT_CSS_MAX_KB',
-  },
-  {
     defaultMaxKb: 90,
     extension: '.js',
     label: 'planner contracts JS',
@@ -112,12 +98,31 @@ const forbiddenInitialPreloadPatterns = [
   /\/assets\/confetti\.module-[^/]+\.js$/,
   /\/assets\/NativePushRegistration-[^/]+\.js$/,
   /\/assets\/NativePlannerWidgetSync-[^/]+\.js$/,
-  /\/assets\/VoiceAssistant-[^/]+\.js$/,
-  /\/assets\/VoiceAssistantSettingsPanel-[^/]+\.js$/,
   /\/assets\/lottie_light_canvas-[^/]+\.js$/,
-  /\/assets\/native-voice-assistant-[^/]+\.js$/,
   /\/assets\/native-push-notifications-[^/]+\.js$/,
 ]
+
+const removedRuntimeAssets = (await readdir(distAssetsDirectory)).filter(
+  (name) =>
+    /^(?:VoiceAssistant|voice-assistant-settings|native-voice-assistant|web-voice|wakeword)/i.test(
+      name,
+    ),
+)
+assert.deepEqual(
+  removedRuntimeAssets,
+  [],
+  'Removed voice runtime assets must not be shipped.',
+)
+for (const name of await readdir(distAssetsDirectory)) {
+  if (!name.endsWith('.js')) continue
+  const source = await readText(path.join(distAssetsDirectory, name))
+  assert.ok(
+    !/\/api\/voice\/|PlannerVoiceAssistant|getUserMedia|MediaRecorder/.test(
+      source,
+    ),
+    `Removed microphone or voice runtime found in ${name}.`,
+  )
+}
 
 const indexHtml = await readText(indexHtmlPath)
 const entryScript = readEntryScript(indexHtml)
@@ -148,7 +153,7 @@ assert.deepEqual(
   [],
   [
     'Deferred chunks must not be preloaded by index.html.',
-    'Keep voice assistant, native bridge, widget sync, and lottie behind lazy imports.',
+    'Keep native bridge, widget sync, and lottie behind lazy imports.',
     forbiddenPreloads.join('\n'),
   ].join('\n'),
 )

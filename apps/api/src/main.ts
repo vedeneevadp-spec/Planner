@@ -109,12 +109,6 @@ import {
   PostgresTaskRepository,
   TaskService,
 } from './modules/tasks/index.js'
-import {
-  createUnavailableBackendSttProvider,
-  VoiceCommandService,
-  YandexSpeechKitProvider,
-} from './modules/voice/index.js'
-
 export interface ApiKernel {
   app: FastifyInstance
   config: ReturnType<typeof createApiConfig>
@@ -221,17 +215,6 @@ export function createApiKernel(
   const taskService = new TaskService(taskRepository)
   const chaosInboxService = new ChaosInboxService(chaosInboxRepository)
   const dailyPlanService = new DailyPlanService(dailyPlanRepository)
-  const voiceCommandProvider = new YandexSpeechKitProvider(config.voiceStt)
-  const voiceCommandService = new VoiceCommandService(
-    voiceCommandProvider.isAvailable()
-      ? voiceCommandProvider
-      : createUnavailableBackendSttProvider(),
-    {
-      record: (event, details) => {
-        appLogMetric(event, details)
-      },
-    },
-  )
   const aiContextService = new AiContextService({
     chaosInboxService,
     cleaningService,
@@ -276,7 +259,6 @@ export function createApiKernel(
     taskTemplateService,
     taskService,
     ...(userBackupService ? { userBackupService } : {}),
-    voiceCommandService,
   })
 
   if (
@@ -328,17 +310,6 @@ export function createApiKernel(
       }
     },
   }
-}
-
-function appLogMetric(
-  event: string,
-  details: Record<string, unknown> | undefined,
-): void {
-  if (process.env.NODE_ENV === 'test') {
-    return
-  }
-
-  console.info(JSON.stringify({ event, ...details }))
 }
 
 export async function destroyApiKernel(kernel: ApiKernel): Promise<void> {

@@ -28,7 +28,6 @@ interface SessionStub {
   userPreferences: {
     calendarViewMode: CalendarViewMode
     energyMode: 'normal'
-    voiceAssistantEnabled: true
   }
   workspace: {
     kind: 'personal' | 'shared'
@@ -51,6 +50,7 @@ function createSelfCarePlanData():
 }
 
 const mocks = vi.hoisted(() => ({
+  plannerTimeZone: 'Europe/Astrakhan',
   calendarTaskRangeQuery: {
     data: undefined,
     error: null as Error | null,
@@ -129,7 +129,7 @@ vi.mock('@/features/self-care', () => ({
 
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
-  usePlannerTimeZone: () => 'Europe/Astrakhan',
+  usePlannerTimeZone: () => mocks.plannerTimeZone,
   useUpdateUserPreferences: () => ({
     mutate: mocks.mutatePreferences,
   }),
@@ -150,6 +150,7 @@ describe('CalendarPage', () => {
   let currentSession: SessionStub
 
   beforeEach(() => {
+    mocks.plannerTimeZone = 'Europe/Astrakhan'
     currentSession = createSession('week')
     mocks.mutatePreferences.mockReset()
     mocks.calendarTaskRangeQuery.data = undefined
@@ -724,7 +725,7 @@ describe('CalendarPage', () => {
 
   it('shows the current time marker in today day view', () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-06-03T14:15:00'))
+    vi.setSystemTime(new Date('2026-06-03T10:15:00Z'))
     currentSession = createSession('day')
 
     renderCalendarPage('/calendar?calendarView=day')
@@ -738,7 +739,7 @@ describe('CalendarPage', () => {
 
   it('shows the current time marker only in the current week day column', () => {
     vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-06-03T14:15:00'))
+    vi.setSystemTime(new Date('2026-06-03T10:15:00Z'))
 
     renderCalendarPage('/calendar?calendarView=week')
 
@@ -750,7 +751,7 @@ describe('CalendarPage', () => {
     expect(markers[0]).toHaveStyle({ top: '59.375%' })
   })
 
-  it('does not show untimed tasks in week view', () => {
+  it('shows untimed tasks by date in week view and opens their details', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-06-03T14:15:00'))
     mocks.tasks = [
@@ -764,11 +765,52 @@ describe('CalendarPage', () => {
 
     const week = within(screen.getByLabelText('Неделя'))
 
-    expect(week.queryByText('Без времени')).not.toBeInTheDocument()
-    expect(
-      week.queryByText('Недельная задача без времени'),
-    ).not.toBeInTheDocument()
+    expect(week.getByText('Без времени')).toBeVisible()
+    const untimedDay = within(
+      week.getByRole('group', { name: 'Без времени, среда, 3 июня' }),
+    )
+    fireEvent.click(
+      untimedDay.getByRole('button', {
+        name: 'Открыть задачу Недельная задача без времени',
+      }),
+    )
+    expect(screen.getByRole('dialog')).toBeVisible()
   })
+
+  it.each([
+    [
+      'Asia/Novosibirsk',
+      '2026-06-03T18:15:00Z',
+      'GMT+7',
+      '5.208333333333334%',
+      '4',
+    ],
+    [
+      'America/New_York',
+      '2026-06-03T02:15:00Z',
+      'GMT-4',
+      '92.70833333333334%',
+      '2',
+    ],
+  ])(
+    'aligns marker, offset and current day with %s across midnight',
+    (timeZone, instant, offset, top, day) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(instant))
+      mocks.plannerTimeZone = timeZone
+
+      renderCalendarPage('/calendar?calendarView=week')
+
+      const week = within(screen.getByLabelText('Неделя'))
+      expect(week.getByText(offset)).toHaveAttribute('title', timeZone)
+      expect(week.getByTestId('calendar-current-time-marker')).toHaveStyle({
+        top,
+      })
+      expect(week.getByText(day).parentElement?.className).toContain(
+        'weekDayHeaderToday',
+      )
+    },
+  )
 
   it('hides planning-only after-completion self-care repeats from the calendar', () => {
     const tasks = buildSelfCareCalendarTasks(
@@ -902,7 +944,6 @@ function createSession(calendarViewMode: CalendarViewMode): SessionStub {
     userPreferences: {
       calendarViewMode,
       energyMode: 'normal',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       kind: 'personal',

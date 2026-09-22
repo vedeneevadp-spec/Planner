@@ -368,7 +368,7 @@ describe('MorePage', () => {
     expect(screen.queryByText(/secret details/)).not.toBeInTheDocument()
   })
 
-  it('shows notification and voice settings after the theme control', () => {
+  it('shows notification settings after the theme control', () => {
     renderMorePage({
       planner: {
         readiness: {
@@ -389,12 +389,11 @@ describe('MorePage', () => {
       within(settings).getByRole('link', { name: 'Уведомления' }),
     ).toHaveAttribute('href', '/notifications/settings')
     expect(
-      within(settings).getByRole('link', { name: 'Голосовой помощник' }),
-    ).toHaveAttribute('href', '/voice-assistant/settings')
+      within(settings).queryByRole('link', { name: 'Голосовой помощник' }),
+    ).not.toBeInTheDocument()
     expect(controls.map((control) => control.textContent?.trim())).toEqual([
       expect.stringMatching(/тема/i),
       'Уведомления',
-      'Голосовой помощник',
     ])
   })
 
