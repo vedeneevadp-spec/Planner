@@ -427,6 +427,7 @@ function createAuthState(
     authNotice: null,
     canUseProtectedApi: true,
     clearAuthNotice: vi.fn(),
+    cancelPasswordRecovery: vi.fn(),
     email: 'test@example.com',
     expireSession: vi.fn().mockResolvedValue(undefined),
     isAuthEnabled: true,

@@ -1184,6 +1184,12 @@ export function CleaningSettingsPage() {
                       />
                     </div>
                   </fieldset>
+                  {!isGeneralSelected ? (
+                    <p className={styles.emptyCopy}>
+                      Интервал — минимум между уборками. Следующее выполнение
+                      будет в ближайший день зоны после этого интервала.
+                    </p>
+                  ) : null}
                   <label className={styles.seasonToggle}>
                     <input
                       className={styles.seasonCheckboxInput}
@@ -1283,6 +1289,7 @@ export function CleaningSettingsPage() {
                     <ZoneTaskRow
                       key={task.id}
                       disabled={isBusy}
+                      history={plan?.history ?? []}
                       state={statesByTaskId.get(task.id)}
                       task={task}
                       zones={zones}

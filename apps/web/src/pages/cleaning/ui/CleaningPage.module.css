@@ -1009,6 +1009,12 @@
   font-size: 0.72rem;
 }
 
+.zoneTaskRow .zoneTaskDueDate {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .zoneTaskField,
 .zoneTaskPriority,
 .zoneTaskMinutes {

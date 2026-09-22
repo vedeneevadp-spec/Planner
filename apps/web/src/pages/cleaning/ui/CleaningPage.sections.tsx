@@ -1,5 +1,6 @@
 import {
   type CleaningFrequencyType,
+  type CleaningListResponse,
   type CleaningPriority,
   type CleaningTaskRecord,
   type CleaningTaskScope,
@@ -11,6 +12,7 @@ import {
 } from '@planner/contracts'
 import { type FormEvent, type ReactNode, useState } from 'react'
 
+import { previewCleaningTaskDueDate } from '@/features/cleaning'
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate } from '@/shared/lib/date'
 import {
@@ -23,6 +25,7 @@ import {
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
+  formatCleaningDueDate,
   formatFrequency,
   formatPostponeCount,
   getFrequencyUnitOptions,
@@ -429,6 +432,10 @@ export function ZoneSettings(props: {
           setDescription(event.target.value)
         }}
       />
+      <p className={styles.emptyCopy}>
+        При смене дня ближайшие сроки пересчитаются по частоте задач. Явные
+        переносы сохранятся до выполнения или пропуска.
+      </p>
       <div className={styles.zoneSettingsActions}>
         <button
           className={styles.iconButton}
@@ -462,6 +469,7 @@ export function ZoneSettings(props: {
 
 export function ZoneTaskRow(props: {
   disabled: boolean
+  history: CleaningListResponse['history']
   state: CleaningTaskStateRecord | undefined
   task: CleaningTaskRecord
   zones: CleaningZoneRecord[]
@@ -480,6 +488,11 @@ export function ZoneTaskRow(props: {
             : 'в цикле'}{' '}
           · {formatFrequency(props.task)}
         </span>
+        {props.state?.nextDueAt ? (
+          <span className={styles.zoneTaskDueDate}>
+            Следующий срок: {formatCleaningDueDate(props.state.nextDueAt)}
+          </span>
+        ) : null}
       </div>
       <div className={cx(styles.zoneTaskField, styles.zoneTaskPriorityField)}>
         <span className={styles.fieldLabel}>Приоритет</span>
@@ -563,6 +576,8 @@ export function ZoneTaskRow(props: {
       {isEditing ? (
         <ZoneTaskEditor
           disabled={props.disabled}
+          history={props.history}
+          state={props.state}
           task={props.task}
           zones={props.zones}
           onCancel={() => {
@@ -580,6 +595,8 @@ export function ZoneTaskRow(props: {
 
 function ZoneTaskEditor(props: {
   disabled: boolean
+  history: CleaningListResponse['history']
+  state: CleaningTaskStateRecord | undefined
   task: CleaningTaskRecord
   zones: CleaningZoneRecord[]
   onCancel: () => void
@@ -597,6 +614,21 @@ function ZoneTaskEditor(props: {
     () => props.task.zoneId ?? props.zones[0]?.id ?? '',
   )
   const frequencyUnitOptions = getFrequencyUnitOptions(frequencyInterval)
+  const selectedZone = props.zones.find((zone) => zone.id === zoneId) ?? null
+  const interval = Math.max(1, Number(frequencyInterval) || 1)
+  const previewDate = previewCleaningTaskDueDate(
+    {
+      ...props.task,
+      scope,
+      zoneId: scope === 'general' ? null : zoneId,
+      frequencyType,
+      frequencyInterval: interval,
+      customIntervalDays: frequencyType === 'custom' ? interval : null,
+    },
+    scope === 'zone' ? selectedZone : null,
+    props.state,
+    props.history,
+  )
   const canSaveTask =
     title.trim().length > 0 && (scope === 'general' || zoneId.length > 0)
 
@@ -708,6 +740,15 @@ function ZoneTaskEditor(props: {
           />
         </div>
       ) : null}
+      <p className={styles.emptyCopy}>
+        {scope === 'zone'
+          ? 'Интервал — минимум между уборками. После него выбирается ближайший день зоны. '
+          : ''}
+        {previewDate
+          ? `Следующий срок: ${formatCleaningDueDate(previewDate)}. `
+          : 'Первое выполнение — в ближайший день уборки. '}
+        Явный перенос сохраняется до выполнения или пропуска.
+      </p>
       <div className={styles.zoneTaskEditorActions}>
         <button
           className={styles.iconButton}

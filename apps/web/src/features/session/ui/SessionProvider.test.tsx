@@ -129,6 +129,7 @@ describe('SessionProvider', () => {
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
+    window.history.replaceState({}, '', '/')
   })
 
   beforeEach(() => {
@@ -201,6 +202,30 @@ describe('SessionProvider', () => {
         return Promise.resolve({ remove: vi.fn() })
       },
     )
+  })
+
+  it('leaves password recovery and clears its URL token without signing out or clearing offline data', async () => {
+    window.history.replaceState({}, '', '/today?reset_token=expired-token')
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(null)
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('auth-password-recovery')).toHaveTextContent(
+        'yes',
+      ),
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Cancel password recovery' }),
+    )
+    expect(screen.getByTestId('auth-password-recovery')).toHaveTextContent('no')
+    expect(window.location.search).toBe('')
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+    expect(
+      sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
+    ).not.toHaveBeenCalled()
   })
 
   it('keeps recovery pending through native resume deduplication and refreshed session persistence', async () => {
@@ -940,6 +965,64 @@ describe('SessionProvider', () => {
     })
   })
 
+  it.each([true, false])(
+    'preserves the password reset flow through browser refresh (success: %s) until a new password is saved',
+    async (refreshSucceeds) => {
+      window.history.replaceState({}, '', '/today?reset_token=recovery-token')
+      nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(
+        false,
+      )
+      authStorageMocks.readStoredAuthSession.mockResolvedValue({
+        ...createExpiredStoredSession(),
+        refreshToken: undefined,
+      })
+      if (refreshSucceeds) {
+        authApiMocks.refreshAuthSession.mockResolvedValue(createTokenResponse())
+      } else {
+        authApiMocks.refreshAuthSession.mockRejectedValue(
+          Object.assign(new Error('Refresh denied'), {
+            status: 401,
+            code: 'auth_refresh_token_invalid',
+          }),
+        )
+      }
+      authApiMocks.confirmPasswordReset.mockResolvedValue(createTokenResponse())
+      authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+      render(
+        <SessionProvider>
+          <AuthSnapshotProbe />
+          <ConfirmPasswordRecoveryProbe />
+        </SessionProvider>,
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+          refreshSucceeds ? 'authenticated' : 'signed_out',
+        ),
+      )
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledOnce()
+      expect(screen.getByTestId('auth-password-recovery')).toHaveTextContent(
+        'yes',
+      )
+      expect(window.location.search).toBe('?reset_token=recovery-token')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Confirm password recovery' }),
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-password-recovery')).toHaveTextContent(
+          'no',
+        ),
+      )
+      expect(authApiMocks.confirmPasswordReset).toHaveBeenCalledWith(
+        { password: 'replacement-password', token: 'recovery-token' },
+        expect.objectContaining({ tokenTransport: 'cookie' }),
+      )
+      expect(window.location.search).toBe('')
+      expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+        'authenticated',
+      )
+    },
+  )
+
   it('binds browser cookie refresh to the stable browser device id', async () => {
     nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
     authStorageMocks.readStoredAuthSession.mockResolvedValue({
@@ -1044,6 +1127,20 @@ function UpdatePasswordProbe() {
   )
 }
 
+function ConfirmPasswordRecoveryProbe() {
+  const auth = useSessionAuth()
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void auth.updatePassword('replacement-password')
+      }}
+    >
+      Confirm password recovery
+    </button>
+  )
+}
+
 function SignOutProbe() {
   const auth = useSessionAuth()
 
@@ -1081,6 +1178,12 @@ function AuthSnapshotProbe() {
         {auth.isSignInRequired ? 'yes' : 'no'}
       </output>
       <output data-testid="auth-notice">{auth.authNotice ?? 'none'}</output>
+      <output data-testid="auth-password-recovery">
+        {auth.isPasswordRecovery ? 'yes' : 'no'}
+      </output>
+      <button type="button" onClick={auth.cancelPasswordRecovery}>
+        Cancel password recovery
+      </button>
       <button
         type="button"
         onClick={() => {

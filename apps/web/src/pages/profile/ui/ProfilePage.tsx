@@ -12,6 +12,7 @@ export function ProfilePage() {
 
   return (
     <section className={cx(pageStyles.page, styles.profilePage)}>
+      <h1 className={pageStyles.visuallyHidden}>Профиль</h1>
       <ProfileAccountPanel
         cancelLabel="К задачам"
         showCloseButton={false}

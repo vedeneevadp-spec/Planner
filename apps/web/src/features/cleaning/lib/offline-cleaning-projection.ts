@@ -49,7 +49,10 @@ export function projectCleaningPlan(
       continue
     }
 
-    projected = next
+    projected =
+      mutation.type === 'task.update' || mutation.type === 'zone.update'
+        ? reconcilePlanSchedule(projected, next, mutation.createdAt)
+        : next
   }
 
   return sortPlan(projected)
@@ -63,6 +66,17 @@ export function projectCleaningToday(
 }
 
 export function applyCleaningServerConfirmation(
+  confirmed: CleaningListResponse,
+  mutation: CleaningOfflineMutationRecord,
+  confirmation: CleaningServerConfirmation,
+): CleaningListResponse {
+  const next = applyServerConfirmation(confirmed, mutation, confirmation)
+  return mutation.type === 'task.update' || mutation.type === 'zone.update'
+    ? reconcilePlanSchedule(confirmed, next, mutation.createdAt)
+    : next
+}
+
+function applyServerConfirmation(
   confirmed: CleaningListResponse,
   mutation: CleaningOfflineMutationRecord,
   confirmation: CleaningServerConfirmation,
@@ -1063,4 +1077,68 @@ function findNextSeasonalDate(fromDate: string, months: number[]): string {
   }
 
   return fromDate
+}
+
+function reconcilePlanSchedule(
+  previous: CleaningListResponse,
+  next: CleaningListResponse,
+  updatedAt: string,
+): CleaningListResponse {
+  const tasksById = new Map(next.tasks.map((task) => [task.id, task]))
+  const previousTasksById = new Map(
+    previous.tasks.map((task) => [task.id, task]),
+  )
+  const zonesById = new Map(next.zones.map((zone) => [zone.id, zone]))
+  const previousZonesById = new Map(
+    previous.zones.map((zone) => [zone.id, zone]),
+  )
+  return {
+    ...next,
+    states: next.states.map((state) => {
+      const task = tasksById.get(state.taskId)
+      const oldTask = previousTasksById.get(state.taskId)
+      if (!task || !oldTask) return state
+      const zone = task.zoneId ? (zonesById.get(task.zoneId) ?? null) : null
+      const oldZone = oldTask.zoneId
+        ? previousZonesById.get(oldTask.zoneId)
+        : undefined
+      const scheduleChanged =
+        task.scope !== oldTask.scope ||
+        task.zoneId !== oldTask.zoneId ||
+        task.frequencyType !== oldTask.frequencyType ||
+        task.frequencyInterval !== oldTask.frequencyInterval ||
+        task.customIntervalDays !== oldTask.customIntervalDays ||
+        task.isSeasonal !== oldTask.isSeasonal ||
+        task.seasonMonths.join(',') !== oldTask.seasonMonths.join(',') ||
+        zone?.dayOfWeek !== oldZone?.dayOfWeek
+      if (!scheduleChanged) return state
+      const nextDueAt = previewCleaningTaskDueDate(
+        task,
+        zone,
+        state,
+        next.history,
+      )
+      return nextDueAt === state.nextDueAt
+        ? state
+        : { ...state, nextDueAt, updatedAt, version: state.version + 1 }
+    }),
+  }
+}
+
+export function previewCleaningTaskDueDate(
+  task: CleaningTaskRecord,
+  zone: CleaningZoneRecord | null,
+  state: CleaningTaskStateRecord | undefined,
+  history: CleaningListResponse['history'],
+): string | null {
+  const latestAction = history
+    .filter((item) => item.taskId === task.id)
+    .sort(
+      (left, right) =>
+        right.createdAt.localeCompare(left.createdAt) ||
+        right.id.localeCompare(left.id),
+    )[0]
+  if (!latestAction || latestAction.action === 'postponed')
+    return state?.nextDueAt ?? null
+  return calculateNextDueDate(task, zone, latestAction.date)
 }

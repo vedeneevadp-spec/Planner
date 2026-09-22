@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 
 import {
+  makeFixedZoneDateTime,
   type TaskCursorListResponse,
   type TaskReadModelResponse,
   type TaskRecord,
@@ -22,6 +23,7 @@ import { getPlannerCachedTaskRecord } from './planner-task-cache'
 import { usePlannerState } from './usePlannerState'
 
 const mocks = vi.hoisted(() => ({
+  plannerTimeZone: 'UTC',
   api: {
     getTaskReadModel: vi.fn(),
     listLifeSpheres: vi.fn(),
@@ -57,7 +59,7 @@ vi.mock('../lib/planner-api', async (original) => ({
 }))
 vi.mock('@/features/session', async (original) => ({
   ...(await original<object>()),
-  usePlannerTimeZone: () => 'UTC',
+  usePlannerTimeZone: () => mocks.plannerTimeZone,
   useSessionAuth: () => ({
     isAuthEnabled: false,
     recoverSession: mocks.recoverSession,
@@ -135,6 +137,7 @@ async function setup() {
 
 describe('commands on tasks loaded only by cursor pages', () => {
   beforeEach(async () => {
+    mocks.plannerTimeZone = 'UTC'
     vi.clearAllMocks()
     await offlineStore.resetPlannerOfflineDatabaseForTests()
     mocks.sessionVersion = 1
@@ -295,6 +298,78 @@ describe('commands on tasks loaded only by cursor pages', () => {
       expect(result.current.calendar.data?.items[0]?.version).toBe(8)
     })
   })
+
+  it.each([
+    {
+      start: '10:00',
+      end: '11:00',
+      storedStart: '07:00',
+      zone: 'Europe/Samara',
+      instantUtc: '2027-01-15T03:00:00.000Z',
+    },
+    {
+      start: '12:00',
+      end: '13:00',
+      storedStart: '12:00',
+      zone: 'Asia/Novosibirsk',
+      instantUtc: '2027-01-15T05:00:00.000Z',
+    },
+  ])(
+    'keeps the edit timezone through offline replay after the planner zone changes ($start)',
+    async ({ start, end, storedStart, zone, instantUtc }) => {
+      mocks.plannerTimeZone = 'Asia/Novosibirsk'
+      serverTask = {
+        ...serverTask!,
+        plannedStartTime: '07:00',
+        plannedEndTime: '08:00',
+        schedule: makeFixedZoneDateTime({
+          localDate: '2027-01-15',
+          localTime: '07:00',
+          timeZone: 'Europe/Samara',
+        }),
+      }
+      const { result, rerender } = await setup()
+      const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+      await act(async () => {
+        expect(
+          await result.current.planner.updateTask(
+            'task-1',
+            taskUpdateInputSchema.parse({
+              ...serverTask,
+              title: 'Queued rename',
+              plannedStartTime: start,
+              plannedEndTime: end,
+            }),
+          ),
+        ).toBe(true)
+      })
+      expect(mocks.api.updateTask).not.toHaveBeenCalled()
+      const cachedTask = (
+        await offlineStore.loadCachedTaskRecords('workspace-1')
+      ).find((task) => task.id === 'task-1')
+      expect(cachedTask?.schedule).toMatchObject({ instantUtc, timeZone: zone })
+
+      mocks.plannerTimeZone = 'America/New_York'
+      rerender()
+      online.mockReturnValue(true)
+      act(() => {
+        window.dispatchEvent(new Event('online'))
+      })
+
+      await waitFor(() => {
+        expect(mocks.api.updateTask).toHaveBeenCalledWith(
+          'task-1',
+          expect.objectContaining({
+            title: 'Queued rename',
+            plannedStartTime: storedStart,
+            reminderTimeZone: zone,
+            expectedVersion: 7,
+          }),
+        )
+        expect(result.current.planner.queuedMutationCount).toBe(0)
+      })
+    },
+  )
 
   it('hydrates the snapshot from disk while its server read is pending', async () => {
     await offlineStore.replaceCachedTaskRecords('workspace-1', [serverTask!])

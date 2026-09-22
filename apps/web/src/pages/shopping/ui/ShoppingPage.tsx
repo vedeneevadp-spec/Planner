@@ -152,6 +152,7 @@ export function ShoppingPage() {
   if (blockingState) {
     return (
       <section className={`${pageStyles.page} ${styles.page}`}>
+        <h1 className={pageStyles.visuallyHidden}>Покупки</h1>
         <div className={styles.content}>
           {blockingState === 'loading' ? (
             <PageStateView
@@ -258,7 +259,12 @@ export function ShoppingPage() {
       if (completedDuplicate) {
         await updateItemMutation.mutateAsync({
           itemId: completedDuplicate.id,
-          patch: { status: 'new' },
+          patch: {
+            status: 'new',
+            ...(draftCategory === null
+              ? {}
+              : { shoppingCategory: draftCategory }),
+          },
         })
         setDraft('')
         setDraftCategory(null)
@@ -455,6 +461,7 @@ export function ShoppingPage() {
 
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
+      <h1 className={pageStyles.visuallyHidden}>Покупки</h1>
       <div className={styles.fixedTop}>
         <form
           className={styles.composer}

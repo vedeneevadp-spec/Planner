@@ -3,6 +3,7 @@ import {
   makeFixedZoneDateTime,
   type TaskRecord,
   type TaskTemplateRecord,
+  taskUpdateInputSchema,
 } from '@planner/contracts'
 import { describe, expect, it } from 'vitest'
 
@@ -17,6 +18,7 @@ import {
   detachLifeSphereFromTaskRecords,
   detachLifeSphereFromTaskTemplateRecords,
   normalizeSchedule,
+  prepareTaskUpdateInput,
   replaceOptimisticLifeSphereRecord,
   replaceOptimisticTaskRecord,
   replaceOptimisticTaskTemplateRecord,
@@ -30,6 +32,76 @@ import {
 } from './planner-records'
 
 describe('planner record projections', () => {
+  it('preserves the original zone and instant when renaming a task displayed on another day', () => {
+    const record = createTaskRecord({
+      plannedDate: '2026-08-10',
+      plannedStartTime: '23:30',
+      plannedEndTime: '23:45',
+      schedule: makeFixedZoneDateTime({
+        localDate: '2026-08-10',
+        localTime: '23:30',
+        timeZone: 'Europe/Samara',
+      }),
+    })
+    const displayed = toPlannerTask(record, 'Asia/Novosibirsk')
+    const input = prepareTaskUpdateInput(
+      record,
+      taskUpdateInputSchema.parse({ ...displayed, title: 'Renamed' }),
+      'Asia/Novosibirsk',
+    )
+
+    expect(input).toMatchObject({
+      plannedDate: '2026-08-10',
+      plannedStartTime: '23:30',
+      plannedEndTime: '23:45',
+      reminderTimeZone: 'Europe/Samara',
+    })
+    const optimistic = createOptimisticUpdatedTaskRecord(record, input)
+    expect(optimistic.schedule).toEqual(record.schedule)
+    expect(toPlannerTask(optimistic, 'Asia/Novosibirsk')).toMatchObject({
+      title: 'Renamed',
+      plannedDate: '2026-08-11',
+      plannedStartTime: '02:30',
+      plannedEndTime: '02:45',
+    })
+  })
+
+  it('captures the editing timezone for an intentional change even without reminders', () => {
+    const record = createTaskRecord({
+      plannedDate: '2026-08-10',
+      plannedStartTime: '07:00',
+      plannedEndTime: '08:00',
+      schedule: makeFixedZoneDateTime({
+        localDate: '2026-08-10',
+        localTime: '07:00',
+        timeZone: 'Europe/Samara',
+      }),
+    })
+    const input = prepareTaskUpdateInput(
+      record,
+      taskUpdateInputSchema.parse({
+        ...toPlannerTask(record, 'Asia/Novosibirsk'),
+        plannedStartTime: '12:00',
+        plannedEndTime: '13:00',
+      }),
+      'Asia/Novosibirsk',
+    )
+    expect(input).toMatchObject({
+      plannedStartTime: '12:00',
+      plannedEndTime: '13:00',
+      reminderTimeZone: 'Asia/Novosibirsk',
+    })
+    const optimistic = createOptimisticUpdatedTaskRecord(record, input)
+    expect(optimistic.schedule).toMatchObject({
+      instantUtc: '2026-08-10T05:00:00.000Z',
+      timeZone: 'Asia/Novosibirsk',
+    })
+    expect(toPlannerTask(optimistic, 'UTC')).toMatchObject({
+      plannedStartTime: '05:00',
+      plannedEndTime: '06:00',
+    })
+  })
+
   it('projects a fixed-zone task into the active planner timezone', () => {
     const record = createTaskRecord({
       plannedDate: '2026-08-10',

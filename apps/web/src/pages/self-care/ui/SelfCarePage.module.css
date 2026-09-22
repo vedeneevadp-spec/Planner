@@ -4,6 +4,39 @@
   padding-bottom: 1.4rem;
 }
 
+.historyPeriod {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.historyPeriod p {
+  margin: 0;
+}
+
+.historyPeriodActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.historyPeriodActions label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.historyPeriodActions input {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+}
+
 .queueNotice {
   display: flex;
   align-items: center;

@@ -19,6 +19,10 @@ import type {
 } from './cleaning.model.js'
 import type { CleaningRepository } from './cleaning.repository.js'
 import {
+  hasCleaningScheduleChanged,
+  reconcileCleaningDueDate,
+} from './cleaning.schedule-reconciliation.js'
+import {
   buildCleaningTodayResponse,
   calculateNextCleaningDueDate,
   calculateNextCleaningZoneCycleDate,
@@ -127,7 +131,15 @@ export class MemoryCleaningRepository implements CleaningRepository {
       }
 
       this.zones.set(nextZone.id, nextZone)
-
+      if (zone.dayOfWeek !== nextZone.dayOfWeek) {
+        for (const task of this.listWorkspaceTasks(
+          command.context.workspaceId,
+        )) {
+          if (task.scope === 'zone' && task.zoneId === nextZone.id) {
+            this.reconcileTaskSchedule(task, nextZone)
+          }
+        }
+      }
       return nextZone
     })
   }
@@ -292,9 +304,38 @@ export class MemoryCleaningRepository implements CleaningRepository {
       }
 
       this.tasks.set(nextTask.id, nextTask)
-
+      if (hasCleaningScheduleChanged(task, nextTask)) {
+        this.reconcileTaskSchedule(
+          nextTask,
+          nextTask.zoneId ? (this.zones.get(nextTask.zoneId) ?? null) : null,
+        )
+      }
       return nextTask
     })
+  }
+
+  private reconcileTaskSchedule(
+    task: StoredCleaningTaskRecord,
+    zone: StoredCleaningZoneRecord | null,
+  ): void {
+    const state = this.states.get(task.id)
+    if (!state) return
+    const latestAction = [...this.history.values()]
+      .filter((item) => item.taskId === task.id)
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) ||
+          right.id.localeCompare(left.id),
+      )[0]
+    const nextDueAt = reconcileCleaningDueDate(task, zone, state, latestAction)
+    if (nextDueAt !== state.nextDueAt) {
+      this.states.set(task.id, {
+        ...state,
+        nextDueAt,
+        updatedAt: new Date().toISOString(),
+        version: state.version + 1,
+      })
+    }
   }
 
   removeTask(command: DeleteCleaningTaskCommand): Promise<void> {

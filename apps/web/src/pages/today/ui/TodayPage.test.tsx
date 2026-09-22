@@ -1761,6 +1761,7 @@ describe('TodayPage', () => {
       const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
       expect(panel.getByText('неполная оценка')).toBeVisible()
+      expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
       fireEvent.click(
         panel.getByRole('button', { name: 'Открыть антиперегруз' }),
       )
@@ -1804,6 +1805,7 @@ describe('TodayPage', () => {
     })
     const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
+    expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
@@ -1830,8 +1832,10 @@ describe('TodayPage', () => {
     })
     const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
+    expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
+    expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
@@ -1866,6 +1870,7 @@ describe('TodayPage', () => {
       const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
       expect(panel.getByText('неполная оценка')).toBeVisible()
+      expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
       expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
       fireEvent.click(
         panel.getByRole('button', { name: 'Открыть антиперегруз' }),
@@ -1913,9 +1918,11 @@ describe('TodayPage', () => {
     const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
     expect(screen.getByText('Оценённая задача из кеша')).toBeVisible()
+    expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('неполная оценка')).toBeVisible()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
     expect(panel.getByText('Оценённая часть')).toBeVisible()
+    expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
     expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
     expect(
       panel.queryByText(/План задач укладывается|План выглядит реалистично/),
@@ -1941,6 +1948,7 @@ describe('TodayPage', () => {
     mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage()
     rerenderTodayPage(rendered)
 
+    expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
@@ -1960,6 +1968,7 @@ describe('TodayPage', () => {
     const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
     expect(screen.getByText('Не обновились: Забота на сегодня.')).toBeVisible()
+    expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))

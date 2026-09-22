@@ -17,6 +17,72 @@ import {
 } from './offline-cleaning-projection'
 
 describe('cleaning offline projection', () => {
+  it('recalculates an offline recurrence edit and its server confirmation', () => {
+    const task = {
+      ...taskRecord(),
+      frequencyType: 'monthly' as const,
+      frequencyInterval: 12,
+    }
+    const completed = projectCleaningPlan(
+      { history: [], states: [taskStateRecord(0)], tasks: [task], zones: [] },
+      [actionMutation('completed', 'complete', 1)],
+    )
+    const mutation: CleaningOfflineMutationRecord = {
+      ...zoneUpdateMutation(),
+      type: 'task.update',
+      taskId: task.id,
+      entityKeys: ['task:task-1'],
+      createdAt: '2026-08-07T08:00:00.000Z',
+      input: {
+        frequencyType: 'custom',
+        frequencyInterval: 1,
+        customIntervalDays: 1,
+      },
+    }
+    const projected = projectCleaningPlan(completed, [mutation])
+    expect(projected.states[0]?.nextDueAt).toBe('2026-08-07')
+    expect(projected.states[0]?.version).toBe(3)
+    const confirmed = applyCleaningServerConfirmation(completed, mutation, {
+      kind: 'task',
+      value: projected.tasks[0]!,
+    })
+    expect(confirmed.states[0]?.nextDueAt).toBe('2026-08-07')
+    expect(confirmed.states[0]?.version).toBe(3)
+  })
+
+  it('reconciles an offline zone weekday but preserves manual postponements', () => {
+    const zone = zoneRecord(1, 'Thursday', 4)
+    const task = {
+      ...taskRecord(),
+      scope: 'zone' as const,
+      zoneId: zone.id,
+      frequencyType: 'custom' as const,
+      frequencyInterval: 1,
+      customIntervalDays: 1,
+    }
+    const initial = {
+      history: [],
+      states: [taskStateRecord(0)],
+      tasks: [task],
+      zones: [zone],
+    }
+    const update = {
+      ...zoneUpdateMutation(),
+      createdAt: '2026-08-07T08:00:00.000Z',
+      input: { dayOfWeek: 5 },
+    }
+    const completed = projectCleaningPlan(initial, [
+      actionMutation('completed', 'complete', 1),
+      update,
+    ])
+    expect(completed.states[0]?.nextDueAt).toBe('2026-08-07')
+    const postponed = projectCleaningPlan(initial, [
+      actionMutation('postponed', 'postpone', 1),
+    ])
+    const edited = projectCleaningPlan(postponed, [update])
+    expect(edited.states).toEqual(postponed.states)
+  })
+
   it('resets the postpone counter for an offline completion', () => {
     const projected = projectCleaningPlan(
       {
@@ -134,7 +200,10 @@ describe('cleaning offline projection', () => {
   })
 })
 
-function zoneUpdateMutation(): CleaningOfflineMutationRecord {
+function zoneUpdateMutation(): Extract<
+  CleaningOfflineMutationRecord,
+  { type: 'zone.update' }
+> {
   return {
     actorUserId: 'user-1',
     attemptCount: 1,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import {
@@ -21,6 +21,10 @@ import {
   SELF_CARE_PLAN_LOOKAHEAD_DAYS,
 } from './SelfCarePage.helpers'
 import {
+  getSelfCareHistoryRange,
+  selectSelfCareLocalHistory,
+} from './SelfCarePage.history'
+import {
   getSelfCareActiveTabCoreReadScope,
   getSelfCareActiveTabReadValues,
   getSelfCarePageLoadFlags,
@@ -33,6 +37,13 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const rangeFrom = addDateDays(todayKey, -30)
+  const [selectedHistoryTo, setSelectedHistoryTo] = useState<string | null>(
+    null,
+  )
+  const historyRange = getSelfCareHistoryRange(
+    todayKey,
+    routeState.activeTab === 'history' ? selectedHistoryTo : null,
+  )
   const analyticsRangeFrom = routeState.analyticsDetailSelection
     ? SELF_CARE_ANALYTICS_FULL_RANGE_FROM
     : rangeFrom
@@ -51,9 +62,13 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   const stepDraftsQuery = useSelfCareRitualStepDrafts(todayKey, {
     enabled: loadFlags.ritualStepDrafts,
   })
-  const historyQuery = useSelfCareHistory(rangeFrom, todayKey, {
-    enabled: loadFlags.history,
-  })
+  const historyQuery = useSelfCareHistory(
+    historyRange.requestFrom,
+    historyRange.requestTo,
+    {
+      enabled: loadFlags.history,
+    },
+  )
   const analyticsQuery = useSelfCareAnalytics(analyticsRangeFrom, todayKey, {
     enabled: loadFlags.analytics,
   })
@@ -62,7 +77,16 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   const dashboard = dashboardQuery.data
   const list = itemsQuery.data
   const plan = planQuery.data
-  const history = historyQuery.data
+  const history = useMemo(
+    () =>
+      selectSelfCareLocalHistory(
+        historyQuery.data,
+        historyRange.from,
+        historyRange.to,
+        plannerTimeZone,
+      ),
+    [historyQuery.data, historyRange.from, historyRange.to, plannerTimeZone],
+  )
   const analytics = analyticsQuery.data
   const settingsResponse =
     settingsQuery.data ??
@@ -144,6 +168,8 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
     dashboardQuery,
     defaultCurrency,
     history,
+    historyRange,
+    selectHistoryDate: setSelectedHistoryTo,
     historyQuery,
     hasActiveTabData,
     hasCompleteActiveTabData,

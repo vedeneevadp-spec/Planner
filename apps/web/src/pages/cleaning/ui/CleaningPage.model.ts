@@ -11,7 +11,10 @@ import {
 } from '@planner/contracts'
 
 import { getCleaningErrorMessage } from '@/features/cleaning'
-import { getIsoWeekday } from '@/shared/time/time.service'
+import {
+  formatDateOnlyForLocale,
+  getIsoWeekday,
+} from '@/shared/time/time.service'
 
 export type FocusMode = 'all' | CleaningPriority
 
@@ -476,6 +479,13 @@ export function formatFrequency(task: CleaningTaskRecord): string {
   }
 
   return `раз в ${task.frequencyInterval} нед.`
+}
+
+export function formatCleaningDueDate(localDate: string): string {
+  return formatDateOnlyForLocale({
+    localDate,
+    options: { day: '2-digit', month: '2-digit', year: 'numeric' },
+  })
 }
 
 export function getHistoryActionLabel(action: string): string {

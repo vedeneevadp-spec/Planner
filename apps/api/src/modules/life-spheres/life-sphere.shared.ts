@@ -28,7 +28,8 @@ export function buildLifeSphereSlug(name: string, sphereId: string): string {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'sphere'
 
-  return `${baseSlug}-${sphereId.slice(0, 8)}`
+  // UUIDv7 prefixes encode time, so keep the complete identifier for uniqueness.
+  return `${baseSlug}-${sphereId}`
 }
 
 export function createStoredLifeSphereRecord(

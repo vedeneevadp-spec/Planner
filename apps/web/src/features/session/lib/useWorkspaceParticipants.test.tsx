@@ -280,6 +280,7 @@ function createAuthState(
     authNotice: null,
     canUseProtectedApi: true,
     clearAuthNotice: vi.fn(),
+    cancelPasswordRecovery: vi.fn(),
     email: 'user@example.test',
     expireSession: vi.fn(() => Promise.resolve()),
     isAuthEnabled: true,

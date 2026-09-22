@@ -23,6 +23,37 @@ export function defineLifeSphereRepositoryContractSuite(input: {
   name: string
 }): void {
   void describe(input.name, () => {
+    void test('creates different Cyrillic spheres with UUIDv7 ids from the same millisecond', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const timestamp = Date.now()
+        const ids = [generateUuidV7(timestamp), generateUuidV7(timestamp)]
+        const names = ['Здоровье', 'Работа']
+
+        for (const [index, name] of names.entries()) {
+          await harness.repository.create({
+            context: harness.context,
+            input: newLifeSphereInputSchema.parse({ id: ids[index], name }),
+          })
+        }
+
+        const spheres = await harness.repository.listByWorkspace(
+          harness.context,
+        )
+        assert.deepEqual(
+          spheres.map((sphere) => sphere.name),
+          names,
+        )
+        assert.deepEqual(
+          spheres.map((sphere) => sphere.id),
+          ids,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('keeps life sphere lifecycle, stats, and workspace isolation consistent', async () => {
       const harness = await input.createHarness()
 

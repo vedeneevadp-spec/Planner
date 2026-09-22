@@ -65,6 +65,7 @@ import {
   createOptimisticTaskScheduleRecord,
   createOptimisticTaskStatusRecord,
   createOptimisticUpdatedTaskRecord,
+  prepareTaskUpdateInput,
   removeTaskRecord,
   replaceTaskRecord,
   sortSpheres,
@@ -617,7 +618,7 @@ export function usePlannerState(): PlannerState {
 
   async function updateTask(
     taskId: string,
-    input: TaskUpdateInput,
+    requestedInput: TaskUpdateInput,
   ): Promise<boolean> {
     const task = getCachedTaskRecord(taskId)
 
@@ -626,6 +627,8 @@ export function usePlannerState(): PlannerState {
 
       return false
     }
+
+    const input = prepareTaskUpdateInput(task, requestedInput, plannerTimeZone)
 
     return runTaskMutation(taskId, async () => {
       if (actorUserId && workspaceId) {

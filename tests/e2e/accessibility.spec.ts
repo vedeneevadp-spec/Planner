@@ -40,6 +40,17 @@ async function registerUser({
 }
 
 async function expectNoBlockingA11yViolations(page: Page) {
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) => animation.effect?.getTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
   const results = await new AxeBuilder({ page }).analyze()
   const blockingViolations = results.violations.filter((violation) =>
     blockingImpacts.has(violation.impact ?? ''),
@@ -54,7 +65,7 @@ async function expectNoBlockingA11yViolations(page: Page) {
   ).toEqual([])
 }
 
-test('keeps core unauthenticated and authenticated screens free of blocking accessibility violations', async ({
+test('keeps desktop and mobile screens free of blocking accessibility violations', async ({
   page,
 }) => {
   await page.goto('/today')
@@ -63,26 +74,33 @@ test('keeps core unauthenticated and authenticated screens free of blocking acce
 
   await registerUser({ ...createE2eUser('e2e-a11y'), page })
 
-  for (const route of [
-    {
-      path: '/today',
-      ready: () => page.getByRole('button', { name: 'Создать задачу' }),
-    },
-    {
-      path: '/shopping',
-      ready: () => page.getByPlaceholder('Добавить покупку'),
-    },
-    {
-      path: '/calendar',
-      ready: () => page.getByRole('button', { name: 'Создать задачу' }),
-    },
-    {
-      path: '/more',
-      ready: () => page.getByRole('button', { name: 'Выйти' }),
-    },
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 844 },
   ]) {
-    await page.goto(route.path)
-    await expect(route.ready()).toBeVisible()
-    await expectNoBlockingA11yViolations(page)
+    await page.setViewportSize(viewport)
+    for (const route of [
+      {
+        path: '/today',
+        ready: () => page.getByRole('region', { name: 'Антиперегруз' }),
+      },
+      {
+        path: '/shopping',
+        ready: () => page.getByPlaceholder('Добавить покупку'),
+      },
+      {
+        path: '/calendar',
+        ready: () =>
+          page.getByRole('heading', { name: 'Календарь', exact: true }),
+      },
+      {
+        path: '/more',
+        ready: () => page.getByRole('button', { name: 'Выйти' }),
+      },
+    ]) {
+      await page.goto(route.path)
+      await expect(route.ready()).toBeVisible()
+      await expectNoBlockingA11yViolations(page)
+    }
   }
 })

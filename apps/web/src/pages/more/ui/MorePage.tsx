@@ -388,6 +388,7 @@ export function MorePage() {
 
   return (
     <section className={cx(pageStyles.page, styles.morePage)}>
+      <h1 className={pageStyles.visuallyHidden}>Ещё</h1>
       <section className={styles.workspacePanel} aria-label="Workspace">
         <div className={styles.workspaceHeader}>
           <div className={styles.workspaceCopy}>

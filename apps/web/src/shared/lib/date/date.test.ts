@@ -38,4 +38,20 @@ describe('date helpers', () => {
 
     expect(formatTimeZoneOffsetLabel(date)).toBe('GMT+5:30')
   })
+
+  it.each([
+    ['Asia/Novosibirsk', '2026-01-01T00:00:00Z', 'GMT+7'],
+    ['Asia/Kathmandu', '2026-01-01T00:00:00Z', 'GMT+5:45'],
+    ['America/New_York', '2026-01-01T00:00:00Z', 'GMT-5'],
+    ['America/New_York', '2026-07-01T00:00:00Z', 'GMT-4'],
+    ['UTC', '2026-01-01T00:00:00Z', 'GMT+0'],
+  ])(
+    'formats %s independently of the device offset',
+    (timeZone, instant, expected) => {
+      const date = new Date(instant)
+      vi.spyOn(date, 'getTimezoneOffset').mockReturnValue(0)
+
+      expect(formatTimeZoneOffsetLabel(date, timeZone)).toBe(expected)
+    },
+  )
 })

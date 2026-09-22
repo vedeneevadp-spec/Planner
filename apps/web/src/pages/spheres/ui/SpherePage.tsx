@@ -9,10 +9,12 @@ import {
   usePlannerTimeZone,
   useWorkspaceUsers,
 } from '@/features/session'
+import { useBrowserOffline } from '@/shared/lib/offline-sync'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
+import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
 import { SphereForm } from './SphereForm'
 import styles from './SpheresPage.module.css'
@@ -24,9 +26,19 @@ export function SpherePage() {
     copyTaskToPersonal,
     createNextTaskStage,
     detachTaskFromChain,
+    hasLifeSphereRecords,
+    hasLifeSphereReadError,
+    hasTaskRecords,
+    hasTaskReadError,
+    isLifeSphereCacheHydrating,
+    isLifeSphereOffline,
     isLoading,
     isTaskPending,
+    isTaskCacheHydrating,
+    isTaskOffline,
     moveTaskToPersonal,
+    readiness,
+    refresh,
     removeSphere,
     removeTask,
     setTaskPlannedDate,
@@ -37,6 +49,7 @@ export function SpherePage() {
     updateTask,
   } = usePlanner()
   const { data: session } = usePlannerSession()
+  const isBrowserOffline = useBrowserOffline()
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
@@ -48,6 +61,15 @@ export function SpherePage() {
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const [isEditing, setIsEditing] = useState(false)
   const sphere = spheres.find((candidate) => candidate.id === sphereId)
+  const isOffline = isBrowserOffline || isLifeSphereOffline || isTaskOffline
+  const hasReadError = hasLifeSphereReadError || hasTaskReadError
+  const isAccessUnavailable =
+    readiness.reason === 'unauthorized' ||
+    readiness.reason === 'auth_deferred' ||
+    readiness.reason === 'no_session'
+  function refreshSphere() {
+    void refresh({ retryDeniedAuth: isAccessUnavailable })
+  }
   const sphereTasks = useMemo(
     () => tasks.filter((task) => task.projectId === sphereId),
     [sphereId, tasks],
@@ -74,17 +96,39 @@ export function SpherePage() {
   }
 
   if (!sphere) {
+    const isHydrating =
+      isLifeSphereCacheHydrating || (isLoading && !hasLifeSphereRecords)
+    const isUnavailable =
+      isOffline ||
+      hasLifeSphereReadError ||
+      isAccessUnavailable ||
+      (!hasLifeSphereRecords && !isHydrating)
     return (
       <section className={pageStyles.page}>
-        <PageHeader
-          kicker="Spheres"
-          title={isLoading ? 'Загружаем сферу' : 'Сфера не найдена'}
-          description={
-            isLoading
-              ? 'Проверяем список сфер в текущем workspace.'
-              : 'В этом workspace нет сферы с таким идентификатором.'
-          }
-        />
+        {isHydrating ? (
+          <PageStateView
+            kind="loading"
+            title="Загружаем сферу"
+            skeletonVariant="cards"
+          />
+        ) : isUnavailable ? (
+          <PageStateView
+            kind={isOffline ? 'offline' : 'error'}
+            title={
+              isOffline
+                ? 'Сфера недоступна без подключения'
+                : 'Не удалось загрузить сферу'
+            }
+            description="Не удалось получить список сфер. Восстановите подключение и повторите попытку."
+            action={{ label: 'Повторить', onClick: refreshSphere }}
+          />
+        ) : (
+          <PageHeader
+            kicker="Сферы"
+            title="Сфера не найдена"
+            description="В текущем пространстве нет такой сферы."
+          />
+        )}
         <Link className={styles.secondaryButton} to="/spheres">
           К сферам
         </Link>
@@ -95,10 +139,18 @@ export function SpherePage() {
   return (
     <section className={pageStyles.page}>
       <PageHeader
-        kicker="Sphere"
+        kicker="Сфера"
         title={sphere.name}
         description={sphere.description || 'Описание сферы пока пустое.'}
       />
+      {isOffline || hasReadError || isAccessUnavailable ? (
+        <PageStatusBanner
+          kind={isOffline ? 'offline' : 'error'}
+          title={isOffline ? 'Нет подключения' : 'Не удалось обновить данные'}
+          description="Показываем последние загруженные данные."
+          action={{ label: 'Повторить', onClick: refreshSphere }}
+        />
+      ) : null}
 
       <section className={styles.detailPanel}>
         <div className={styles.detailHeader}>
@@ -160,44 +212,62 @@ export function SpherePage() {
         ) : null}
       </section>
 
-      <TaskSection
-        title="Задачи сферы"
-        tasks={sphereTasks}
-        allTasks={tasks}
-        currentActorUserId={session?.actorUserId}
-        isSharedWorkspace={isSharedWorkspace}
-        sharedWorkspaceGroupRole={session?.groupRole}
-        sharedWorkspaceRole={session?.role}
-        spheres={spheres}
-        uploadedIcons={uploadedIcons}
-        workspaceUsers={workspaceUsers}
-        emptyMessage="В этой сфере пока нет задач."
-        isTaskPending={isTaskPending}
-        todayKey={todayKey}
-        tomorrowKey={tomorrowKey}
-        onRemove={(taskId) => {
-          void removeTask(taskId)
-        }}
-        onCreateNextStage={(taskId, input) =>
-          createNextTaskStage(taskId, input)
-        }
-        onCopyToPersonal={(taskId) => {
-          void copyTaskToPersonal(taskId)
-        }}
-        onDetachFromChain={(taskId) => {
-          void detachTaskFromChain(taskId)
-        }}
-        onMoveToPersonal={(taskId) => {
-          void moveTaskToPersonal(taskId)
-        }}
-        onSetPlannedDate={(taskId, plannedDate) => {
-          void setTaskPlannedDate(taskId, plannedDate)
-        }}
-        onSetStatus={(taskId, status) => {
-          void setTaskStatus(taskId, status)
-        }}
-        onUpdate={updateTask}
-      />
+      {!hasTaskRecords ? (
+        <PageStateView
+          kind={
+            isTaskCacheHydrating || isLoading
+              ? 'loading'
+              : isOffline
+                ? 'offline'
+                : 'error'
+          }
+          title={
+            isTaskCacheHydrating || isLoading
+              ? 'Загружаем задачи сферы'
+              : 'Не удалось загрузить задачи сферы'
+          }
+          action={{ label: 'Повторить', onClick: refreshSphere }}
+        />
+      ) : (
+        <TaskSection
+          title="Задачи сферы"
+          tasks={sphereTasks}
+          allTasks={tasks}
+          currentActorUserId={session?.actorUserId}
+          isSharedWorkspace={isSharedWorkspace}
+          sharedWorkspaceGroupRole={session?.groupRole}
+          sharedWorkspaceRole={session?.role}
+          spheres={spheres}
+          uploadedIcons={uploadedIcons}
+          workspaceUsers={workspaceUsers}
+          emptyMessage="В этой сфере пока нет задач."
+          isTaskPending={isTaskPending}
+          todayKey={todayKey}
+          tomorrowKey={tomorrowKey}
+          onRemove={(taskId) => {
+            void removeTask(taskId)
+          }}
+          onCreateNextStage={(taskId, input) =>
+            createNextTaskStage(taskId, input)
+          }
+          onCopyToPersonal={(taskId) => {
+            void copyTaskToPersonal(taskId)
+          }}
+          onDetachFromChain={(taskId) => {
+            void detachTaskFromChain(taskId)
+          }}
+          onMoveToPersonal={(taskId) => {
+            void moveTaskToPersonal(taskId)
+          }}
+          onSetPlannedDate={(taskId, plannedDate) => {
+            void setTaskPlannedDate(taskId, plannedDate)
+          }}
+          onSetStatus={(taskId, status) => {
+            void setTaskStatus(taskId, status)
+          }}
+          onUpdate={updateTask}
+        />
+      )}
     </section>
   )
 }

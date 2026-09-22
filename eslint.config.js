@@ -173,6 +173,7 @@ export default tseslint.config(
       'dist',
       'playwright-report',
       'test-results',
+      'tmp/**',
       'node_modules',
       '.wakeword-venv',
       '**/.wakeword-venv/**',
