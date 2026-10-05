@@ -645,14 +645,20 @@ function buildNextRecurringOccurrence(
   plannedDate: string
   seriesId: string
 } | null {
-  const recurrence = getTaskRecurrencePattern(task, context.clientTimeZone, now)
+  // Completing a fixed-zone series while travelling must not re-anchor its
+  // wall-clock time or recurrence day to the device's current timezone.
+  const recurrenceTimeZone =
+    task.schedule?.kind === 'fixed_zone_datetime'
+      ? task.schedule.timeZone
+      : context.clientTimeZone
+  const recurrence = getTaskRecurrencePattern(task, recurrenceTimeZone, now)
 
   if (!recurrence) {
     return null
   }
 
   const plannedDate = getNextRecurringDate(
-    getRecurringReferenceDate(task, context.clientTimeZone, now),
+    getRecurringReferenceDate(task, recurrenceTimeZone, now),
     recurrence,
   )
 
@@ -677,7 +683,7 @@ function buildNextRecurringOccurrence(
       recurrence: task.recurrence,
       remindBeforeStart: task.remindBeforeStart === true,
       reminderOffsets: task.reminderOffsets,
-      reminderTimeZone: context.clientTimeZone,
+      reminderTimeZone: recurrenceTimeZone,
       resource: task.resource,
       requiresConfirmation: task.requiresConfirmation,
       routine: task.routine,

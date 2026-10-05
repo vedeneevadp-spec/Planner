@@ -533,7 +533,7 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.necessity, 'required')
 })
 
-void test('TaskService uses client timezone for next recurring reminder occurrence', async () => {
+void test('TaskService preserves the fixed schedule timezone for next recurring reminders', async () => {
   const repository = new RecordingMemoryTaskRepository()
   const service = new TaskService(repository)
   const context = {
@@ -562,11 +562,113 @@ void test('TaskService uses client timezone for next recurring reminder occurren
 
   assert.deepEqual(repository.createdReminderTimeZones, [
     'Asia/Novosibirsk',
-    'America/New_York',
+    'Asia/Novosibirsk',
   ])
 })
 
-void test('TaskService uses client timezone for recurring completion reference date', async () => {
+void test('TaskService preserves recurring times when completing tasks during travel and after returning home', async () => {
+  let now = new Date('2026-09-30T05:54:00.000Z')
+  const service = new TaskService(new MemoryTaskRepository(), () => now)
+  const homeContext = {
+    ...PERSONAL_CONTEXT,
+    clientTimeZone: 'Asia/Novosibirsk',
+  }
+  const awayContext = { ...homeContext, clientTimeZone: 'Asia/Almaty' }
+  const task = await service.createTask(homeContext, {
+    ...BASE_INPUT,
+    plannedDate: '2026-09-30',
+    plannedStartTime: '11:30',
+    plannedEndTime: '12:30',
+    recurrence: {
+      daysOfWeek: [1, 3, 5],
+      endDate: null,
+      frequency: 'weekly',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000008',
+      startDate: '2026-09-01',
+    },
+    title: 'Recurring schedule without reminders',
+  })
+
+  for (const step of [
+    { context: awayContext, date: '2026-10-02', now },
+    {
+      context: awayContext,
+      date: '2026-10-05',
+      now: new Date('2026-10-02T05:47:00.000Z'),
+    },
+    {
+      context: homeContext,
+      date: '2026-10-07',
+      now: new Date('2026-10-05T05:00:00.000Z'),
+    },
+  ]) {
+    now = step.now
+    const current = (await service.listTasks(homeContext)).find(
+      (candidate) => candidate.status === 'todo',
+    )
+    assert.ok(current)
+    await service.setTaskStatus(
+      step.context,
+      current.id,
+      'done',
+      current.version,
+    )
+    const next = (await service.listTasks(homeContext)).find(
+      (candidate) => candidate.status === 'todo',
+    )
+    assert.ok(next)
+    assert.equal(next.plannedStartTime, '11:30')
+    assert.equal(next.plannedEndTime, '12:30')
+    assert.deepEqual(next.schedule, {
+      kind: 'fixed_zone_datetime',
+      localDate: step.date,
+      localTime: '11:30',
+      timeZone: 'Asia/Novosibirsk',
+      instantUtc: `${step.date}T04:30:00.000Z`,
+      timeZoneInferred: true,
+    })
+    assert.equal(next.recurrence?.seriesId, task.recurrence?.seriesId)
+  }
+})
+
+void test('TaskService uses the fixed schedule day when completion crosses midnight in another timezone', async () => {
+  const service = new TaskService(
+    new MemoryTaskRepository(),
+    () => new Date('2026-09-30T18:30:00.000Z'),
+  )
+  const homeContext = {
+    ...PERSONAL_CONTEXT,
+    clientTimeZone: 'Asia/Novosibirsk',
+  }
+  const task = await service.createTask(homeContext, {
+    ...BASE_INPUT,
+    plannedDate: '2026-09-30',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000009',
+      startDate: '2026-09-30',
+    },
+  })
+
+  await service.setTaskStatus(
+    { ...homeContext, clientTimeZone: 'Asia/Almaty' },
+    task.id,
+    'done',
+    task.version,
+  )
+  const next = (await service.listTasks(homeContext)).find(
+    (candidate) => candidate.status === 'todo',
+  )
+  assert.equal(next?.plannedDate, '2026-10-02')
+})
+
+void test('TaskService uses client timezone for date-only recurring completion reference dates', async () => {
   const service = new TaskService(
     new MemoryTaskRepository(),
     () => new Date('2026-06-14T21:30:00.000Z'),
@@ -578,6 +680,7 @@ void test('TaskService uses client timezone for recurring completion reference d
   const task = await service.createTask(context, {
     ...BASE_INPUT,
     plannedDate: '2026-06-14',
+    plannedStartTime: null,
     recurrence: {
       daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       endDate: null,

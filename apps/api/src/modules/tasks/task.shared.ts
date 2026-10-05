@@ -451,7 +451,7 @@ export function createStoredTaskRecord(
       plannedStartTime: schedule.plannedStartTime,
       recurrence: normalizedInput.recurrence,
       timeKind: schedule.plannedStartTime ? 'fixed_zone_datetime' : 'date_only',
-      timeZone: options.clientTimeZone,
+      timeZone: normalizedInput.reminderTimeZone ?? options.clientTimeZone,
       timeZoneInferred: Boolean(schedule.plannedStartTime),
     }),
     sphereId: normalizedInput.sphereId,

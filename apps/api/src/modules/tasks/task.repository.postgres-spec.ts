@@ -201,7 +201,7 @@ void describe('PostgresTaskRepository', () => {
     )
   })
 
-  void test('uses client timezone for new recurring task reminders when provided', async () => {
+  void test('preserves the source schedule and reminder timezone when completing a recurrence abroad', async () => {
     const repository = new PostgresTaskRepository(connection.db)
     const service = new TaskService(repository)
     const context = {
@@ -257,6 +257,15 @@ void describe('PostgresTaskRepository', () => {
 
     assert.ok(nextTask)
 
+    assert.deepEqual(nextTask.schedule, {
+      kind: 'fixed_zone_datetime',
+      localDate: '2099-02-02',
+      localTime: '09:00',
+      timeZone: 'Asia/Novosibirsk',
+      instantUtc: '2099-02-02T02:00:00.000Z',
+      timeZoneInferred: true,
+    })
+
     const reminders = await connection.pool.query<{
       time_zone: string
     }>(
@@ -271,7 +280,7 @@ void describe('PostgresTaskRepository', () => {
 
     assert.deepEqual(
       reminders.rows.map((reminder) => reminder.time_zone),
-      ['America/New_York'],
+      ['Asia/Novosibirsk'],
     )
   })
 })
