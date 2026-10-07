@@ -36,6 +36,13 @@
       "automerge": false
     },
     {
+      "description": "Review query cache and offline behavior separately from development tooling updates.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@tanstack/react-query", "@tanstack/query-core"],
+      "groupName": "React Query updates",
+      "automerge": false
+    },
+    {
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["patch", "minor"],
       "groupName": "GitHub Actions updates",
@@ -70,8 +77,11 @@
     },
     {
       "description": "Keep Capacitor packages aligned across web, Android, iOS, and the CLI.",
-      "matchManagers": ["npm"],
-      "matchPackageNames": ["/^@capacitor\\//"],
+      "matchManagers": ["npm", "swift"],
+      "matchPackageNames": [
+        "/^@capacitor\\//",
+        "ionic-team/capacitor-swift-pm"
+      ],
       "matchUpdateTypes": ["patch", "minor", "major"],
       "dependencyDashboardApproval": true,
       "groupName": "Capacitor updates",

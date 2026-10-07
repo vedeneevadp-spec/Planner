@@ -7,7 +7,6 @@ import { npmCommand, npxCommand, runCommand } from './command-utils.mjs'
 import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
 
 const [targetPlatform] = process.argv.slice(2)
-const androidGradlePluginVersion = '9.2.1'
 
 if (targetPlatform && !['android', 'ios'].includes(targetPlatform)) {
   console.error(
@@ -46,6 +45,20 @@ async function normalizeAndroidGeneratedGradle(platform) {
     return
   }
 
+  const rootBuildGradle = await readFile(
+    new URL('../android/build.gradle', import.meta.url),
+    'utf8',
+  )
+  const androidGradlePluginVersion = rootBuildGradle.match(
+    /classpath 'com\.android\.tools\.build:gradle:([^']+)'/,
+  )?.[1]
+
+  if (!androidGradlePluginVersion) {
+    throw new Error(
+      'Missing Android Gradle Plugin version in android/build.gradle.',
+    )
+  }
+
   const generatedGradleFiles = [
     '../android/capacitor-cordova-android-plugins/build.gradle',
     '../node_modules/@capacitor/android/capacitor/build.gradle',
@@ -55,11 +68,14 @@ async function normalizeAndroidGeneratedGradle(platform) {
   ].map((gradleFilePath) => new URL(gradleFilePath, import.meta.url))
 
   for (const gradleFile of generatedGradleFiles) {
-    await normalizeAndroidGradleFile(gradleFile)
+    await normalizeAndroidGradleFile(gradleFile, androidGradlePluginVersion)
   }
 }
 
-async function normalizeAndroidGradleFile(gradleFile) {
+async function normalizeAndroidGradleFile(
+  gradleFile,
+  androidGradlePluginVersion,
+) {
   let source
 
   try {
@@ -72,7 +88,10 @@ async function normalizeAndroidGradleFile(gradleFile) {
     throw error
   }
 
-  const updatedSource = normalizeAndroidGradleSource(source)
+  const updatedSource = normalizeAndroidGradleSource(
+    source,
+    androidGradlePluginVersion,
+  )
 
   if (updatedSource === source) {
     return
@@ -84,7 +103,7 @@ async function normalizeAndroidGradleFile(gradleFile) {
   )
 }
 
-function normalizeAndroidGradleSource(source) {
+function normalizeAndroidGradleSource(source, androidGradlePluginVersion) {
   const flatDirRepositoriesBlock = `
 repositories {
     google()
