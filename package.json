@@ -73,6 +73,7 @@
     "mobile:android:assemble": "cd android && ./gradlew --no-daemon :app:assembleDebug",
     "mobile:android:budget": "node ./scripts/check-android-artifact-budget.mjs",
     "mobile:android:ci": "node ./scripts/mobile-android-ci.mjs",
+    "mobile:ios:assemble": "xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath tmp/ios-ci CODE_SIGNING_ALLOWED=NO build",
     "mobile:auth-smoke": "node ./scripts/mobile-auth-smoke.mjs",
     "time:guard": "node ./scripts/time-system-guard.mjs",
     "lint": "eslint . && npm run time:guard",

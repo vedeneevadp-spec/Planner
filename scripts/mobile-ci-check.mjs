@@ -29,6 +29,7 @@ const androidSecureStorage = await readFile(
 )
 const iosAppDelegate = await readFile('ios/App/App/AppDelegate.swift', 'utf8')
 const iosSpmPackage = await readFile('ios/App/CapApp-SPM/Package.swift', 'utf8')
+const packageLock = JSON.parse(await readFile('package-lock.json', 'utf8'))
 const iosProject = await readFile(
   'ios/App/App.xcodeproj/project.pbxproj',
   'utf8',
@@ -84,6 +85,7 @@ assert.deepEqual(iosBundleIds, [appId])
 assert.equal(appName, manifest.name)
 assert.equal(webDir, 'apps/web/dist')
 assertCapacitorPlugins()
+assertCapacitorVersions()
 assertSecureNativeAuthStorage()
 assert.ok(Number.isInteger(androidVersionCode) && androidVersionCode > 0)
 assert.deepEqual(iosBuildNumbers, [String(androidVersionCode)])
@@ -96,6 +98,33 @@ assert.ok(
 )
 
 console.log('Mobile CI check passed.')
+
+function assertCapacitorVersions() {
+  const iosVersion = readSingleMatch(
+    iosSpmPackage,
+    /capacitor-swift-pm\.git", exact: "([^"]+)"/,
+    'Capacitor Swift package version',
+  )
+
+  for (const name of ['core', 'android', 'ios', 'cli']) {
+    const packagePath = `node_modules/@capacitor/${name}`
+    const lockedPackages = Object.entries(packageLock.packages).filter(
+      ([key]) => key === packagePath || key.endsWith(`/${packagePath}`),
+    )
+
+    assert.ok(
+      lockedPackages.length > 0,
+      `Missing @capacitor/${name} in package-lock.json.`,
+    )
+    for (const [key, pkg] of lockedPackages) {
+      assert.equal(
+        pkg.version,
+        iosVersion,
+        `${key} must match Capacitor Swift ${iosVersion}; update the Capacitor packages together and run mobile:sync:ios.`,
+      )
+    }
+  }
+}
 
 function assertCapacitorPlugins() {
   const plugins = [
