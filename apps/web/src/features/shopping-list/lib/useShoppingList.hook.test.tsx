@@ -28,6 +28,7 @@ vi.mock('@/features/session', async (importOriginal) => {
 import {
   countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
+  listRetryableShoppingListOfflineMutations,
   loadCachedShoppingListItems,
   markShoppingListOfflineMutationConflicted,
   replaceCachedShoppingListItems,
@@ -253,6 +254,7 @@ describe('useShoppingList hooks', () => {
 
   it('creates one durable item for concurrent duplicate submissions while offline', async () => {
     vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
     const { result } = renderHook(() => useCreateShoppingListItem(), {
       wrapper: createQueryWrapper(),
     })
@@ -270,7 +272,11 @@ describe('useShoppingList hooks', () => {
     expect(
       await countRetryableShoppingListOfflineMutations('workspace-1'),
     ).toBe(1)
-    expect(fetchMock).not.toHaveBeenCalled()
+    await waitFor(async () => {
+      expect(
+        await listRetryableShoppingListOfflineMutations('workspace-1'),
+      ).toMatchObject([{ lastFailureWasNetworkError: true, status: 'failed' }])
+    })
     await waitFor(() => {
       expect(result.current.isPending).toBe(false)
     })
@@ -407,6 +413,7 @@ describe('useShoppingList hooks', () => {
 
   it('updates and removes cached shopping items without waiting for the network while offline', async () => {
     vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
     const activeItem = createShoppingItemRecord({
       id: 'item-offline',
       status: 'new',
@@ -446,7 +453,17 @@ describe('useShoppingList hooks', () => {
     expect(
       await countRetryableShoppingListOfflineMutations('workspace-1'),
     ).toBe(2)
-    expect(fetchMock).not.toHaveBeenCalled()
+    await waitFor(async () => {
+      const mutations =
+        await listRetryableShoppingListOfflineMutations('workspace-1')
+      expect(mutations[0]).toMatchObject({
+        lastFailureWasNetworkError: true,
+        status: 'failed',
+      })
+      expect(mutations.some((mutation) => mutation.status === 'syncing')).toBe(
+        false,
+      )
+    })
     await waitFor(() => {
       expect(result.current.removeItem.isPending).toBe(false)
     })
@@ -485,6 +502,79 @@ describe('useShoppingList hooks', () => {
       expect(result.current.conflictedMutationCount).toBe(1)
     })
     expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.current.hasNetworkError).toBe(false)
+    expect(result.current.hasSyncError).toBe(false)
+  })
+
+  it('reports an outage only after a failed request and keeps it until a retry succeeds', async () => {
+    const item = createShoppingItemRecord({
+      id: 'item-network-failure',
+      text: 'Молоко',
+    })
+    const { queryClient, wrapper } = createQueryHarness()
+    queryClient.setQueryData(['shopping-list', 'workspace-1'], [item])
+    let rejectRequest!: (error: Error) => void
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((_resolve, reject) => {
+          rejectRequest = reject
+        }),
+    )
+    const { result } = renderHook(
+      () => ({
+        syncStatus: useShoppingListSyncStatus(),
+        updateItem: useUpdateShoppingListItem(),
+      }),
+      { wrapper },
+    )
+
+    await act(async () => {
+      await result.current.updateItem.mutateAsync({
+        itemId: item.id,
+        patch: { priority: 'high' },
+      })
+    })
+    await waitFor(() => {
+      expect(result.current.syncStatus.queuedMutationCount).toBe(1)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+    expect(result.current.syncStatus.hasNetworkError).toBe(false)
+    expect(result.current.syncStatus.hasSyncError).toBe(false)
+
+    act(() => rejectRequest(new TypeError('Failed to fetch')))
+    await waitFor(() => {
+      expect(result.current.syncStatus.hasNetworkError).toBe(true)
+      expect(result.current.syncStatus.hasSyncError).toBe(true)
+    })
+
+    let resolveRetry!: (response: Response) => void
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRetry = resolve
+        }),
+    )
+    let retry!: ReturnType<typeof result.current.syncStatus.retry>
+    act(() => {
+      retry = result.current.syncStatus.retry()
+    })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['shopping-list-offline-status', 'workspace-1'],
+      })
+    })
+    expect(result.current.syncStatus.hasNetworkError).toBe(true)
+    expect(result.current.syncStatus.hasSyncError).toBe(true)
+    await act(async () => {
+      resolveRetry(jsonResponse({ ...item, priority: 'high', version: 2 }))
+      await retry
+    })
+    await waitFor(() => {
+      expect(result.current.syncStatus.hasNetworkError).toBe(false)
+      expect(result.current.syncStatus.hasSyncError).toBe(false)
+      expect(result.current.syncStatus.queuedMutationCount).toBe(0)
+    })
   })
 
   it('reactivates a completed duplicate shopping item', async () => {

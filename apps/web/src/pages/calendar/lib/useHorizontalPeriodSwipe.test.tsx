@@ -7,10 +7,12 @@ function SwipeHarness({
   enabled = true,
   onSwipeLeft,
   onSwipeRight,
+  onSlotClick,
 }: {
   enabled?: boolean
   onSwipeLeft: () => void
   onSwipeRight: () => void
+  onSlotClick: () => void
 }) {
   const swipeHandlers = useHorizontalPeriodSwipe({
     enabled,
@@ -21,6 +23,9 @@ function SwipeHarness({
   return (
     <div data-testid="surface" {...swipeHandlers}>
       <div data-testid="empty-cell">Empty cell</div>
+      <button data-period-swipe type="button" onClick={onSlotClick}>
+        Time slot
+      </button>
       <button data-no-swipe type="button">
         Task
       </button>
@@ -31,18 +36,21 @@ function SwipeHarness({
 function renderSwipeHarness(options: { enabled?: boolean } = {}) {
   const onSwipeLeft = vi.fn()
   const onSwipeRight = vi.fn()
+  const onSlotClick = vi.fn()
 
   render(
     <SwipeHarness
       enabled={options.enabled ?? true}
       onSwipeLeft={onSwipeLeft}
       onSwipeRight={onSwipeRight}
+      onSlotClick={onSlotClick}
     />,
   )
 
   return {
     onSwipeLeft,
     onSwipeRight,
+    onSlotClick,
     surface: screen.getByTestId('surface'),
   }
 }
@@ -129,6 +137,35 @@ describe('useHorizontalPeriodSwipe', () => {
 
     expect(onSwipeLeft).not.toHaveBeenCalled()
     expect(onSwipeRight).not.toHaveBeenCalled()
+  })
+
+  it('keeps time slots tappable and captures the pointer on the button', () => {
+    const { onSlotClick, onSwipeLeft } = renderSwipeHarness()
+    const slot = screen.getByRole('button', { name: 'Time slot' })
+    const capture = vi.fn()
+    slot.setPointerCapture = capture
+
+    swipe(slot, { endX: 200, startX: 200 })
+    fireEvent.click(slot, { detail: 1 })
+
+    expect(capture).toHaveBeenCalledWith(1)
+    expect(onSlotClick).toHaveBeenCalledOnce()
+    expect(onSwipeLeft).not.toHaveBeenCalled()
+  })
+
+  it('swipes across time slots without also activating them', () => {
+    const { onSlotClick, onSwipeLeft } = renderSwipeHarness()
+    const slot = screen.getByRole('button', { name: 'Time slot' })
+
+    swipe(slot, { endX: 120, startX: 220 })
+    fireEvent.click(slot, { detail: 1 })
+
+    expect(onSwipeLeft).toHaveBeenCalledOnce()
+    expect(onSlotClick).not.toHaveBeenCalled()
+
+    swipe(slot, { endX: 200, startX: 200 })
+    fireEvent.click(slot, { detail: 1 })
+    expect(onSlotClick).toHaveBeenCalledOnce()
   })
 
   it('does not trigger when disabled', () => {

@@ -73,14 +73,30 @@ export async function drainShoppingListOfflineQueue({
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
     result,
-    onError: createOfflineDrainErrorHandler<ShoppingListOfflineDrainResult>({
-      getErrorMessage,
-      isTerminalError: isTerminalShoppingListSyncError,
-      markConflicted: (mutationId, conflict) =>
-        markShoppingListOfflineMutationConflicted(mutationId, conflict.message),
-      markFailed: markShoppingListOfflineMutationFailed,
-    }),
+    onError: (input) =>
+      createOfflineDrainErrorHandler<ShoppingListOfflineDrainResult>({
+        getErrorMessage,
+        isTerminalError: isTerminalShoppingListSyncError,
+        markConflicted: (mutationId, conflict) =>
+          markShoppingListOfflineMutationConflicted(
+            mutationId,
+            conflict.message,
+          ),
+        markFailed: (mutationId, message) =>
+          markShoppingListOfflineMutationFailed(
+            mutationId,
+            message,
+            isShoppingListNetworkError(input.error),
+          ),
+      })(input),
   })
+}
+
+export function isShoppingListNetworkError(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    (error instanceof DOMException && error.name === 'NetworkError')
+  )
 }
 
 export function isQueueableShoppingListMutationError(error: unknown): boolean {

@@ -78,6 +78,8 @@ describe('ShoppingPage', () => {
     mocks.useShoppingListSyncStatus.mockReturnValue({
       conflictedMutationCount: 0,
       error: null,
+      hasNetworkError: false,
+      hasSyncError: false,
       isPending: false,
       isSyncing: false,
       queuedMutationCount: 0,
@@ -136,6 +138,7 @@ describe('ShoppingPage', () => {
     mocks.browserOffline = true
     mocks.useShoppingListSummary.mockReturnValue(
       createShoppingListSummary({
+        hasNetworkReadError: true,
         lastSuccessfulSyncAt: '2026-08-13T09:00:00.000Z',
         readiness: createReadiness({
           canWriteProtectedData: false,
@@ -150,6 +153,138 @@ describe('ShoppingPage', () => {
     expect(screen.getByText('Список пуст.')).toBeVisible()
     expect(screen.getByText('Нет подключения')).toBeVisible()
     expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
+  })
+
+  it.each([false, true])(
+    'keeps ordinary queued saves silent even when the browser offline flag is %s',
+    (browserOffline) => {
+      mocks.browserOffline = browserOffline
+      mocks.useShoppingListSyncStatus.mockReturnValue({
+        conflictedMutationCount: 0,
+        hasNetworkError: false,
+        hasSyncError: false,
+        isSyncing: true,
+        queuedMutationCount: 2,
+      })
+
+      renderShoppingPage('/shopping')
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText('Есть изменения offline'),
+      ).not.toBeInTheDocument()
+    },
+  )
+
+  it('shows a retryable network failure outside the page layout and hides it after recovery', () => {
+    const retry = vi.fn()
+    const failedStatus = {
+      conflictedMutationCount: 0,
+      hasNetworkError: true,
+      hasSyncError: true,
+      isSyncing: false,
+      queuedMutationCount: 1,
+      retry,
+    }
+    mocks.useShoppingListSyncStatus.mockReturnValue(failedStatus)
+    const { container, rerender } = renderShoppingPage('/shopping')
+    const notice = screen.getByRole('status')
+
+    expect(notice).toHaveTextContent('Нет связи с сервером')
+    expect(container).not.toContainElement(notice)
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(retry).toHaveBeenCalledTimes(1)
+
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      ...failedStatus,
+      isSyncing: true,
+    })
+    rerender(
+      <MemoryRouter>
+        <ShoppingPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Нет связи с сервером')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Синхронизируем...' }),
+    ).toBeDisabled()
+
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      ...failedStatus,
+      hasNetworkError: false,
+      hasSyncError: false,
+      queuedMutationCount: 0,
+    })
+    rerender(
+      <MemoryRouter>
+        <ShoppingPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('does not reopen a dismissed notice for more edits during the same outage', () => {
+    const failedStatus = {
+      conflictedMutationCount: 0,
+      hasNetworkError: true,
+      hasSyncError: true,
+      isSyncing: false,
+      queuedMutationCount: 1,
+    }
+    mocks.useShoppingListSyncStatus.mockReturnValue(failedStatus)
+    const { rerender } = renderShoppingPage('/shopping')
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Закрыть уведомление о синхронизации покупок',
+      }),
+    )
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      ...failedStatus,
+      queuedMutationCount: 2,
+    })
+    rerender(
+      <MemoryRouter>
+        <ShoppingPage />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      ...failedStatus,
+      hasNetworkError: false,
+      hasSyncError: false,
+      queuedMutationCount: 0,
+    })
+    rerender(
+      <MemoryRouter>
+        <ShoppingPage />
+      </MemoryRouter>,
+    )
+    mocks.useShoppingListSyncStatus.mockReturnValue(failedStatus)
+    rerender(
+      <MemoryRouter>
+        <ShoppingPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Нет связи с сервером')).toBeVisible()
+  })
+
+  it('does not describe a server failure as a network outage', () => {
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      conflictedMutationCount: 0,
+      hasNetworkError: false,
+      hasSyncError: true,
+      isSyncing: false,
+      queuedMutationCount: 1,
+    })
+
+    renderShoppingPage('/shopping')
+
+    expect(
+      screen.getByText('Не удалось синхронизировать покупки'),
+    ).toBeVisible()
+    expect(screen.queryByText('Нет связи с сервером')).not.toBeInTheDocument()
   })
 
   it('retries a denied auth session before refreshing cached shopping data', async () => {
@@ -346,6 +481,7 @@ function createShoppingListSummary(
     completedItems: [],
     data: [],
     error: null,
+    hasNetworkReadError: false,
     isCacheHydrating: false,
     isLoading: false,
     lastSuccessfulSyncAt: null,

@@ -1,4 +1,11 @@
-import { type FormEvent, useMemo, useRef, useState } from 'react'
+import {
+  type FormEvent,
+  type ReactNode,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router'
 
 import { type SessionReadiness, useSessionAuth } from '@/features/session'
@@ -18,7 +25,7 @@ import {
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
 import { useBrowserOffline } from '@/shared/lib/offline-sync'
-import { CheckIcon, TrashIcon } from '@/shared/ui/Icon'
+import { CheckIcon, CloseIcon, TrashIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
@@ -129,6 +136,9 @@ export function ShoppingPage() {
     shoppingListQuery.readiness.reason === 'auth_restoring' ||
     shoppingListQuery.readiness.reason === 'planner_pending'
   const canMutate = !hasAccessIssue && !isRestoring
+  const hasSyncNotice =
+    syncStatus.conflictedMutationCount > 0 ||
+    (syncStatus.queuedMutationCount > 0 && syncStatus.hasSyncError)
 
   function retryShopping() {
     void (async () => {
@@ -203,13 +213,6 @@ export function ShoppingPage() {
       showUnknownLastSync
       title="Нужно восстановить доступ"
     />
-  ) : isOffline ? (
-    <PageStatusBanner
-      action={{ label: 'Обновить', onClick: retryShopping }}
-      kind="offline"
-      lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
-      showUnknownLastSync
-    />
   ) : isRestoring ? (
     <PageStatusBanner
       description="Показываем сохранённый список и восстанавливаем синхронизацию."
@@ -218,7 +221,7 @@ export function ShoppingPage() {
       showUnknownLastSync
       title="Восстанавливаем данные"
     />
-  ) : shoppingListQuery.error ? (
+  ) : shoppingListQuery.error && !shoppingListQuery.hasNetworkReadError ? (
     <PageStatusBanner
       action={{ label: 'Обновить', onClick: retryShopping }}
       kind="error"
@@ -527,40 +530,56 @@ export function ShoppingPage() {
           <p className={styles.errorMessage}>{errorMessage}</p>
         ) : null}
 
-        {syncStatus.queuedMutationCount > 0 ||
-        syncStatus.conflictedMutationCount > 0 ? (
-          <section
-            className={cx(
-              styles.syncBanner,
-              syncStatus.conflictedMutationCount > 0 &&
-                styles.syncBannerWarning,
-            )}
-            aria-live="polite"
+        {hasSyncNotice ? (
+          <ShoppingSyncNotice
+            key={syncStatus.conflictedMutationCount > 0 ? 'conflict' : 'sync'}
           >
-            <div>
-              <strong>
-                {syncStatus.conflictedMutationCount > 0
-                  ? 'Есть конфликтующие покупки'
-                  : 'Есть изменения offline'}
-              </strong>
-              <span>
-                {syncStatus.queuedMutationCount} ждут синхронизации
-                {syncStatus.conflictedMutationCount > 0
-                  ? `, конфликтов: ${syncStatus.conflictedMutationCount}`
-                  : ''}
-              </span>
-            </div>
-            <button
-              className={styles.syncButton}
-              type="button"
-              disabled={syncStatus.isSyncing || !canMutate}
-              onClick={() => {
-                void syncStatus.retry()
-              }}
+            <section
+              className={cx(
+                styles.syncBanner,
+                syncStatus.conflictedMutationCount > 0 &&
+                  styles.syncBannerWarning,
+              )}
+              role="status"
+              aria-live="polite"
             >
-              {syncStatus.isSyncing ? 'Синхронизируем...' : 'Повторить'}
-            </button>
-          </section>
+              <div>
+                <strong>
+                  {syncStatus.conflictedMutationCount > 0
+                    ? 'Есть конфликтующие покупки'
+                    : syncStatus.hasNetworkError
+                      ? 'Нет связи с сервером'
+                      : 'Не удалось синхронизировать покупки'}
+                </strong>
+                <span>
+                  {syncStatus.conflictedMutationCount > 0
+                    ? `${syncStatus.queuedMutationCount} ждут синхронизации, конфликтов: ${syncStatus.conflictedMutationCount}`
+                    : syncStatus.hasNetworkError
+                      ? 'Изменения сохранены на устройстве и отправятся при восстановлении связи.'
+                      : 'Изменения сохранены на устройстве. Попробуйте отправить их ещё раз.'}
+                </span>
+              </div>
+              <button
+                className={styles.syncButton}
+                type="button"
+                disabled={syncStatus.isSyncing || !canMutate}
+                onClick={() => {
+                  void syncStatus.retry()
+                }}
+              >
+                {syncStatus.isSyncing ? 'Синхронизируем...' : 'Повторить'}
+              </button>
+            </section>
+          </ShoppingSyncNotice>
+        ) : shoppingListQuery.hasNetworkReadError && !hasAccessIssue ? (
+          <ShoppingSyncNotice key="sync">
+            <PageStatusBanner
+              action={{ label: 'Обновить', onClick: retryShopping }}
+              kind="offline"
+              lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
+              showUnknownLastSync
+            />
+          </ShoppingSyncNotice>
         ) : null}
       </div>
 
@@ -588,6 +607,29 @@ export function ShoppingPage() {
         </section>
       </div>
     </section>
+  )
+}
+
+function ShoppingSyncNotice({ children }: { children: ReactNode }) {
+  const [isDismissed, setIsDismissed] = useState(false)
+
+  if (isDismissed) {
+    return null
+  }
+
+  return createPortal(
+    <div className={styles.syncNotice}>
+      {children}
+      <button
+        className={styles.syncCloseButton}
+        type="button"
+        aria-label="Закрыть уведомление о синхронизации покупок"
+        onClick={() => setIsDismissed(true)}
+      >
+        <CloseIcon size={18} />
+      </button>
+    </div>,
+    document.body,
   )
 }
 

@@ -35,6 +35,7 @@ interface ShoppingListOfflineMutationBase {
   id: string
   itemId: string
   lastError: string | null
+  lastFailureWasNetworkError?: boolean
   status: ShoppingListOfflineMutationStatus
   updatedAt: string
   workspaceId: string
@@ -493,10 +494,12 @@ export async function completeShoppingListOfflineMutation(
 export async function markShoppingListOfflineMutationFailed(
   mutationId: string,
   errorMessage: string,
+  isNetworkError = false,
 ): Promise<void> {
   await runShoppingListMutationWrite(mutationId, (db) =>
     db.mutationQueue.update(mutationId, {
       lastError: errorMessage,
+      lastFailureWasNetworkError: isNetworkError,
       status: 'failed',
       updatedAt: new Date().toISOString(),
     }),

@@ -15,7 +15,10 @@ import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
 import {
   getPlannerOfflineWorkspaceWriteGeneration,
+  listPlannerOfflineMutations,
+  loadCachedTaskRecords,
   type PlannerDataSyncScope,
+  type PlannerOfflineMutationRecord,
   replaceCachedLifeSphereRecordsFromServer,
   replaceCachedTaskRecordsFromServer,
   replaceCachedTaskTemplateRecordsFromServer,
@@ -25,6 +28,7 @@ import {
   type PlannerApiClient,
 } from '../lib/planner-api'
 import { requirePlannerApi } from './planner-error-policy'
+import { mergePlannerTaskSnapshot } from './planner-task-cache'
 
 export const TASK_EVENT_POLL_INTERVAL_MS = 15_000
 export const PLANNER_TASK_SNAPSHOT_LIMITS = {
@@ -48,6 +52,7 @@ export type PlannerTaskTemplateQueryKey = readonly [
 ]
 
 interface PlannerQueriesParams {
+  actorUserId: string | undefined
   authSessionVersion: number
   onServerReadSuccess: (
     scope: PlannerDataSyncScope,
@@ -118,6 +123,7 @@ export function loadPlannerTaskSnapshot(
 }
 
 export function usePlannerQueries({
+  actorUserId,
   authSessionVersion,
   onServerReadSuccess,
   plannerApi,
@@ -173,6 +179,35 @@ export function usePlannerQueries({
         signal,
       )
       const lastSuccessfulSyncAt = new Date().toISOString()
+      let mutations: PlannerOfflineMutationRecord[] = []
+      let cachedRecords: TaskRecord[] = []
+
+      if (workspaceId && actorUserId) {
+        try {
+          mutations = await listPlannerOfflineMutations(
+            workspaceId,
+            actorUserId,
+          )
+          if (mutations.some((mutation) => 'taskId' in mutation)) {
+            cachedRecords = await loadCachedTaskRecords(workspaceId)
+          }
+        } catch (error) {
+          console.warn(
+            'Failed to read local task changes during refresh.',
+            error,
+          )
+        }
+      }
+
+      signal.throwIfAborted()
+      const mergedRecords = mergePlannerTaskSnapshot(
+        records,
+        [
+          ...cachedRecords,
+          ...(queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []),
+        ],
+        mutations,
+      )
 
       if (workspaceId) {
         setTaskReadModelState({
@@ -182,7 +217,7 @@ export function usePlannerQueries({
         })
         void replaceCachedTaskRecordsFromServer(
           workspaceId,
-          records,
+          mergedRecords,
           lastSuccessfulSyncAt,
           writeGeneration,
           eventCursor,
@@ -192,7 +227,7 @@ export function usePlannerQueries({
       }
       onServerReadSuccess('tasks', lastSuccessfulSyncAt)
 
-      return records
+      return mergedRecords
     },
     queryKey: taskQueryKey,
     retry: (failureCount, error) =>

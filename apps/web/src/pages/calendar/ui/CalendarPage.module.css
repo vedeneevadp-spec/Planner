@@ -306,12 +306,30 @@
 
 .hourSlot {
   min-height: var(--hour-height);
+  padding: 0;
+  border: 0;
   border-top: 1px solid var(--line);
+  border-radius: 0;
   background: var(--field-bg-muted);
 }
 
 .hourSlot:nth-child(even) {
   background: var(--surface-muted);
+}
+
+.hourSlotButton:enabled {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .hourSlotButton:enabled:hover {
+    background: var(--accent-muted);
+  }
+}
+
+.hourSlotButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .timedTask {

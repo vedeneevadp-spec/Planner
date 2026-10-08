@@ -170,6 +170,7 @@ export function usePlannerState(): PlannerState {
     taskTemplatesQuery,
     tasksQuery,
   } = usePlannerQueries({
+    actorUserId,
     authSessionVersion: sessionVersion,
     onServerReadSuccess: recordServerReadSuccess,
     plannerApi,

@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
 import type { SessionReadiness } from '@/features/session'
+import type { TaskComposerDraft } from '@/features/task-create'
 
 import { buildSelfCareCalendarTasks } from '../lib/calendar-load'
 import { CalendarPage } from './CalendarPage'
@@ -39,7 +40,7 @@ interface TaskComposerMockProps {
   desktopOpenButtonHidden?: boolean
   hideOpenButton?: boolean
   initialPlannedDate: string | null
-  openDraft?: { plannedDate?: string | null; requestId: string } | null
+  openDraft?: TaskComposerDraft | null
   openButtonLabel?: string
   showTimeFields?: boolean
 }
@@ -241,6 +242,72 @@ describe('CalendarPage', () => {
     expect(
       screen.getByLabelText('Неделя').closest('[data-calendar-view]'),
     ).toHaveAttribute('data-calendar-view', 'week')
+  })
+
+  it.each([
+    ['понедельник, 8 июня', '2026-06-08', '00:00'],
+    ['среда, 10 июня', '2026-06-10', '09:00'],
+    ['воскресенье, 14 июня', '2026-06-14', '23:00'],
+  ])(
+    'creates a task for the selected week slot on %s at %s',
+    (label, plannedDate, plannedStartTime) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-06-12T10:00:00Z'))
+      renderCalendarPage('/calendar?calendarView=week')
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: `Создать задачу, ${label}, ${plannedStartTime}`,
+        }),
+      )
+
+      const draft = mocks.taskComposer.mock.calls.find(
+        ([props]) => props.openDraft?.plannedStartTime === plannedStartTime,
+      )?.[0].openDraft
+      expect(draft).toMatchObject({
+        plannedDate,
+        plannedStartTime,
+        preservePlannedDate: true,
+      })
+      expect(screen.getByTestId('location')).not.toHaveTextContent(
+        'createTask=',
+      )
+    },
+  )
+
+  it('uses the newly displayed week when creating from a time slot', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T10:00:00Z'))
+    renderCalendarPage('/calendar?calendarView=week')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Следующий период' }))
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Создать задачу, понедельник, 15 июня, 10:00',
+      }),
+    )
+
+    const draft = mocks.taskComposer.mock.calls.find(
+      ([props]) => props.openDraft?.plannedStartTime === '10:00',
+    )?.[0].openDraft
+    expect(draft).toMatchObject({
+      plannedDate: '2026-06-15',
+      plannedStartTime: '10:00',
+    })
+  })
+
+  it('disables time-slot creation while restoring access', () => {
+    mocks.readiness = createReadiness({
+      reason: 'auth_restoring',
+      status: 'blockedAuth',
+    })
+    renderCalendarPage('/calendar?calendarView=week')
+
+    for (const slot of screen.getAllByRole('button', {
+      name: /^Создать задачу,/,
+    })) {
+      expect(slot).toBeDisabled()
+    }
   })
 
   it('uses the day view from the calendar query', async () => {
