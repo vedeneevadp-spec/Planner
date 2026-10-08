@@ -97,6 +97,15 @@
       "automerge": false
     },
     {
+      "description": "Keep the validated xcode uuid override on 11.x until a separate ESM migration is verified with Capacitor and iOS builds.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["package.json"],
+      "matchDepTypes": ["overrides"],
+      "matchPackageNames": ["uuid"],
+      "matchJsonata": ["managerData.parents[0] = 'xcode'"],
+      "allowedVersions": ">=11.1.1 <12"
+    },
+    {
       "matchDepTypes": ["dependencies"],
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
