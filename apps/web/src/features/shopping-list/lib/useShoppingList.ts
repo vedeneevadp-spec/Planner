@@ -19,9 +19,9 @@ import {
 
 import {
   countConflictedShoppingListOfflineMutations,
-  countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
   isShoppingListOfflineStorageAvailable,
+  listRetryableShoppingListOfflineMutations,
   loadCachedShoppingListItems,
   loadCachedShoppingListSnapshot,
   removeCachedShoppingListItem,
@@ -32,6 +32,7 @@ import {
 import {
   drainShoppingListOfflineQueue,
   isQueueableShoppingListMutationError,
+  isShoppingListNetworkError,
   type ShoppingListOfflineDrainResult,
 } from './offline-shopping-list-sync'
 import {
@@ -68,6 +69,8 @@ function shoppingListOfflineStatusQueryKey(
 export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
 export interface ShoppingListOfflineStatus {
   conflictedMutationCount: number
+  hasNetworkError: boolean
+  hasSyncError: boolean
   queuedMutationCount: number
 }
 
@@ -254,6 +257,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
 
   return {
     ...query,
+    hasNetworkReadError: isShoppingListNetworkError(readError ?? query.error),
     isCacheHydrating: query.data === undefined && isCacheHydrating,
     isShowingCachedData: Boolean(readError),
     lastSuccessfulSyncAt,
@@ -275,6 +279,7 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
   )
   const statusQuery = useQuery({
     enabled: isEnabled,
+    networkMode: 'always',
     queryFn: () =>
       loadShoppingListOfflineStatus(workspaceId, session?.actorUserId),
     queryKey,
@@ -310,6 +315,8 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
   return {
     conflictedMutationCount: statusQuery.data?.conflictedMutationCount ?? 0,
     error: statusQuery.error ?? retryMutation.error,
+    hasNetworkError: statusQuery.data?.hasNetworkError ?? false,
+    hasSyncError: statusQuery.data?.hasSyncError ?? false,
     isPending: statusQuery.isPending,
     isSyncing: retryMutation.isPending,
     queuedMutationCount: statusQuery.data?.queuedMutationCount ?? 0,
@@ -939,7 +946,7 @@ function scheduleShoppingListOfflineSync(input: {
       console.warn('Failed to refresh shopping offline status.', error)
     })
     .finally(() => {
-      if (!input.api || isBrowserOfflineNow()) {
+      if (!input.api) {
         return
       }
 
@@ -1105,14 +1112,24 @@ async function loadShoppingListOfflineStatus(
   workspaceId: string,
   actorUserId?: string,
 ): Promise<ShoppingListOfflineStatus> {
+  const mutations = await listRetryableShoppingListOfflineMutations(
+    workspaceId,
+    actorUserId,
+  )
+
   return {
     conflictedMutationCount: await countConflictedShoppingListOfflineMutations(
       workspaceId,
       actorUserId,
     ),
-    queuedMutationCount: await countRetryableShoppingListOfflineMutations(
-      workspaceId,
-      actorUserId,
+    hasNetworkError: mutations.some(
+      (mutation) => mutation.lastFailureWasNetworkError === true,
     ),
+    hasSyncError: mutations.some(
+      (mutation) =>
+        mutation.lastFailureWasNetworkError !== undefined ||
+        mutation.status === 'failed',
+    ),
+    queuedMutationCount: mutations.length,
   }
 }

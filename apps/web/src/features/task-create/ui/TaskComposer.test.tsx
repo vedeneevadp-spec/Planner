@@ -62,6 +62,67 @@ describe('TaskComposer', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
+  })
+
+  it('prefills a calendar draft and preserves its date even when the selected hour has passed', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-08T08:00:00Z'))
+    mocks.addTask.mockResolvedValue(true)
+    const { rerender } = render(
+      <TaskComposer
+        initialPlannedDate="2026-10-08"
+        openDraft={{
+          requestId: 'calendar-slot-1',
+          plannedDate: '2026-10-08',
+          plannedStartTime: '09:00',
+          preservePlannedDate: true,
+        }}
+      />,
+    )
+
+    expect(screen.getByLabelText('План')).toHaveValue('2026-10-08')
+    expect(screen.getByLabelText('Старт')).toHaveValue('09:00')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Задача' }), {
+      target: { value: 'Задача из календаря' },
+    })
+    // The calendar consumes its URL trigger before the user submits the form.
+    rerender(<TaskComposer initialPlannedDate="2026-10-08" openDraft={null} />)
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Добавить задачу' }).at(-1)!,
+    )
+
+    await waitFor(() =>
+      expect(mocks.addTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          plannedDate: '2026-10-08',
+          plannedStartTime: '09:00',
+          reminderOffsets: [15],
+        }),
+      ),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
+    expect(screen.getByLabelText('План')).toHaveValue('2026-10-08')
+    expect(screen.getByLabelText('Старт')).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
+
+    rerender(
+      <TaskComposer
+        initialPlannedDate="2026-10-08"
+        openDraft={{
+          requestId: 'calendar-slot-2',
+          plannedDate: '2026-10-11',
+          plannedStartTime: '23:00',
+          preservePlannedDate: true,
+        }}
+      />,
+    )
+    expect(screen.getByLabelText('План')).toHaveValue('2026-10-11')
+    expect(screen.getByLabelText('Старт')).toHaveValue('23:00')
+    expect(screen.getByRole('textbox', { name: 'Задача' })).toHaveValue('')
   })
 
   it('locks a slow task submission synchronously and closes after local acceptance', async () => {

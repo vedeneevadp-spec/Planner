@@ -25,6 +25,7 @@ vi.mock('@/shared/time/time.service', async (importOriginal) => ({
 
 vi.mock('../lib/offline-planner-store', () => ({
   getPlannerOfflineWorkspaceWriteGeneration: vi.fn(() => 3),
+  listPlannerOfflineMutations: vi.fn().mockResolvedValue([]),
   replaceCachedLifeSphereRecordsFromServer: vi
     .fn()
     .mockResolvedValue(undefined),
@@ -87,6 +88,7 @@ function renderPlannerQueries(
   return renderHook(
     ({ authSessionVersion, plannerTimeZone }) =>
       usePlannerQueries({
+        actorUserId: 'user-1',
         authSessionVersion,
         onServerReadSuccess,
         plannerApi,

@@ -26,6 +26,8 @@ export interface TaskComposerDraft {
   isImportant?: boolean | undefined
   note?: string | undefined
   plannedDate?: string | null | undefined
+  plannedStartTime?: string | null | undefined
+  preservePlannedDate?: boolean | undefined
   projectId?: string | null | undefined
   necessity?: TaskNecessity | undefined
   requestId: string
@@ -54,6 +56,7 @@ export interface BuildTaskComposerTaskInputParams {
   plannedDate: string
   plannedEndTime: string
   plannedStartTime: string
+  preservePlannedDate?: boolean | undefined
   plannerTimeZone: string
   projectId: string
   recurrenceForm: TaskRecurrenceFormState
@@ -80,6 +83,7 @@ export function buildTaskComposerTaskInput({
   plannedDate,
   plannedEndTime,
   plannedStartTime,
+  preservePlannedDate = false,
   plannerTimeZone,
   projectId,
   recurrenceForm,
@@ -110,14 +114,16 @@ export function buildTaskComposerTaskInput({
     !isSharedWorkspace && hasPlannedDate && plannedStartTime
       ? reminderOffsets
       : []
-  const reminderPlannedDate = resolveReminderPlannedDate({
-    now,
-    plannedDate: resolvedPlannedDate,
-    plannedStartTime,
-    reminderOffsets: resolvedReminderOffsets,
-    todayKey,
-    timeZone: plannerTimeZone,
-  })
+  const reminderPlannedDate = preservePlannedDate
+    ? resolvedPlannedDate
+    : resolveReminderPlannedDate({
+        now,
+        plannedDate: resolvedPlannedDate,
+        plannedStartTime,
+        reminderOffsets: resolvedReminderOffsets,
+        todayKey,
+        timeZone: plannerTimeZone,
+      })
 
   return {
     assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,

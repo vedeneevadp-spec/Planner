@@ -19,7 +19,10 @@ import {
   usePlannerTaskInfiniteCursor,
 } from '../lib/usePlannerTaskCursor'
 import { getPlannerTaskQueryKey } from './planner-queries'
-import { getPlannerCachedTaskRecord } from './planner-task-cache'
+import {
+  getPlannerCachedTaskRecord,
+  mergePlannerTaskSnapshot,
+} from './planner-task-cache'
 import { usePlannerState } from './usePlannerState'
 
 const mocks = vi.hoisted(() => ({
@@ -464,6 +467,152 @@ describe('commands on tasks loaded only by cursor pages', () => {
     })
   })
 
+  it.each(['before', 'after'] as const)(
+    'keeps a completed task completed when a stale snapshot arrives %s the mutation response',
+    async (snapshotTiming) => {
+      const originalTask = serverTask!
+      mocks.api.getTaskReadModel.mockImplementation(() =>
+        Promise.resolve(createTaskSnapshot(serverTask!)),
+      )
+      let finishCompletion!: () => void
+      mocks.api.setTaskStatus.mockImplementationOnce(
+        () =>
+          new Promise<TaskRecord>((resolve) => {
+            finishCompletion = () => {
+              serverTask = { ...originalTask, status: 'done', version: 8 }
+              resolve(serverTask)
+            }
+          }),
+      )
+      const { result } = renderHook(usePlannerState, { wrapper: Wrapper })
+      await waitFor(() => expect(result.current.tasks[0]?.status).toBe('todo'))
+
+      await act(async () => {
+        expect(
+          await result.current.setTaskStatus(originalTask.id, 'done'),
+        ).toBe(true)
+      })
+      await waitFor(() => {
+        expect(result.current.tasks[0]?.status).toBe('done')
+        expect(mocks.api.setTaskStatus).toHaveBeenCalledOnce()
+      })
+
+      let deliverStaleSnapshot!: () => void
+      mocks.api.getTaskReadModel.mockImplementationOnce(
+        () =>
+          new Promise<TaskReadModelResponse>((resolve) => {
+            deliverStaleSnapshot = () =>
+              resolve(createTaskSnapshot(originalTask))
+          }),
+      )
+      let refresh!: Promise<void>
+      act(() => {
+        refresh = queryClient.invalidateQueries({
+          queryKey: taskKey,
+          exact: true,
+        })
+      })
+      await waitFor(() => expect(deliverStaleSnapshot).toBeTypeOf('function'))
+
+      try {
+        if (snapshotTiming === 'after') {
+          // Hold the post-sync sphere refresh so this already-started task
+          // request is allowed to finish after the status acknowledgement.
+          mocks.api.listLifeSpheres.mockReturnValueOnce(new Promise(() => {}))
+          act(() => finishCompletion())
+          await waitFor(async () => {
+            expect(
+              await offlineStore.listPlannerOfflineMutations(
+                'workspace-1',
+                'user-1',
+              ),
+            ).toEqual([])
+          })
+        }
+        await act(async () => {
+          deliverStaleSnapshot()
+          await refresh
+        })
+        expect(result.current.tasks[0]?.status).toBe('done')
+        expect(
+          queryClient.getQueryData<TaskRecord[]>(taskKey)?.[0]?.version,
+        ).toBe(8)
+        await waitFor(async () => {
+          expect(
+            (await offlineStore.loadCachedTaskRecords('workspace-1'))[0]
+              ?.status,
+          ).toBe('done')
+        })
+      } finally {
+        if (snapshotTiming === 'before') act(() => finishCompletion())
+        await queryClient.cancelQueries()
+        await waitFor(() => expect(result.current.isSyncing).toBe(false))
+      }
+    },
+  )
+
+  it('accepts the server state and reports the conflict after a rejected completion', async () => {
+    mocks.api.getTaskReadModel.mockImplementation(() =>
+      Promise.resolve(createTaskSnapshot(serverTask!)),
+    )
+    mocks.api.setTaskStatus.mockRejectedValueOnce(
+      new PlannerApiError('Completion rejected.', {
+        status: 403,
+        code: 'forbidden',
+      }),
+    )
+    const { result } = renderHook(usePlannerState, { wrapper: Wrapper })
+    await waitFor(() => expect(result.current.tasks[0]?.status).toBe('todo'))
+
+    await act(async () => {
+      expect(await result.current.setTaskStatus('task-1', 'done')).toBe(true)
+    })
+
+    await waitFor(() => {
+      expect(result.current.conflictedMutationCount).toBe(1)
+      expect(result.current.tasks[0]?.status).toBe('todo')
+      expect(result.current.errorMessage).toContain(
+        'Некоторые изменения не синхронизированы',
+      )
+      expect(result.current.isSyncing).toBe(false)
+    })
+  })
+
+  it('preserves a queued completion missing from a bounded snapshot while accepting unrelated updates', async () => {
+    const completed = { ...serverTask!, status: 'done' as const, version: 8 }
+    await offlineStore.enqueuePlannerOfflineMutation(
+      {
+        actorUserId: 'user-1',
+        workspaceId: 'workspace-1',
+        type: 'task.status.update',
+        taskId: completed.id,
+        expectedVersion: 7,
+        statusValue: 'done',
+      },
+      { optimisticTask: completed },
+    )
+    const other = {
+      ...serverTask!,
+      id: 'other',
+      version: 9,
+      title: 'Updated elsewhere',
+    }
+    const records = mergePlannerTaskSnapshot(
+      [other],
+      [completed, { ...other, version: 8, title: 'Old title' }],
+      await offlineStore.listPlannerOfflineMutations('workspace-1', 'user-1'),
+    )
+
+    expect(records).toEqual([other, completed])
+    // Once no local command is waiting, a newer server edit is authoritative,
+    // and records outside the bounded snapshot are not retained indefinitely.
+    expect(mergePlannerTaskSnapshot([other], records, [])).toEqual([other])
+    const reopened = { ...completed, status: 'todo' as const, version: 9 }
+    expect(mergePlannerTaskSnapshot([reopened], records, [])).toEqual([
+      reopened,
+    ])
+  })
+
   it('does not reuse page records from another workspace or auth session', async () => {
     const { rerender, result } = await setup()
     expect(
@@ -488,6 +637,19 @@ describe('commands on tasks loaded only by cursor pages', () => {
     })
   })
 })
+
+function createTaskSnapshot(task: TaskRecord): TaskReadModelResponse {
+  const empty = { returnedCount: 0, totalCount: 0, truncated: false }
+  return {
+    items: [task],
+    eventCursor: 0,
+    historyNextCursor: null,
+    returnedCount: 1,
+    totalCount: 1,
+    truncated: false,
+    sources: { active: empty, history: empty, range: empty },
+  }
+}
 
 function createTaskRecord(): TaskRecord {
   return {

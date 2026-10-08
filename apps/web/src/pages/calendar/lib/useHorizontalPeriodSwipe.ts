@@ -1,4 +1,9 @@
-import { type PointerEventHandler, useCallback, useRef } from 'react'
+import {
+  type MouseEventHandler,
+  type PointerEventHandler,
+  useCallback,
+  useRef,
+} from 'react'
 
 const DEFAULT_THRESHOLD_PX = 50
 const DEFAULT_VERTICAL_TOLERANCE_RATIO = 1.3
@@ -7,6 +12,7 @@ const NO_SWIPE_SELECTOR =
   'button,a,input,textarea,select,[role="button"],[data-no-swipe]'
 
 interface SwipeState {
+  captureTarget: Element
   pointerId: number
   startX: number
   startY: number
@@ -32,7 +38,11 @@ function isBlockedSwipeTarget(
 
   const blockedTarget = target.closest(NO_SWIPE_SELECTOR)
 
-  return blockedTarget !== null && currentTarget.contains(blockedTarget)
+  return (
+    blockedTarget !== null &&
+    currentTarget.contains(blockedTarget) &&
+    !blockedTarget.matches('[data-period-swipe]:not([data-no-swipe])')
+  )
 }
 
 function releasePointerCaptureIfNeeded(element: Element, pointerId: number) {
@@ -62,12 +72,14 @@ export function useHorizontalPeriodSwipe({
   thresholdPx = DEFAULT_THRESHOLD_PX,
   verticalToleranceRatio = DEFAULT_VERTICAL_TOLERANCE_RATIO,
 }: UseHorizontalPeriodSwipeOptions): {
+  onClickCapture: MouseEventHandler<HTMLElement>
   onPointerCancel: PointerEventHandler<HTMLElement>
   onPointerDown: PointerEventHandler<HTMLElement>
   onPointerMove: PointerEventHandler<HTMLElement>
   onPointerUp: PointerEventHandler<HTMLElement>
 } {
   const swipeStateRef = useRef<SwipeState | null>(null)
+  const suppressClickRef = useRef(false)
 
   const resetSwipe = useCallback(() => {
     swipeStateRef.current = null
@@ -75,6 +87,7 @@ export function useHorizontalPeriodSwipe({
 
   const onPointerDown = useCallback<PointerEventHandler<HTMLElement>>(
     (event) => {
+      suppressClickRef.current = false
       if (
         !enabled ||
         (event.pointerType === 'mouse' && event.button !== 0) ||
@@ -85,7 +98,13 @@ export function useHorizontalPeriodSwipe({
         return
       }
 
+      // Capture on the time-slot button itself so a tap still activates it.
+      const captureTarget =
+        (event.target instanceof Element &&
+          event.target.closest('[data-period-swipe]')) ||
+        event.currentTarget
       swipeStateRef.current = {
+        captureTarget,
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
@@ -93,7 +112,7 @@ export function useHorizontalPeriodSwipe({
       }
 
       try {
-        event.currentTarget.setPointerCapture(event.pointerId)
+        captureTarget.setPointerCapture(event.pointerId)
       } catch {
         // Swipe recognition still works without pointer capture.
       }
@@ -110,7 +129,7 @@ export function useHorizontalPeriodSwipe({
       }
 
       if (!enabled) {
-        releasePointerCaptureIfNeeded(event.currentTarget, event.pointerId)
+        releasePointerCaptureIfNeeded(swipeState.captureTarget, event.pointerId)
         resetSwipe()
       }
     },
@@ -129,6 +148,7 @@ export function useHorizontalPeriodSwipe({
       const deltaY = event.clientY - swipeState.startY
       const absDeltaX = Math.abs(deltaX)
       const absDeltaY = Math.abs(deltaY)
+      suppressClickRef.current = Math.max(absDeltaX, absDeltaY) > 10
       const isHorizontalSwipe =
         absDeltaX >= thresholdPx &&
         absDeltaX > absDeltaY * verticalToleranceRatio
@@ -143,7 +163,7 @@ export function useHorizontalPeriodSwipe({
         }
       }
 
-      releasePointerCaptureIfNeeded(event.currentTarget, event.pointerId)
+      releasePointerCaptureIfNeeded(swipeState.captureTarget, event.pointerId)
       resetSwipe()
     },
     [
@@ -158,13 +178,28 @@ export function useHorizontalPeriodSwipe({
 
   const onPointerCancel = useCallback<PointerEventHandler<HTMLElement>>(
     (event) => {
-      releasePointerCaptureIfNeeded(event.currentTarget, event.pointerId)
+      releasePointerCaptureIfNeeded(
+        swipeStateRef.current?.captureTarget ?? event.currentTarget,
+        event.pointerId,
+      )
       resetSwipe()
     },
     [resetSwipe],
   )
 
+  const onClickCapture = useCallback<MouseEventHandler<HTMLElement>>(
+    (event) => {
+      if (suppressClickRef.current && event.detail !== 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        suppressClickRef.current = false
+      }
+    },
+    [],
+  )
+
   return {
+    onClickCapture,
     onPointerCancel,
     onPointerDown,
     onPointerMove,

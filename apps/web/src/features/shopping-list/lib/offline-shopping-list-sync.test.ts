@@ -7,6 +7,7 @@ import {
   countConflictedShoppingListOfflineMutations,
   countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
+  listRetryableShoppingListOfflineMutations,
   loadCachedShoppingListItems,
   replaceCachedShoppingListItems,
   resetShoppingListOfflineDatabaseForTests,
@@ -140,6 +141,60 @@ describe('offline shopping list sync', () => {
       ),
     ).toBe(1)
   })
+
+  it.each([
+    { error: new TypeError('Failed to fetch'), isNetworkError: true },
+    {
+      error: new ShoppingListApiError('Service unavailable.', {
+        code: 'service_unavailable',
+        status: 503,
+      }),
+      isNetworkError: false,
+    },
+    {
+      error: new DOMException('Storage full.', 'QuotaExceededError'),
+      isNetworkError: false,
+    },
+    {
+      error: new DOMException('Request cancelled.', 'AbortError'),
+      isNetworkError: false,
+    },
+  ])(
+    'records whether a failed attempt is a network failure: $error.name',
+    async ({ error, isNetworkError }) => {
+      const item = createShoppingListItemRecord('item-failed', 'Milk')
+      const api = createShoppingListApiClientMock({
+        updateItem: vi.fn().mockRejectedValue(error),
+      })
+      await enqueueShoppingListOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        itemId: item.id,
+        patch: { priority: 'high' },
+        type: 'shopping.update',
+        workspaceId: WORKSPACE_ID,
+      })
+
+      const result = await drainShoppingListOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        api,
+        workspaceId: WORKSPACE_ID,
+      })
+
+      expect(result.failed).toBe(1)
+      expect(
+        await listRetryableShoppingListOfflineMutations(
+          WORKSPACE_ID,
+          ACTOR_USER_ID,
+        ),
+      ).toMatchObject([
+        {
+          attemptCount: 1,
+          lastFailureWasNetworkError: isNetworkError,
+          status: 'failed',
+        },
+      ])
+    },
+  )
 
   it('replays queued status updates and caches the updated item', async () => {
     const item = createShoppingListItemRecord('item-1', 'Milk')

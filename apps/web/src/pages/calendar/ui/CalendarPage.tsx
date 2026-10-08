@@ -1,4 +1,4 @@
-import type { CalendarViewMode } from '@planner/contracts'
+import { type CalendarViewMode, generateUuidV7 } from '@planner/contracts'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router'
@@ -680,15 +680,19 @@ export function CalendarPage() {
   const [periodTransition, setPeriodTransition] =
     useState<CalendarPeriodDirection | null>(null)
   const createTaskRequestId = searchParams.get(TASK_CREATE_SEARCH_PARAM)
+  const [requestedTaskDraft, setRequestedTaskDraft] =
+    useState<TaskComposerDraft | null>(null)
   const taskComposerDraft = useMemo<TaskComposerDraft | null>(
     () =>
       createTaskRequestId
-        ? {
-            plannedDate: anchorDate,
-            requestId: createTaskRequestId,
-          }
+        ? requestedTaskDraft?.requestId === createTaskRequestId
+          ? requestedTaskDraft
+          : {
+              plannedDate: anchorDate,
+              requestId: createTaskRequestId,
+            }
         : null,
-    [anchorDate, createTaskRequestId],
+    [anchorDate, createTaskRequestId, requestedTaskDraft],
   )
   const weekDateKeys = useMemo(() => getWeekDateKeys(anchorDate), [anchorDate])
   const scheduleDateKeys = useMemo(
@@ -1056,14 +1060,17 @@ export function CalendarPage() {
   }
 
   function openTaskComposer() {
+    requestTaskComposer({ plannedDate: anchorDate })
+  }
+
+  function requestTaskComposer(draft: Omit<TaskComposerDraft, 'requestId'>) {
     if (!canUseCalendarActions) {
       return
     }
 
     const nextSearchParams = new URLSearchParams(searchParams)
-    const requestId = `calendar-empty-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2)}`
+    const requestId = `calendar-empty-${generateUuidV7()}`
+    setRequestedTaskDraft({ ...draft, requestId })
     nextSearchParams.set(TASK_CREATE_SEARCH_PARAM, requestId)
     setSearchParams(nextSearchParams)
   }
@@ -1567,9 +1574,30 @@ export function CalendarPage() {
 
                       return (
                         <div key={dateKey} className={styles.weekColumn}>
-                          {timeRange.hours.map((hour) => (
-                            <div key={hour} className={styles.hourSlot} />
-                          ))}
+                          {timeRange.hours.map((hour) => {
+                            const startTime = `${String(hour).padStart(2, '0')}:00`
+
+                            return (
+                              <button
+                                key={hour}
+                                data-period-swipe
+                                className={cx(
+                                  styles.hourSlot,
+                                  styles.hourSlotButton,
+                                )}
+                                type="button"
+                                disabled={!canUseCalendarActions}
+                                aria-label={`Создать задачу, ${formatLongDate(dateKey)}, ${startTime}`}
+                                onClick={() =>
+                                  requestTaskComposer({
+                                    plannedDate: dateKey,
+                                    plannedStartTime: startTime,
+                                    preservePlannedDate: true,
+                                  })
+                                }
+                              />
+                            )
+                          })}
                           {timelineEntries.map((entry) => {
                             const isGhost = isRecurringGhostTask(entry.task)
                             const isSelfCare = isSelfCareCalendarTask(

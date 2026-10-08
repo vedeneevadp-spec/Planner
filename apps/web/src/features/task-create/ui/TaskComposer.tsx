@@ -105,6 +105,7 @@ export function TaskComposer({
   const [requiresConfirmation, setRequiresConfirmation] = useState(false)
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
+  const [preservePlannedDate, setPreservePlannedDate] = useState(false)
   const [plannedEndTime, setPlannedEndTime] = useState('')
   const [reminderOffsets, setReminderOffsets] = useState<
     TaskReminderOffsetMinutes[]
@@ -125,7 +126,11 @@ export function TaskComposer({
     const previousViewportOffsetTop = rootStyle.getPropertyValue(
       '--task-composer-viewport-offset-top',
     )
-    const openButton = openButtonRef.current
+    const returnFocusElement =
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement !== document.body
+        ? document.activeElement
+        : openButtonRef.current
     document.body.style.overflow = 'hidden'
 
     function syncVisualViewport() {
@@ -181,7 +186,9 @@ export function TaskComposer({
         previousViewportOffsetTop,
       )
       window.removeEventListener('keydown', handleKeyDown)
-      openButton?.focus()
+      if (returnFocusElement?.isConnected) {
+        returnFocusElement.focus({ preventScroll: true })
+      }
     }
   }, [isOpen])
 
@@ -207,7 +214,8 @@ export function TaskComposer({
     setAssigneeUserId('')
     setRequiresConfirmation(false)
     setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
-    setPlannedStartTime('')
+    setPlannedStartTime(openDraft.plannedStartTime ?? '')
+    setPreservePlannedDate(openDraft.preservePlannedDate ?? false)
     setPlannedEndTime('')
     setReminderOffsets([])
     reminderAvailabilityRef.current = false
@@ -292,6 +300,7 @@ export function TaskComposer({
       plannedDate,
       plannedEndTime,
       plannedStartTime,
+      preservePlannedDate,
       plannerTimeZone,
       projectId,
       recurrenceForm,
@@ -334,6 +343,7 @@ export function TaskComposer({
     setRequiresConfirmation(false)
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
+    setPreservePlannedDate(false)
     setPlannedEndTime('')
     setReminderOffsets([])
     reminderAvailabilityRef.current = false
