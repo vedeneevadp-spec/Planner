@@ -19,8 +19,8 @@ SQL-first схема PostgreSQL.
 
 ## Требования
 
-- Node `24.19.0`
-- npm `12.0.2`
+- Node `24.21.0`
+- npm `12.2.0`
 - Docker для локального Postgres
 
 Версии Node зафиксированы в `.nvmrc` и `.node-version`.
@@ -28,6 +28,16 @@ SQL-first схема PostgreSQL.
 `packageManager` из `package.json`. Если npm пишет
 `Unknown env config "min-release-age"`, в окружение попал неподдерживаемый npm
 env config; перед project commands уберите `NPM_CONFIG_MIN_RELEASE_AGE`.
+
+При обновлении Node/npm установите зафиксированные версии локально и в
+окружении серверной сборки, затем выполните `npm run toolchain:check`.
+Deploy проверяет точное совпадение обеих версий до установки зависимостей;
+слияние PR само по себе не обновляет runtime сервера.
+
+Для зависимости `xcode` из Capacitor CLI используется проверенный override
+`uuid` версии `11.1.1`. Renovate ограничивает только этот override веткой
+11.x. Переход на `uuid` 12+ требует отдельной проверки загрузки ESM из
+`xcode`, операций с Xcode-проектом, синхронизации Capacitor и сборки iOS.
 
 ## Быстрый запуск
 
