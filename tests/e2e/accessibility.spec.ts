@@ -58,8 +58,12 @@ async function expectNoBlockingA11yViolations(page: Page) {
     blockingViolations.map((violation) => ({
       id: violation.id,
       impact: violation.impact,
-      nodes: violation.nodes.map((node) => node.target),
+      nodes: violation.nodes.map((node) => ({
+        target: node.target,
+        summary: node.failureSummary,
+      })),
     })),
+    `Accessibility violations at ${page.url()} (${JSON.stringify(page.viewportSize())})`,
   ).toEqual([])
 }
 
@@ -93,11 +97,11 @@ test('keeps desktop and mobile screens free of blocking accessibility violations
       },
       {
         path: '/spheres',
-        ready: () => page.getByRole('group', { name: 'Действия сфер' }),
+        ready: () => page.getByRole('heading', { name: 'Сфер пока нет' }),
       },
       {
         path: '/self-care',
-        ready: () => page.getByRole('group', { name: 'Действия заботы' }),
+        ready: () => page.getByRole('heading', { name: 'Сегодня спокойно' }),
       },
       {
         path: '/more',
