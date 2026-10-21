@@ -19,7 +19,7 @@ SQL-first схема PostgreSQL.
 
 ## Требования
 
-- Node `24.21.0`
+- Node `24.22.0`
 - npm `12.2.0`
 - Docker для локального Postgres
 
