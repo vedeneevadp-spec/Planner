@@ -31,7 +31,6 @@ import {
 } from './offline-shopping-list-store'
 import {
   drainShoppingListOfflineQueue,
-  isQueueableShoppingListMutationError,
   isShoppingListNetworkError,
   type ShoppingListOfflineDrainResult,
 } from './offline-shopping-list-sync'
@@ -50,6 +49,8 @@ import {
   formatShoppingListText,
   isActiveShoppingListTextItem,
 } from './shopping-list-text'
+
+const SHOPPING_LIST_READ_RETRY_LIMIT = 2
 
 function shoppingListQueryKey(workspaceId: string) {
   return ['shopping-list', workspaceId] as const
@@ -210,8 +211,10 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
 
       try {
         await drainQueuedMutations()
+        signal.throwIfAborted()
 
         const items = await requireShoppingListApi(api).listItems(signal)
+        signal.throwIfAborted()
         const syncedAt = new Date().toISOString()
         queryClient.setQueryData(readErrorQueryKey, null)
 
@@ -231,10 +234,21 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
 
         return items
       } catch (error) {
-        if (isQueueableShoppingListMutationError(error)) {
+        // Cancelled reads must not publish an error to other query observers.
+        signal.throwIfAborted()
+        const failureCount =
+          queryClient.getQueryState(queryKey)?.fetchFailureCount ?? 0
+
+        // Keep cached data visible while React Query retries a transient failure.
+        // Returning the cache earlier would turn that failure into a fresh success.
+        if (
+          isShoppingListNetworkError(error) &&
+          failureCount >= SHOPPING_LIST_READ_RETRY_LIMIT
+        ) {
           const cachedSnapshot = await loadCachedShoppingListSnapshot(
             session.workspaceId,
           )
+          signal.throwIfAborted()
 
           if (cachedSnapshot) {
             queryClient.setQueryData(readErrorQueryKey, error)
@@ -251,8 +265,9 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
     },
     queryKey,
     retry: (failureCount, error) =>
-      !isQueueableShoppingListMutationError(error) && failureCount < 2,
-    staleTime: 30_000,
+      !(error instanceof DOMException && error.name === 'AbortError') &&
+      failureCount < SHOPPING_LIST_READ_RETRY_LIMIT,
+    staleTime: () => (queryClient.getQueryData(readErrorQueryKey) ? 0 : 30_000),
   })
 
   return {
