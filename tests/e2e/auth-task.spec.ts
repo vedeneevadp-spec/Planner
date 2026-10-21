@@ -32,9 +32,7 @@ async function registerUser({
   await page.getByLabel('Подтвердите пароль').fill(password)
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
 
-  await expect(
-    page.getByRole('button', { name: 'Создать задачу' }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
 }
 
 async function expectComposerLayout(page: Page) {
@@ -73,8 +71,7 @@ async function expectComposerLayout(page: Page) {
 
 async function openTaskComposer(page: Page) {
   await page
-    .getByRole('button', { exact: true, name: 'Создать задачу' })
-    .or(page.getByRole('button', { exact: true, name: 'Новая задача' }))
+    .getByRole('button', { exact: true, name: 'Новая задача' })
     .first()
     .click()
 }
@@ -411,9 +408,7 @@ test('keeps auth after reload and exposes password reset before and after failed
   await registerUser({ ...user, page })
 
   await page.reload()
-  await expect(
-    page.getByRole('button', { name: 'Создать задачу' }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
 
   page.once('dialog', async (dialog) => {
     expect(dialog.message()).toBe(

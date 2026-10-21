@@ -15,7 +15,6 @@ export function PlannerMobileHeader() {
     <header className={styles.mobilePlannerHeader}>
       <SelectPicker
         className={styles.mobilePlannerWorkspaceSelect}
-        ariaLabel="Workspace"
         value={session?.workspaceId ?? ''}
         disabled={!session}
         placeholder="Workspace"

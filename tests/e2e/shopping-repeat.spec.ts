@@ -16,9 +16,7 @@ test('keeps the chosen category when buying the same item again on mobile', asyn
   await page.getByLabel('Пароль', { exact: true }).fill('e2e-password')
   await page.getByLabel('Подтвердите пароль').fill('e2e-password')
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
-  await expect(
-    page.getByRole('button', { name: 'Создать задачу' }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/shopping')

@@ -272,7 +272,6 @@ export function PlannerTopTabs() {
       </span>
       <SelectPicker
         className={styles.topWorkspaceSelect}
-        ariaLabel="Workspace"
         value={session?.workspaceId ?? ''}
         disabled={!session}
         placeholder="Workspace"
@@ -440,7 +439,7 @@ export function PlannerTopTabs() {
               styles.topTodayCreateTab,
             )}
             type="button"
-            aria-label="Создать задачу"
+            aria-label="Новая задача"
             title="Создать задачу"
             onClick={openTaskComposer}
           >
@@ -500,7 +499,7 @@ export function PlannerTopTabs() {
               styles.topSpheresCreateTab,
             )}
             type="button"
-            aria-label="Создать сферу"
+            aria-label="Новая сфера"
             title="Создать сферу"
             onClick={openSphereComposer}
           >
@@ -521,7 +520,7 @@ export function PlannerTopTabs() {
               styles.topHabitCreateTab,
             )}
             type="button"
-            aria-label="Создать заботу"
+            aria-label="Новая забота"
             title="Создать заботу"
             onClick={openSelfCareComposer}
           >
@@ -538,7 +537,7 @@ export function PlannerTopTabs() {
               styles.topTodayCreateTab,
             )}
             type="button"
-            aria-label="Создать задачу"
+            aria-label="Новая задача"
             title="Создать задачу"
             onClick={openTaskComposer}
           >

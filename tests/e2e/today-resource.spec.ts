@@ -118,9 +118,7 @@ test('defaults task forms to neutral and preserves legacy unknown resource cover
   await page.getByLabel('Пароль', { exact: true }).fill('e2e-password')
   await page.getByLabel('Подтвердите пароль').fill('e2e-password')
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
-  await page
-    .getByRole('button', { name: 'Создать задачу', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'Новая задача', exact: true }).click()
 
   const composer = page.getByRole('dialog', { name: 'Новая задача' })
   await composer.getByRole('textbox', { name: 'Задача' }).fill(title)

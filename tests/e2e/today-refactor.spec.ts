@@ -32,15 +32,12 @@ async function registerUser({
   await page.getByLabel('Подтвердите пароль').fill(password)
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
 
-  await expect(
-    page.getByRole('button', { name: 'Создать задачу' }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
 }
 
 async function openTaskComposer(page: Page) {
   await page
-    .getByRole('button', { exact: true, name: 'Создать задачу' })
-    .or(page.getByRole('button', { exact: true, name: 'Новая задача' }))
+    .getByRole('button', { exact: true, name: 'Новая задача' })
     .first()
     .click()
 }
