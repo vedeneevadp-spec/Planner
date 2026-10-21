@@ -153,6 +153,7 @@ describe('useShoppingList hooks', () => {
     expect(result.current.isSuccess).toBe(true)
     expect(result.current.error).toBeNull()
     expect(result.current.readError).toBe(networkError)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(result.current.activeItems).toEqual([cachedItem])
     expect(result.current.lastSuccessfulSyncAt).toBe('2026-09-16T06:00:00.000Z')
 
@@ -176,6 +177,131 @@ describe('useShoppingList hooks', () => {
       expect(secondObserver.result.current.readError).toBeNull()
     })
     expect(consoleError).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])(
+    'recovers from a transient startup failure without a settled error (cache: %s)',
+    async (hasCache) => {
+      const cachedItem = createShoppingItemRecord({
+        id: 'item-startup',
+        text: 'Сохранённая покупка',
+      })
+      if (hasCache) {
+        await replaceCachedShoppingListItems('workspace-1', [cachedItem])
+      }
+      const freshItem = { ...cachedItem, text: 'Обновлённая покупка' }
+      let finishRequest!: (response: Response) => void
+      fetchMock
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockImplementationOnce(
+          () =>
+            new Promise<Response>((resolve) => {
+              finishRequest = resolve
+            }),
+        )
+      const { result } = renderHook(() => useShoppingListSummary(), {
+        wrapper: createQueryWrapper(),
+      })
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      expect(result.current.isFetching).toBe(true)
+      expect(result.current.error).toBeNull()
+      expect(result.current.readError).toBeNull()
+      expect(result.current.activeItems).toEqual(hasCache ? [cachedItem] : [])
+
+      act(() => {
+        finishRequest(
+          jsonResponse({ items: [freshItem], limit: 200, page: 1, total: 1 }),
+        )
+      })
+
+      await waitFor(() => expect(result.current.isFetching).toBe(false))
+      expect(result.current.activeItems).toEqual([freshItem])
+      expect(result.current.error).toBeNull()
+      expect(result.current.readError).toBeNull()
+      expect(result.current.isShowingCachedData).toBe(false)
+    },
+  )
+
+  it('does not publish a cancelled request as a shared shopping read failure', async () => {
+    const cachedItem = createShoppingItemRecord({
+      id: 'item-cancelled',
+      text: 'Сохранённая покупка',
+    })
+    await replaceCachedShoppingListItems('workspace-1', [cachedItem])
+    let aborted = false
+    fetchMock.mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true
+            reject(new DOMException('Request cancelled', 'AbortError'))
+          })
+        }),
+    )
+    const { queryClient, wrapper } = createQueryHarness()
+    const { result } = renderHook(() => useShoppingListSummary(), { wrapper })
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(result.current.activeItems).toEqual([cachedItem])
+    })
+    await act(async () => {
+      await queryClient.cancelQueries({
+        queryKey: ['shopping-list', 'workspace-1'],
+      })
+      // Let the cancelled request finish its asynchronous cache handling.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+
+    expect(aborted).toBe(true)
+    expect(result.current.readError).toBeNull()
+    expect(result.current.isShowingCachedData).toBe(false)
+    expect(result.current.activeItems).toEqual([cachedItem])
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it('reports a persistent network failure after bounded retries without a cache', async () => {
+    const networkError = new TypeError('Failed to fetch')
+    fetchMock.mockRejectedValue(networkError)
+    const { result } = renderHook(() => useShoppingListSummary(), {
+      wrapper: createQueryWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(result.current.error).toBe(networkError)
+    expect(result.current.hasNetworkReadError).toBe(true)
+    expect(result.current.isFetching).toBe(false)
+    expect(result.current.data).toBeUndefined()
+  })
+
+  it('refreshes a failed cache fallback immediately when Today is opened again', async () => {
+    const cachedItem = createShoppingItemRecord({
+      id: 'item-reopened',
+      text: 'Сохранённая покупка',
+    })
+    await replaceCachedShoppingListItems('workspace-1', [cachedItem])
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+    const wrapper = createQueryWrapper()
+    const firstVisit = renderHook(() => useShoppingListSummary(), { wrapper })
+
+    await waitFor(() =>
+      expect(firstVisit.result.current.isShowingCachedData).toBe(true),
+    )
+    firstVisit.unmount()
+    const freshItem = { ...cachedItem, text: 'Обновлённая покупка' }
+    fetchMock.mockResolvedValue(
+      jsonResponse({ items: [freshItem], limit: 200, page: 1, total: 1 }),
+    )
+    const nextVisit = renderHook(() => useShoppingListSummary(), { wrapper })
+
+    await waitFor(() =>
+      expect(nextVisit.result.current.activeItems).toEqual([freshItem]),
+    )
+    expect(nextVisit.result.current.readError).toBeNull()
+    expect(nextVisit.result.current.isShowingCachedData).toBe(false)
   })
 
   it('creates a shopping item with normalized API payload', async () => {
@@ -672,6 +798,7 @@ function createQueryHarness() {
       },
       queries: {
         retry: false,
+        retryDelay: 0,
       },
     },
   })
