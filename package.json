@@ -119,7 +119,7 @@
     ]
   },
   "dependencies": {
-    "nodemailer": "^10.0.16",
+    "nodemailer": "^10.1.2",
     "pg": "^8.22.0"
   },
   "overrides": {
@@ -131,7 +131,7 @@
     }
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
+    "@axe-core/playwright": "^4.14.0",
     "@capacitor/android": "^8.5.2",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
@@ -157,7 +157,7 @@
     "globals": "^17.13.0",
     "husky": "^9.1.7",
     "jsdom": "^27.4.0",
-    "knip": "^6.39.0",
+    "knip": "^6.41.0",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
     "rollup-plugin-visualizer": "^7.1.1",
