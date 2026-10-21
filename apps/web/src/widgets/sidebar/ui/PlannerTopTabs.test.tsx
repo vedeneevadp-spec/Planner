@@ -112,7 +112,7 @@ describe('PlannerTopTabs', () => {
   it('shows the list view switcher on today', () => {
     renderPlannerTopTabs('/today?foo=bar')
 
-    expect(screen.getByRole('button', { name: 'Создать задачу' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Новая задача' })).toBeVisible()
     expect(
       screen.getByRole('button', { name: 'Показать задачи списком' }),
     ).toBeVisible()
@@ -134,7 +134,7 @@ describe('PlannerTopTabs', () => {
   it('opens task creation through a query trigger', () => {
     renderPlannerTopTabs('/today?foo=bar')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Создать задачу' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
 
     expect(screen.getByTestId('location').textContent).toContain(
       '/today?foo=bar&createTask=',
@@ -216,7 +216,7 @@ describe('PlannerTopTabs', () => {
   it('shows calendar view tabs on calendar', () => {
     renderPlannerTopTabs('/calendar')
 
-    expect(screen.getByRole('button', { name: 'Создать задачу' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Новая задача' })).toBeVisible()
     expect(screen.getByRole('tablist', { name: 'Вид календаря' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'День' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Неделя' })).toHaveAttribute(
@@ -230,7 +230,7 @@ describe('PlannerTopTabs', () => {
   it('opens calendar task creation through a query trigger', () => {
     renderPlannerTopTabs('/calendar?foo=bar&calendarView=month')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Создать задачу' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
 
     expect(screen.getByTestId('location').textContent).toContain(
       '/calendar?foo=bar&calendarView=month&createTask=',
@@ -382,7 +382,7 @@ describe('PlannerTopTabs', () => {
     expect(
       screen.getByRole('button', { name: 'Создать действие' }),
     ).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Создать сферу' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Новая сфера' })).toBeVisible()
   })
 
   it('opens task creation from the spheres tab through a query trigger', () => {
@@ -398,7 +398,7 @@ describe('PlannerTopTabs', () => {
   it('opens sphere creation through a query trigger', () => {
     renderPlannerTopTabs('/spheres?foo=bar')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Создать сферу' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Новая сфера' }))
 
     expect(screen.getByTestId('location').textContent).toContain(
       '/spheres?foo=bar&spheresAction=sphere&spheresActionRequest=',
@@ -409,13 +409,13 @@ describe('PlannerTopTabs', () => {
     renderPlannerTopTabs('/self-care')
 
     expect(screen.getByRole('group', { name: 'Действия заботы' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Создать заботу' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Новая забота' })).toBeVisible()
   })
 
   it('opens self-care creation through a query trigger', () => {
     renderPlannerTopTabs('/self-care?foo=bar')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Создать заботу' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Новая забота' }))
 
     expect(screen.getByTestId('location').textContent).toContain(
       '/self-care?foo=bar&selfCareAction=care&selfCareActionRequest=',
@@ -438,7 +438,9 @@ describe('PlannerTopTabs', () => {
   it('shows and updates the desktop workspace switcher', () => {
     renderPlannerTopTabs('/calendar')
 
-    const workspaceButton = screen.getByRole('button', { name: 'Workspace' })
+    const workspaceButton = screen.getByRole('button', {
+      name: 'Personal Workspace',
+    })
 
     expect(workspaceButton).toHaveTextContent('Personal Workspace')
 

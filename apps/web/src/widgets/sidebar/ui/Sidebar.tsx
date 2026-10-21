@@ -277,7 +277,6 @@ export function Sidebar({
 
               <SelectPicker
                 className={styles.mobileWorkspaceSelect}
-                ariaLabel="Workspace"
                 value={session?.workspaceId ?? ''}
                 disabled={!session}
                 placeholder="Workspace"
@@ -611,7 +610,6 @@ export function Sidebar({
               <div className={styles.workspaceControls}>
                 <SelectPicker
                   className={styles.workspaceSelect}
-                  ariaLabel="Workspace"
                   value={session.workspaceId}
                   options={session.workspaces.map((workspace) => ({
                     label: workspace.name,
