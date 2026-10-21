@@ -71,7 +71,8 @@ async function expectComposerLayout(page: Page) {
 
 async function openTaskComposer(page: Page) {
   await page
-    .getByRole('button', { exact: true, name: 'Новая задача' })
+    .getByRole('button', { exact: true, name: 'Создать задачу' })
+    .or(page.getByRole('button', { exact: true, name: 'Новая задача' }))
     .first()
     .click()
 }

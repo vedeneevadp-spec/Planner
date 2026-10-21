@@ -92,6 +92,14 @@ test('keeps desktop and mobile screens free of blocking accessibility violations
           page.getByRole('heading', { name: 'Календарь', exact: true }),
       },
       {
+        path: '/spheres',
+        ready: () => page.getByRole('group', { name: 'Действия сфер' }),
+      },
+      {
+        path: '/self-care',
+        ready: () => page.getByRole('group', { name: 'Действия заботы' }),
+      },
+      {
         path: '/more',
         ready: () => page.getByRole('button', { name: 'Выйти' }),
       },
