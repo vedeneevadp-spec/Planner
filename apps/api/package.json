@@ -26,7 +26,7 @@
     "@planner/contracts": "file:../../packages/contracts",
     "fastify": "^5.12.7",
     "fastify-rate-limit": "npm:@fastify/rate-limit@^11.2.1",
-    "jose": "^6.2.12",
+    "jose": "^6.2.13",
     "kysely": "^0.29.7",
     "nodemailer": "^10.1.7",
     "pg": "^8.22.0",
