@@ -21,7 +21,8 @@ const mocks = vi.hoisted(() => ({
   usePlannerSession: vi.fn<() => PlannerSessionQueryStub>(),
 }))
 
-vi.mock('@/shared/time/time.service', () => ({
+vi.mock('@/shared/time/time.service', async (importOriginal) => ({
+  ...(await importOriginal()),
   getDeviceTimeZone: () => mocks.getDeviceTimeZone(),
 }))
 
@@ -39,6 +40,8 @@ import { TimeZoneChangeBanner } from './TimeZoneChangeBanner'
 
 describe('TimeZoneChangeBanner', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-01-15T12:00:00Z'))
     mocks.getDeviceTimeZone.mockReturnValue('Europe/Moscow')
     mocks.usePlannerSession.mockReturnValue({
       data: createSessionResponse({
@@ -52,6 +55,7 @@ describe('TimeZoneChangeBanner', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
     vi.clearAllMocks()
   })
 
@@ -82,6 +86,92 @@ describe('TimeZoneChangeBanner', () => {
       }),
     ).toHaveTextContent('Europe/Samara -> Europe/Moscow')
   })
+
+  it.each([
+    ['Asia/Novosibirsk', 'Asia/Krasnoyarsk'],
+    ['Asia/Krasnoyarsk', 'Asia/Novosibirsk'],
+    ['Asia/Novosibirsk', 'Asia/Novosibirsk'],
+    ['Asia/Kolkata', 'Asia/Colombo'],
+    ['Europe/London', 'UTC'],
+  ])(
+    'stays silent for matching current offsets: %s -> %s',
+    (previousTimeZone, currentTimeZone) => {
+      mocks.usePlannerSession.mockReturnValue({
+        data: createSessionResponse({ lastSeenTimeZone: previousTimeZone }),
+        error: null,
+        isPending: false,
+        refetch: vi.fn(() => Promise.resolve()),
+      })
+      mocks.getDeviceTimeZone.mockReturnValue(currentTimeZone)
+
+      render(<TimeZoneChangeBanner />)
+      fireEvent.focus(window)
+      fireEvent(document, new Event('visibilitychange'))
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(mocks.updatePreferences).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each([
+    ['Asia/Kolkata', 'Asia/Kathmandu'],
+    ['Pacific/Honolulu', 'Pacific/Kiritimati'],
+    ['Invalid/TimeZone', 'Europe/Moscow'],
+  ])(
+    'keeps the choice for different or unknown offsets: %s -> %s',
+    async (previousTimeZone, currentTimeZone) => {
+      mocks.usePlannerSession.mockReturnValue({
+        data: createSessionResponse({ lastSeenTimeZone: previousTimeZone }),
+        error: null,
+        isPending: false,
+        refetch: vi.fn(() => Promise.resolve()),
+      })
+      mocks.getDeviceTimeZone.mockReturnValue(currentTimeZone)
+
+      render(<TimeZoneChangeBanner />)
+
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        `${previousTimeZone} -> ${currentTimeZone}`,
+      )
+    },
+  )
+
+  it('rechecks seasonal offsets when the app regains focus', () => {
+    mocks.usePlannerSession.mockReturnValue({
+      data: createSessionResponse({ lastSeenTimeZone: 'Europe/London' }),
+      error: null,
+      isPending: false,
+      refetch: vi.fn(() => Promise.resolve()),
+    })
+    mocks.getDeviceTimeZone.mockReturnValue('UTC')
+
+    render(<TimeZoneChangeBanner />)
+    fireEvent.focus(window)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    vi.setSystemTime(new Date('2026-07-15T12:00:00Z'))
+    fireEvent.focus(window)
+    expect(screen.getByRole('status')).toHaveTextContent('Europe/London -> UTC')
+
+    vi.setSystemTime(new Date('2026-12-15T12:00:00Z'))
+    fireEvent(document, new Event('visibilitychange'))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(mocks.updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it.each(['Europe/Samara', 'Europe/Astrakhan'])(
+    'clears a pending choice after returning to the previous offset in %s',
+    async (currentTimeZone) => {
+      render(<TimeZoneChangeBanner />)
+      expect(await screen.findByRole('status')).toBeInTheDocument()
+
+      mocks.getDeviceTimeZone.mockReturnValue(currentTimeZone)
+      fireEvent.focus(window)
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(mocks.updatePreferences).not.toHaveBeenCalled()
+    },
+  )
 
   it('uses the current city and hides the banner', async () => {
     render(<TimeZoneChangeBanner />)
