@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { getDeviceTimeZone } from '@/shared/time/time.service'
+import { formatTimeZoneOffsetLabel } from '@/shared/lib/date'
+import { getDeviceTimeZone, isValidTimeZone } from '@/shared/time/time.service'
 
 import { usePlannerSession } from '../lib/usePlannerSession'
 import { useUpdateUserPreferences } from '../lib/useUserPreferences'
@@ -35,9 +36,20 @@ export function TimeZoneChangeBanner() {
       return
     }
 
-    if (previousTimeZone !== currentTimeZone) {
-      setChange({ currentTimeZone, previousTimeZone })
+    const now = new Date()
+
+    if (
+      previousTimeZone === currentTimeZone ||
+      (isValidTimeZone(previousTimeZone) &&
+        isValidTimeZone(currentTimeZone) &&
+        formatTimeZoneOffsetLabel(now, previousTimeZone) ===
+          formatTimeZoneOffsetLabel(now, currentTimeZone))
+    ) {
+      setChange(null)
+      return
     }
+
+    setChange({ currentTimeZone, previousTimeZone })
   }, [session, updatePreferences])
 
   useEffect(() => {
