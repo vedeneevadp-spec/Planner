@@ -104,6 +104,19 @@ test('keeps week geometry stable while loading and rapidly switching periods', a
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport)
+    // Measure the resting layout after the page entrance, while keeping all
+    // period transitions enabled during the navigation checks below.
+    await page.evaluate(async () => {
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter(
+            (animation) =>
+              animation.effect?.getTiming().iterations !== Infinity,
+          )
+          .map((animation) => animation.finished.catch(() => undefined)),
+      )
+    })
     const baseline = (await sampleWeekGeometry(week))[0]!
     let releaseReads = () => {}
     pendingReads = new Promise<void>((resolve) => {
@@ -148,6 +161,10 @@ test('keeps week geometry stable while loading and rapidly switching periods', a
     samples.push(...(await sampleWeekGeometry(week)))
     await expect(loading).toBeHidden()
     samples.push(...(await sampleWeekGeometry(week)))
+    await testInfo.attach(`geometry-${viewport.width}`, {
+      body: JSON.stringify({ baseline, samples }),
+      contentType: 'application/json',
+    })
     expect(
       samples.every((sample) => Math.abs(sample.top - baseline.top) < 0.5),
     ).toBe(true)
@@ -166,10 +183,6 @@ test('keeps week geometry stable while loading and rapidly switching periods', a
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true)
-    await testInfo.attach(`geometry-${viewport.width}`, {
-      body: JSON.stringify({ baseline, samples }),
-      contentType: 'application/json',
-    })
     await page.screenshot({
       path: testInfo.outputPath(`loaded-dark-${viewport.width}.png`),
       fullPage: true,
