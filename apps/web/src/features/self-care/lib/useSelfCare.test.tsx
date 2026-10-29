@@ -320,7 +320,11 @@ describe('self-care persistent reads and offline commands', () => {
       await act(async () => {
         await hooks.result.current.dashboard.refetch()
       })
-      expect(hooks.result.current.dashboard.data?.settings.currency).toBe('EUR')
+      await waitFor(() => {
+        expect(hooks.result.current.dashboard.data?.settings.currency).toBe(
+          'EUR',
+        )
+      })
     })
 
     it('restores an actor-scoped cached read when the API is unavailable', async () => {
