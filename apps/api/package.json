@@ -28,7 +28,7 @@
     "fastify-rate-limit": "npm:@fastify/rate-limit@^11.2.1",
     "jose": "^6.2.13",
     "kysely": "^0.29.7",
-    "nodemailer": "^10.1.7",
+    "nodemailer": "^10.2.1",
     "pg": "^8.22.0",
     "zod": "^4.6.7"
   },
