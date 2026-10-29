@@ -407,6 +407,19 @@ export function SelfCarePage() {
       })
   }
 
+  function handleTogglePauseItem(entry: SelfCareTodayItem): void {
+    if (isSelfCareActionBusy) return
+    setFormError(null)
+    void updateItemMutation
+      .mutateAsync({
+        input: { isActive: !entry.item.isActive },
+        itemId: entry.item.id,
+      })
+      .catch((error: unknown) => {
+        setFormError(getSelfCareErrorMessage(error))
+      })
+  }
+
   function handleEditItem(entry: SelfCareTodayItem): void {
     setFormError(null)
     setEditDialogEntry(entry)
@@ -986,6 +999,7 @@ export function SelfCarePage() {
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
           onEditItem={handleEditItem}
+          onTogglePauseItem={handleTogglePauseItem}
           onRestartCourse={handleRestartCourse}
           onScheduleItem={handleScheduleItem}
           onSkipOccurrence={handleSkipOccurrence}
@@ -1010,6 +1024,7 @@ export function SelfCarePage() {
           onAddCare={openCreateDialog}
           onCancelOccurrence={handleCancelPlannedOccurrence}
           onEditItem={handleEditItem}
+          onTogglePauseItem={handleTogglePauseItem}
           onRestartCourse={handleRestartCourse}
           onScheduleItem={handleScheduleItem}
         />
@@ -1029,6 +1044,7 @@ export function SelfCarePage() {
           uploadedIcons={uploadedIcons}
           onArchiveItem={handleArchiveItem}
           onEditItem={handleEditItem}
+          onTogglePauseItem={handleTogglePauseItem}
           onRestartCourse={handleRestartCourse}
           onScheduleItem={handleScheduleItem}
           onAddCare={openCreateDialog}

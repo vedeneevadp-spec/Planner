@@ -242,7 +242,12 @@ function projectDashboard(
   }
   const item = readResultItem(overlay)
 
-  if (item?.type === 'flexible_goal' && !item.isArchived && !item.deletedAt) {
+  if (
+    item?.type === 'flexible_goal' &&
+    item.isActive &&
+    !item.isArchived &&
+    !item.deletedAt
+  ) {
     next = {
       ...next,
       flexibleGoals: ensureItemEntry(next.flexibleGoals, item, overlay.command),
@@ -271,7 +276,12 @@ function projectPlan(
   }
   const item = readResultItem(overlay)
 
-  if (item?.type === 'course' && !item.isArchived && !item.deletedAt) {
+  if (
+    item?.type === 'course' &&
+    item.isActive &&
+    !item.isArchived &&
+    !item.deletedAt
+  ) {
     next = {
       ...next,
       courses: ensureItemEntry(next.courses, item, overlay.command),
@@ -321,7 +331,7 @@ function projectAnalytics(
   const completion = readResultCompletion(overlay)
   let next: SelfCareAnalyticsResponse = {
     ...current,
-    courses: projectEntryList(current.courses, overlay, () => false),
+    courses: projectEntryList(current.courses, overlay, () => false, true),
     flexibleGoals: projectEntryList(
       current.flexibleGoals,
       overlay,
@@ -398,6 +408,7 @@ function projectEntryList(
   entries: SelfCareTodayItem[],
   overlay: SelfCareOfflineOverlay,
   shouldAddOccurrence: (occurrence: SelfCareOccurrence) => boolean,
+  includeInactive = false,
 ): SelfCareTodayItem[] {
   const item = readResultItem(overlay)
   const completion = readResultCompletion(overlay)
@@ -406,7 +417,7 @@ function projectEntryList(
 
   if (item && !completion) {
     next =
-      item.isArchived || item.deletedAt
+      (!includeInactive && !item.isActive) || item.isArchived || item.deletedAt
         ? next.filter((entry) => entry.item.id !== item.id)
         : replaceItemInEntries(next, item).map((entry) =>
             entry.item.id === item.id

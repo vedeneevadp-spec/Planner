@@ -25,6 +25,83 @@ const ITEM_ID = 'self-care-course-1'
 const OCCURRENCE_ID = 'self-care-occurrence-1'
 
 describe('optimistic self-care commands', () => {
+  it('projects a paused care out of Today and Plan while keeping it and its history', () => {
+    const source = createSource()
+    const command: SelfCareOfflineCommand = {
+      type: 'update_item',
+      itemId: ITEM_ID,
+      expectedVersion: 7,
+      input: { isActive: false },
+    }
+    const result = createOptimisticSelfCareResult(command, source)
+    const overlay: SelfCareOfflineOverlay = {
+      command,
+      result,
+      operationId: generateUuidV7(),
+      sequence: 1,
+      status: 'pending',
+    }
+    expect(
+      projectSelfCareRead(
+        'dashboard',
+        ['2026-08-07'],
+        source.dashboard,
+        overlay,
+      ),
+    ).toMatchObject({
+      todayItems: [],
+      flexibleGoals: [],
+      overdueItems: [],
+      planningHints: [],
+      upcomingImportant: [],
+    })
+    expect(
+      projectSelfCareRead(
+        'plan',
+        ['2026-08-01', '2026-08-31'],
+        source.plan,
+        overlay,
+      ),
+    ).toMatchObject({
+      courses: [],
+      occurrences: [],
+      medical: [],
+      planningHints: [],
+    })
+    expect(
+      projectSelfCareRead('items', [], source.list, overlay),
+    ).toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: ITEM_ID,
+          isActive: false,
+          isArchived: false,
+        }),
+      ],
+    })
+    expect(
+      projectSelfCareRead(
+        'history',
+        ['2026-08-01', '2026-08-31'],
+        source.history,
+        overlay,
+      ),
+    ).toMatchObject({
+      items: [expect.objectContaining({ id: ITEM_ID, isActive: false })],
+      completions: source.history!.completions,
+    })
+    const goalSource = createSource()
+    goalSource.list!.items[0]!.type = 'flexible_goal'
+    goalSource.dashboard!.flexibleGoals = goalSource.dashboard!.todayItems
+    const goalResult = createOptimisticSelfCareResult(command, goalSource)
+    expect(
+      projectSelfCareRead('dashboard', ['2026-08-07'], goalSource.dashboard, {
+        ...overlay,
+        result: goalResult,
+      }),
+    ).toMatchObject({ flexibleGoals: [], todayItems: [] })
+  })
+
   it('updates a same-date occurrence in place without creating move history', () => {
     const source = createSource()
     const input = createScheduleInput({

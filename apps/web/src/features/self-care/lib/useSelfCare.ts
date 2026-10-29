@@ -767,6 +767,13 @@ export function useCreateSelfCareItemFromTemplate() {
 
 export function useUpdateSelfCareItem() {
   return useSelfCareCommandMutation({
+    afterResult: async (item, { queryClient, storageWorkspaceId }) => {
+      await invalidateMigratedHabitRoutine(
+        queryClient,
+        storageWorkspaceId,
+        item.migratedFromHabitId,
+      )
+    },
     buildCommand: (variables: ItemUpdateVariables, source, occurredAt) => {
       const item = requireSelfCareItemFromSource(source, variables.itemId)
       const { expectedVersion: _ignored, ...rawInput } = variables.input
@@ -813,6 +820,7 @@ export function useUpdateSelfCareItem() {
         input,
         itemId: item.id,
         ...(scheduleChange ? { scheduleChange } : {}),
+        ...(input.isActive !== undefined ? { actedAt: occurredAt } : {}),
         type: 'update_item',
       }
     },

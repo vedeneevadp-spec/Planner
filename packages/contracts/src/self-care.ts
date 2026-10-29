@@ -181,6 +181,9 @@ export const selfCareItemSchema = z.object({
   minimumVersionDescription: z.string().nullable(),
   minimumVersionDurationMinutes: z.number().int().positive().nullable(),
   minimumVersionTitle: z.string().nullable(),
+  pausePeriods: z
+    .array(z.object({ from: z.iso.date(), to: z.iso.date().nullable() }))
+    .optional(),
   preferredTimeOfDay: selfCareTimeOfDaySchema.nullable(),
   title: z.string().min(1),
   type: selfCareItemTypeSchema,
@@ -1131,6 +1134,7 @@ export const selfCareOfflineCommandSchema = z
       itemId: z.string().min(1),
       scheduleChange: selfCareCommandScheduleChangeSchema.optional(),
       type: z.literal('update_item'),
+      actedAt: selfCareCommandActionAtSchema.optional(),
     }),
     z.object({
       expectedVersion: selfCareCommandExpectedVersionSchema,

@@ -9,6 +9,7 @@ import {
   assertAtomicRuleEditPreservesSingleSchedule,
   assertCoursePauseReconcilesGeneratedSlots,
   assertFutureScheduleReconciles,
+  assertRecurringCarePausePreservesHistory,
   assertRitualHistorySurvivesEditing,
 } from './self-care.repository.regression-contract.js'
 
@@ -26,6 +27,10 @@ void test('self-care item patches preserve omitted fields and reject empty updat
 })
 
 for (const [name, verify] of [
+  [
+    'recurring pause preserves history and does not backfill paused dates',
+    assertRecurringCarePausePreservesHistory,
+  ],
   [
     'course pause reconciles automatic slots and preserves manual schedule',
     assertCoursePauseReconcilesGeneratedSlots,

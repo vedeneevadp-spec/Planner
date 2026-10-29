@@ -244,6 +244,71 @@ describe('CalendarPage', () => {
     ).toHaveAttribute('data-calendar-view', 'week')
   })
 
+  it.each(['tasks', 'self-care'] as const)(
+    'keeps the week usable without a loading banner while %s load',
+    (source) => {
+      const { rerender } = renderCalendarPage('/calendar?calendarView=week')
+      const week = screen.getByLabelText('Неделя')
+      const previousTitle = screen.getByTestId(
+        'calendar-period-title',
+      ).textContent
+
+      if (source === 'tasks') {
+        mocks.calendarTaskRangeQuery.isPending = true
+      } else {
+        mocks.selfCarePlanQuery.data = undefined
+        mocks.selfCarePlanQuery.isPending = true
+      }
+      rerenderCalendarPage(rerender, '/calendar?calendarView=week')
+
+      expect(
+        screen.getByRole('status', { name: 'Обновляем календарь' }),
+      ).toBeVisible()
+      expect(screen.queryByText('Дополняем календарь')).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(/Последняя синхронизация:/),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId('page-state-skeleton'),
+      ).not.toBeInTheDocument()
+      for (let index = 0; index < 3; index += 1) {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Следующий период' }),
+        )
+        expect(screen.getByLabelText('Неделя')).toBe(week)
+      }
+      expect(screen.getByTestId('calendar-period-title').textContent).not.toBe(
+        previousTitle,
+      )
+
+      mocks.calendarTaskRangeQuery.isPending = false
+      mocks.selfCarePlanQuery.isPending = false
+      mocks.selfCarePlanQuery.data = { occurrences: [] }
+      rerenderCalendarPage(rerender, '/calendar?calendarView=week')
+
+      expect(
+        screen.queryByRole('status', { name: 'Обновляем календарь' }),
+      ).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Неделя')).toBe(week)
+    },
+  )
+
+  it('keeps a failed read actionable while other calendar data is loading', () => {
+    mocks.calendarTaskRangeQuery.error = new Error('Calendar range failed')
+    mocks.selfCarePlanQuery.data = undefined
+    mocks.selfCarePlanQuery.isPending = true
+
+    renderCalendarPage('/calendar?calendarView=week')
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Календарь обновился не полностью',
+    )
+    expect(screen.getByLabelText('Неделя')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
+    expect(mocks.calendarTaskRangeQuery.refetch).toHaveBeenCalledTimes(1)
+    expect(mocks.selfCarePlanQuery.refetch).toHaveBeenCalledTimes(1)
+  })
+
   it.each([
     ['понедельник, 8 июня', '2026-06-08', '00:00'],
     ['среда, 10 июня', '2026-06-10', '09:00'],

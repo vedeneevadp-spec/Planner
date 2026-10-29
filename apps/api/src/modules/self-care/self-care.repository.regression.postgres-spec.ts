@@ -23,10 +23,15 @@ import {
   assertAtomicRuleEditPreservesSingleSchedule,
   assertCoursePauseReconcilesGeneratedSlots,
   assertFutureScheduleReconciles,
+  assertRecurringCarePausePreservesHistory,
   assertRitualHistorySurvivesEditing,
 } from './self-care.repository.regression-contract.js'
 
 for (const [name, verify] of [
+  [
+    'recurring pause preserves history and does not backfill paused dates',
+    assertRecurringCarePausePreservesHistory,
+  ],
   [
     'course pause reconciles automatic slots and preserves manual schedule',
     assertCoursePauseReconcilesGeneratedSlots,
@@ -66,7 +71,10 @@ for (const [name, verify] of [
       }
       await verify(repository, context)
 
-      if (verify === assertRitualHistorySurvivesEditing) {
+      if (
+        verify === assertRitualHistorySurvivesEditing ||
+        verify === assertRecurringCarePausePreservesHistory
+      ) {
         const date = getDateKeyInTimeZone(new Date(), 'UTC')
         const history = await repository.getHistory(context, date, date)
         const items = await repository.listItems(context)
@@ -86,7 +94,7 @@ for (const [name, verify] of [
             archive.tables.self_care_ritual_steps?.filter(
               (row) => row.deleted_at !== null,
             ).length,
-            2,
+            verify === assertRitualHistorySurvivesEditing ? 2 : 0,
           )
           await connection.pool.query(
             'delete from app.self_care_items where user_id = $1',
@@ -112,6 +120,12 @@ for (const [name, verify] of [
           assert.deepEqual(
             (await repository.listItems(context)).steps,
             items.steps,
+          )
+          assert.deepEqual(
+            (await repository.listItems(context)).items.map(
+              (item) => item.pausePeriods,
+            ),
+            items.items.map((item) => item.pausePeriods),
           )
         } finally {
           await rm(assets, { recursive: true, force: true })

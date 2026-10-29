@@ -874,11 +874,7 @@ export function CalendarPage() {
     calendarBlockingState === null &&
     (isPlannerCalendarOffline || isSelfCareCalendarOffline)
       ? ('offline' as const)
-      : calendarBlockingState === null &&
-          (isCalendarRestoring ||
-            (calendarTaskRangeQuery.isPending &&
-              calendarTaskRangeQuery.data === undefined) ||
-            (isSelfCareCalendarLoading && !hasSelfCareCalendarData))
+      : calendarBlockingState === null && isCalendarRestoring
         ? ('info' as const)
         : calendarBlockingState === null &&
             (hasTaskReadError ||
@@ -889,6 +885,12 @@ export function CalendarPage() {
               calendarTaskRangeQuery.data?.truncated
             ? ('info' as const)
             : null
+  const isCalendarUpdating =
+    calendarBlockingState === null &&
+    calendarBannerKind === null &&
+    ((calendarTaskRangeQuery.isPending &&
+      calendarTaskRangeQuery.data === undefined) ||
+      (isSelfCareCalendarLoading && !hasSelfCareCalendarData))
   const isCalendarAccessIssue = isCalendarAccessUnavailable(readiness)
   const calendarBannerTitle =
     calendarBannerKind === 'offline'
@@ -896,9 +898,7 @@ export function CalendarPage() {
       : calendarBannerKind === 'info'
         ? isCalendarRestoring
           ? 'Восстанавливаем доступ'
-          : calendarTaskRangeQuery.data?.truncated
-            ? 'Большой диапазон загружен частично'
-            : 'Дополняем календарь'
+          : 'Большой диапазон загружен частично'
         : isCalendarAccessIssue
           ? 'Нужно восстановить доступ'
           : 'Календарь обновился не полностью'
@@ -912,7 +912,7 @@ export function CalendarPage() {
           ? 'Сохранённые данные доступны для просмотра. Изменения появятся после восстановления доступа.'
           : calendarTaskRangeQuery.data?.truncated
             ? `Показаны первые ${calendarTaskRangeQuery.data.returnedCount} из ${calendarTaskRangeQuery.data.totalCount} задач выбранного диапазона.`
-            : 'Основные задачи уже доступны. Остальные данные календаря ещё загружаются.'
+            : undefined
         : isCalendarAccessIssue
           ? 'Сохранённые данные доступны для просмотра. Обновите доступ, чтобы снова получать изменения.'
           : 'Сохранённые данные остаются доступны. Повторите обновление.'
@@ -1293,12 +1293,25 @@ export function CalendarPage() {
           >
             <ChevronRightIcon size={18} strokeWidth={2.2} />
           </button>
-          <strong
-            className={styles.periodTitle}
-            data-testid="calendar-period-title"
-          >
-            {title}
-          </strong>
+          <div className={styles.periodTitle}>
+            <strong data-testid="calendar-period-title">{title}</strong>
+            {isCalendarUpdating ? (
+              <span
+                className={styles.calendarLoadingStatus}
+                role="status"
+                aria-label="Обновляем календарь"
+                title="Обновляем календарь"
+              >
+                <span
+                  className={styles.calendarLoadingSpinner}
+                  aria-hidden="true"
+                />
+                <span className={styles.visuallyHidden}>
+                  Обновляем календарь
+                </span>
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className={styles.toolbarActions}>

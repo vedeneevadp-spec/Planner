@@ -108,6 +108,7 @@ export function mapItemRow(row: ItemRow): StoredSelfCareItemRecord {
     minimumVersionDescription: row.minimum_version_description,
     minimumVersionDurationMinutes: row.minimum_version_duration_minutes,
     minimumVersionTitle: row.minimum_version_title,
+    pausePeriods: row.pause_periods,
     preferredTimeOfDay: row.preferred_time_of_day,
     title: row.title,
     type: row.type,
