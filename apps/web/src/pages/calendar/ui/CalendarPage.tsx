@@ -695,6 +695,13 @@ export function CalendarPage() {
     [anchorDate, createTaskRequestId, requestedTaskDraft],
   )
   const weekDateKeys = useMemo(() => getWeekDateKeys(anchorDate), [anchorDate])
+  const weekDateLabels = useMemo(
+    () =>
+      new Map(
+        weekDateKeys.map((dateKey) => [dateKey, formatLongDate(dateKey)]),
+      ),
+    [weekDateKeys],
+  )
   const scheduleDateKeys = useMemo(
     () => getScheduleDateKeys(anchorDate),
     [anchorDate],
@@ -848,18 +855,23 @@ export function CalendarPage() {
     [plannerCalendarTasks, selfCareCalendarTasks, todayKey, visibleDateRange],
   )
   const monthLoad = useMemo(
-    () => buildCalendarMonthLoad(calendarTasks, anchorDate),
-    [anchorDate, calendarTasks],
+    () =>
+      viewMode === 'month'
+        ? buildCalendarMonthLoad(calendarTasks, anchorDate)
+        : null,
+    [anchorDate, calendarTasks, viewMode],
   )
   const scheduleDays = useMemo(
     () =>
-      scheduleDateKeys
-        .map((dateKey) => ({
-          dateKey,
-          tasks: getTasksForDate(calendarTasks, dateKey),
-        }))
-        .filter((day) => day.tasks.length > 0),
-    [calendarTasks, scheduleDateKeys],
+      viewMode === 'schedule'
+        ? scheduleDateKeys
+            .map((dateKey) => ({
+              dateKey,
+              tasks: getTasksForDate(calendarTasks, dateKey),
+            }))
+            .filter((day) => day.tasks.length > 0)
+        : [],
+    [calendarTasks, scheduleDateKeys, viewMode],
   )
   const hasScheduleDays = scheduleDays.length > 0
   const calendarBlockingState = plannerBlockingState
@@ -929,8 +941,9 @@ export function CalendarPage() {
           ? 'Записи заботы о себе пока не удалось обновить. Обычную задачу можно добавить сейчас.'
           : 'Записи заботы о себе ещё не загружены. Обычную задачу можно добавить сейчас.'
   const dayTimelineEntries = useMemo(
-    () => buildTimelineLayout(calendarTasks, anchorDate),
-    [anchorDate, calendarTasks],
+    () =>
+      viewMode === 'day' ? buildTimelineLayout(calendarTasks, anchorDate) : [],
+    [anchorDate, calendarTasks, viewMode],
   )
   const weekTimelineEntries = useMemo(() => {
     if (viewMode !== 'week') {
@@ -947,19 +960,23 @@ export function CalendarPage() {
   const weekUntimedTasks = useMemo(
     () =>
       new Map(
-        weekDateKeys.map((dateKey) => [
-          dateKey,
-          getTasksForDate(calendarTasks, dateKey).filter(
-            (task) => !task.plannedStartTime,
-          ),
-        ]),
+        viewMode === 'week'
+          ? weekDateKeys.map((dateKey) => [
+              dateKey,
+              getTasksForDate(calendarTasks, dateKey).filter(
+                (task) => !task.plannedStartTime,
+              ),
+            ])
+          : [],
       ),
-    [calendarTasks, weekDateKeys],
+    [calendarTasks, weekDateKeys, viewMode],
   )
   const hasWeekUntimedTasks = [...weekUntimedTasks.values()].some(
     (items) => items.length > 0,
   )
   const dayUnscheduledTasks = useMemo(() => {
+    if (viewMode !== 'day') return []
+
     const scheduledTaskIds = new Set(
       buildTimelineLayout(plannerCalendarTasks, anchorDate).map(
         (entry) => entry.task.id,
@@ -969,7 +986,7 @@ export function CalendarPage() {
     return selectPlannedTasks(plannerCalendarTasks, anchorDate).filter(
       (task) => !scheduledTaskIds.has(task.id),
     )
-  }, [anchorDate, plannerCalendarTasks])
+  }, [anchorDate, plannerCalendarTasks, viewMode])
   const timeRange = useMemo(
     () => getTimeRange(calendarTasks, timedDateKeys),
     [calendarTasks, timedDateKeys],
@@ -994,7 +1011,7 @@ export function CalendarPage() {
         ? styles.periodTransitionPrev
         : undefined
   const periodSwipeHandlers = useHorizontalPeriodSwipe({
-    enabled: canSwipePeriod && !periodTransition,
+    enabled: canSwipePeriod,
     onSwipeLeft: () => shiftPeriod('next'),
     onSwipeRight: () => shiftPeriod('prev'),
   })
@@ -1546,7 +1563,7 @@ export function CalendarPage() {
                           key={dateKey}
                           className={styles.weekUntimedTasks}
                           role="group"
-                          aria-label={`Без времени, ${formatLongDate(dateKey)}`}
+                          aria-label={`Без времени, ${weekDateLabels.get(dateKey)}`}
                         >
                           {(weekUntimedTasks.get(dateKey) ?? []).map((task) => (
                             <CalendarTaskPill
@@ -1600,7 +1617,7 @@ export function CalendarPage() {
                                 )}
                                 type="button"
                                 disabled={!canUseCalendarActions}
-                                aria-label={`Создать задачу, ${formatLongDate(dateKey)}, ${startTime}`}
+                                aria-label={`Создать задачу, ${weekDateLabels.get(dateKey)}, ${startTime}`}
                                 onClick={() =>
                                   requestTaskComposer({
                                     plannedDate: dateKey,
@@ -1679,7 +1696,7 @@ export function CalendarPage() {
                 </div>
 
                 <div className={styles.monthGrid}>
-                  {monthLoad.days.map((day) => {
+                  {monthLoad?.days.map((day) => {
                     const dayTasks = sortCalendarTasks(day.plannedTasks)
                     const hiddenTaskCount = Math.max(
                       0,

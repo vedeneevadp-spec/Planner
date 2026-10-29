@@ -309,6 +309,29 @@ describe('CalendarPage', () => {
     expect(mocks.selfCarePlanQuery.refetch).toHaveBeenCalledTimes(1)
   })
 
+  it('accepts consecutive week swipes while calendar reads and the animation are pending', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-12T10:00:00'))
+    mocks.calendarTaskRangeQuery.isPending = true
+    mocks.selfCarePlanQuery.data = undefined
+    mocks.selfCarePlanQuery.isPending = true
+    renderCalendarPage('/calendar?calendarView=week')
+
+    for (let index = 0; index < 5; index += 1) {
+      swipeCalendarSurface('Неделя', 'left')
+    }
+    for (let index = 0; index < 2; index += 1) {
+      swipeCalendarSurface('Неделя', 'right')
+    }
+
+    expect(screen.getByTestId('calendar-period-title')).toHaveTextContent(
+      '29 июн',
+    )
+    expect(
+      screen.getByRole('status', { name: 'Обновляем календарь' }),
+    ).toBeVisible()
+  })
+
   it.each([
     ['понедельник, 8 июня', '2026-06-08', '00:00'],
     ['среда, 10 июня', '2026-06-10', '09:00'],
