@@ -20,6 +20,7 @@ interface SelfCareCachedReadRow {
   data: unknown
   key: string
   lastSuccessfulSyncAt: string
+  mutationAppliedAt?: number | undefined
   requestStartedAt?: number | undefined
   scope: string
   valueVersion: number
@@ -477,7 +478,9 @@ export async function saveCachedSelfCareRead<TData>(
 
       if (
         current?.valueVersion === SELF_CARE_CACHE_VALUE_VERSION &&
-        (current.requestStartedAt ?? 0) > requestStartedAt
+        ((current.requestStartedAt ?? 0) > requestStartedAt ||
+          (current.mutationAppliedAt !== undefined &&
+            requestStartedAt <= current.mutationAppliedAt))
       ) {
         return {
           read: {
@@ -493,6 +496,7 @@ export async function saveCachedSelfCareRead<TData>(
         data,
         key: storageKey,
         lastSuccessfulSyncAt,
+        mutationAppliedAt: current?.mutationAppliedAt,
         requestStartedAt,
         scope,
         valueVersion: SELF_CARE_CACHE_VALUE_VERSION,
@@ -986,6 +990,8 @@ export async function commitSelfCareOfflineMutationResult(
       await db.cachedReads.bulkPut(
         rows.map((row) => ({
           ...row,
+          // A read started before acknowledgement can still contain the old state.
+          mutationAppliedAt: Date.now(),
           data: applyOverlay(
             row.scope,
             row.cacheKey ?? row.scope,

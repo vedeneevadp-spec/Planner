@@ -747,7 +747,9 @@ export function buildSelfCareEditPayload(
       (draft.entry.scheduleRule?.repeatKind === 'flexible_goal'
         ? 'flexible_goal'
         : getInitialFlexibleGoalRepeatMode(draft.entry.scheduleRule))
-    input.isActive = true
+    input.isActive =
+      draft.entry.scheduleRule?.repeatKind === 'none' ||
+      draft.entry.item.isActive
     input.scheduleRule = buildCreateScheduleRule({
       dayOfMonth: model.dayOfMonthNumber ?? getDatePart(draft.todayKey, 'day'),
       daysOfWeek: draft.daysOfWeek,

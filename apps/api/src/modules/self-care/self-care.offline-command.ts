@@ -68,6 +68,7 @@ export async function dispatchSelfCareOfflineCommand(
     }
     case 'update_item': {
       const item = await repository.updateItem({
+        actedAt: command.actedAt,
         context,
         input: { ...command.input, expectedVersion: command.expectedVersion },
         itemId: command.itemId,

@@ -4,6 +4,7 @@ import {
   getTodayDate,
   type HabitEntryRecord,
   type HabitRecord,
+  isSelfCarePausedOnDate,
   makeFixedZoneDateTime,
   type SelfCareAnalyticsResponse,
   type SelfCareAppointmentDetails,
@@ -208,6 +209,7 @@ export function createSelfCareRecords(
     minimumVersionDescription: minimum?.description || null,
     minimumVersionDurationMinutes: minimum?.durationMinutes ?? null,
     minimumVersionTitle: minimum?.title ?? null,
+    pausePeriods: [],
     preferredTimeOfDay: input.preferredTimeOfDay,
     title: input.title,
     type: input.type,
@@ -712,7 +714,10 @@ export function generateSelfCareOccurrencesForRange(input: {
   })
 
   return dates.flatMap((scheduledFor) => {
-    if (existingDates.has(scheduledFor)) {
+    if (
+      existingDates.has(scheduledFor) ||
+      isSelfCarePausedOnDate(item, scheduledFor)
+    ) {
       return []
     }
 
@@ -874,7 +879,12 @@ export function buildAnalyticsResponse(input: {
   const completions = selectHistoryCompletions(input)
   const itemById = new Map(
     input.state.items
-      .filter(isVisibleSelfCareItem)
+      .filter((item) =>
+        isVisibleSelfCareItem({
+          ...item,
+          isActive: item.isActive || Boolean(item.pausePeriods?.length),
+        }),
+      )
       .map((item) => [item.id, item]),
   )
   const measurementDetailsByItemId = new Map(
@@ -1659,6 +1669,7 @@ function isFlexibleGoalRuleActiveOnDate(input: {
     !item ||
     (item.type !== 'flexible_goal' && rule.repeatKind !== 'flexible_goal') ||
     !isVisibleSelfCareItem(item) ||
+    isSelfCarePausedOnDate(item, date) ||
     !rule.flexibleTargetCount ||
     !rule.flexiblePeriod
   ) {

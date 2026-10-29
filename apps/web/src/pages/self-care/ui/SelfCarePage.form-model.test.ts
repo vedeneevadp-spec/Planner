@@ -137,6 +137,14 @@ describe('SelfCarePage form model', () => {
     expect(buildSelfCareCustomCreatePayload(draft)).toBeNull()
   })
 
+  it('preserves a flexible goal pause when its settings are edited', () => {
+    const entry = createEditEntry('flexible_goal')
+    entry.item.isActive = false
+    const payload = buildSelfCareEditPayload(createEditDraft({ entry }))
+    expect(payload).not.toBeNull()
+    expect(payload?.input.isActive).toBe(false)
+  })
+
   it('builds edit payloads outside the UI component', () => {
     const payload = buildSelfCareEditPayload(
       createEditDraft({

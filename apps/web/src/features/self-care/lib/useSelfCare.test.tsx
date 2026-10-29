@@ -257,6 +257,72 @@ describe('self-care persistent reads and offline commands', () => {
       }
     })
 
+    it('keeps an acknowledged pause when an earlier dashboard response arrives late', async () => {
+      seedSelfCareSource(queryClient)
+      const olderRead = createDeferred<SelfCareDashboardResponse>()
+      vi.mocked(selfCareApi.getDashboard).mockReturnValue(olderRead.promise)
+      vi.mocked(selfCareApi.executeOfflineCommand).mockImplementation(
+        (request) =>
+          Promise.resolve({
+            operationId: request.operationId,
+            replayed: false,
+            result: {
+              kind: 'item',
+              item: createItem({ isActive: false, version: 8 }),
+            },
+          }),
+      )
+      const hooks = renderHook(
+        () => ({
+          dashboard: useSelfCareDashboard(DATE),
+          update: useUpdateSelfCareItem(),
+        }),
+        { wrapper: createQueryWrapper(queryClient) },
+      )
+
+      act(() => {
+        void hooks.result.current.dashboard.refetch()
+      })
+      await waitFor(() => expect(selfCareApi.getDashboard).toHaveBeenCalled())
+      await act(async () => {
+        await hooks.result.current.update.mutateAsync({
+          itemId: ITEM_ID,
+          input: { isActive: false },
+        })
+      })
+      await waitFor(async () => {
+        expect(selfCareApi.executeOfflineCommand).toHaveBeenCalled()
+        expect(
+          await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+        ).toEqual([])
+      })
+      await act(async () => {
+        olderRead.resolve(createDashboard())
+        await olderRead.promise
+      })
+      await waitFor(() =>
+        expect(hooks.result.current.dashboard.isFetching).toBe(false),
+      )
+
+      expect(hooks.result.current.dashboard.data?.todayItems).toEqual([])
+      const cached = await loadCachedSelfCareRead<SelfCareDashboardResponse>(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        createSelfCareCacheKey('dashboard', [DATE]),
+      )
+      expect(cached?.data.todayItems).toEqual([])
+
+      vi.mocked(selfCareApi.getDashboard).mockResolvedValue({
+        ...createDashboard(),
+        settings: createSettings({ currency: 'EUR' }),
+        todayItems: [],
+      })
+      await act(async () => {
+        await hooks.result.current.dashboard.refetch()
+      })
+      expect(hooks.result.current.dashboard.data?.settings.currency).toBe('EUR')
+    })
+
     it('restores an actor-scoped cached read when the API is unavailable', async () => {
       const dashboard = createDashboard()
       const lastSuccessfulSyncAt = '2026-06-18T08:30:00.000Z'

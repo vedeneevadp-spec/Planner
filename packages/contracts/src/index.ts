@@ -541,6 +541,10 @@ export {
   selfCareTimeOfDaySchema,
   selfCareTodayItemSchema,
 } from './self-care.js'
+export {
+  isSelfCarePausedOnDate,
+  updateSelfCarePausePeriods,
+} from './self-care-pause.js'
 export type {
   DateOnlySchedule,
   FixedZoneDateTimeSchedule,

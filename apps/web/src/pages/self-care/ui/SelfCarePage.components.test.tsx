@@ -1,7 +1,9 @@
 import type {
   SelfCareDashboardResponse,
+  SelfCareItem,
   SelfCareListResponse,
   SelfCarePlanResponse,
+  SelfCareScheduleRule,
 } from '@planner/contracts'
 import { selfCareCompletionSchema } from '@planner/contracts'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -21,6 +23,89 @@ vi.mock('@/features/session', () => ({
 describe('Self-care tab states', () => {
   afterEach(() => {
     cleanup()
+  })
+
+  it.each([true, false])(
+    'offers pause or resume for recurring care (active: %s)',
+    (isActive) => {
+      const onTogglePauseItem = vi.fn()
+      const list = createRecurringList(isActive)
+      render(
+        <SelfCareRitualsTab
+          canAddCare
+          dashboardItems={[]}
+          history={undefined}
+          isBusy={false}
+          isAddingCare={false}
+          list={list}
+          plan={undefined}
+          ritualStepDrafts={{}}
+          todayKey="2026-08-06"
+          uploadedIcons={[]}
+          onAddCare={vi.fn()}
+          onArchiveItem={vi.fn()}
+          onEditItem={vi.fn()}
+          onRestartCourse={vi.fn()}
+          onScheduleItem={vi.fn()}
+          onTogglePauseItem={onTogglePauseItem}
+        />,
+      )
+      const label = isActive
+        ? 'Поставить на паузу: «Йога»'
+        : 'Возобновить: «Йога»'
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      expect(onTogglePauseItem).toHaveBeenCalledWith(
+        expect.objectContaining({ item: list.items[0] }),
+      )
+      if (!isActive) {
+        expect(screen.getByText('На паузе')).toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: 'Запланировать' }),
+        ).toBeDisabled()
+        expect(
+          screen.queryByText(/Следующее выполнение:/),
+        ).not.toBeInTheDocument()
+      }
+    },
+  )
+
+  it('does not offer pause for a one-off care item and disables it while saving', () => {
+    const list = createRecurringList(true)
+    const props = {
+      canAddCare: true,
+      dashboardItems: [],
+      history: undefined,
+      isBusy: true,
+      isAddingCare: false,
+      list,
+      plan: undefined,
+      ritualStepDrafts: {},
+      todayKey: '2026-08-06',
+      uploadedIcons: [],
+      onAddCare: vi.fn(),
+      onArchiveItem: vi.fn(),
+      onEditItem: vi.fn(),
+      onRestartCourse: vi.fn(),
+      onScheduleItem: vi.fn(),
+      onTogglePauseItem: vi.fn(),
+    }
+    const { rerender } = render(<SelfCareRitualsTab {...props} />)
+    const button = screen.getByRole('button', {
+      name: 'Поставить на паузу: «Йога»',
+    })
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(props.onTogglePauseItem).not.toHaveBeenCalled()
+    rerender(
+      <SelfCareRitualsTab
+        {...props}
+        isBusy={false}
+        list={{ ...list, scheduleRules: [] }}
+      />,
+    )
+    expect(
+      screen.queryByRole('button', { name: /Поставить на паузу/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows an early morning completion on the planner local date', () => {
@@ -85,6 +170,7 @@ describe('Self-care tab states', () => {
         onAddCare={onAddCare}
         onArchiveItem={vi.fn()}
         onEditItem={vi.fn()}
+        onTogglePauseItem={vi.fn()}
         onRestartCourse={vi.fn()}
         onScheduleItem={vi.fn()}
       />,
@@ -123,6 +209,7 @@ describe('Self-care tab states', () => {
         onAddCare={onAddCare}
         onArchiveItem={vi.fn()}
         onEditItem={vi.fn()}
+        onTogglePauseItem={vi.fn()}
         onRestartCourse={vi.fn()}
         onScheduleItem={vi.fn()}
       />,
@@ -151,6 +238,7 @@ describe('Self-care tab states', () => {
         onCancelOccurrence={vi.fn()}
         onCardAction={vi.fn()}
         onEditItem={vi.fn()}
+        onTogglePauseItem={vi.fn()}
         onRestartCourse={vi.fn()}
         onScheduleItem={vi.fn()}
       />,
@@ -180,6 +268,7 @@ describe('Self-care tab states', () => {
         onArchiveItem={vi.fn()}
         onCardAction={vi.fn()}
         onEditItem={vi.fn()}
+        onTogglePauseItem={vi.fn()}
         onRestartCourse={vi.fn()}
         onScheduleItem={vi.fn()}
         onShowHistory={vi.fn()}
@@ -239,4 +328,58 @@ function createEmptyDashboard(): SelfCareDashboardResponse {
     todayItems: [],
     upcomingImportant: [],
   }
+}
+
+function createRecurringList(isActive: boolean): SelfCareListResponse {
+  const item: SelfCareItem = {
+    category: 'movement',
+    color: null,
+    createdAt: '2026-08-01T08:00:00Z',
+    createdFromTemplateId: null,
+    customCategoryId: null,
+    defaultDurationMinutes: null,
+    deletedAt: null,
+    description: '',
+    icon: '🧘',
+    id: 'yoga',
+    importance: 'recommended',
+    isActive,
+    isArchived: false,
+    isPrivate: true,
+    migratedFromHabitId: null,
+    minimumVersionDescription: null,
+    minimumVersionDurationMinutes: null,
+    minimumVersionTitle: null,
+    preferredTimeOfDay: 'morning',
+    title: 'Йога',
+    type: 'habit',
+    updatedAt: '2026-08-01T08:00:00Z',
+    userId: 'user',
+    version: 1,
+    workspaceId: 'workspace',
+  }
+  const rule: SelfCareScheduleRule = {
+    allowMultiplePerDay: false,
+    createdAt: item.createdAt,
+    dayOfMonth: null,
+    daysOfWeek: [],
+    endDate: null,
+    flexiblePeriod: null,
+    flexibleTargetCount: null,
+    generateInCalendar: true,
+    generateInTaskList: true,
+    id: 'yoga-rule',
+    intervalUnit: null,
+    intervalValue: null,
+    itemId: item.id,
+    monthOfYear: null,
+    preferredTime: null,
+    reminderOffsetsMinutes: [],
+    repeatKind: 'daily',
+    startDate: '2026-08-01',
+    timezone: 'Asia/Novosibirsk',
+    updatedAt: item.updatedAt,
+    weekOfMonth: null,
+  }
+  return { ...createEmptyList(), items: [item], scheduleRules: [rule] }
 }

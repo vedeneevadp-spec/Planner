@@ -19,6 +19,8 @@ import {
   GearIcon,
   IconMark,
   ImageStackIcon,
+  PauseIcon,
+  PlayIcon,
   TrashIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
@@ -95,6 +97,7 @@ export function SelfCareTodayTab({
   onCardAction,
   onArchiveItem,
   onEditItem,
+  onTogglePauseItem,
   onRestartCourse,
   onScheduleItem,
   onSkipOccurrence,
@@ -117,6 +120,7 @@ export function SelfCareTodayTab({
   onCardAction: (entry: SelfCareTodayItem) => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
+  onTogglePauseItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
   onScheduleItem: (entry: SelfCareTodayItem) => void
   onSkipOccurrence: (entry: SelfCareTodayItem) => void
@@ -217,6 +221,7 @@ export function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onSchedule={onScheduleItem}
               onSkipOccurrence={
                 shouldShowSelfCareSkipAction(entry, 'overdue')
@@ -243,6 +248,7 @@ export function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onRestartCourse={onRestartCourse}
             />
           ))}
@@ -269,6 +275,7 @@ export function SelfCareTodayTab({
                   onAction={onCardAction}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
+                  onTogglePause={onTogglePauseItem}
                   onRestartCourse={onRestartCourse}
                   onToggleStep={onToggleRitualStep}
                 />
@@ -291,6 +298,7 @@ export function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onRestartCourse={onRestartCourse}
               onToggleStep={onToggleRitualStep}
             />
@@ -311,6 +319,7 @@ export function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onRestartCourse={onRestartCourse}
             />
           ))}
@@ -327,6 +336,7 @@ export function SelfCareTodayTab({
               isBusy={isBusy}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onSchedule={onScheduleItem}
             />
           ))}
@@ -441,6 +451,7 @@ export function SelfCarePlanTab({
   onAddCare,
   onCancelOccurrence,
   onEditItem,
+  onTogglePauseItem,
   onRestartCourse,
   onScheduleItem,
   plan,
@@ -457,6 +468,7 @@ export function SelfCarePlanTab({
   onAddCare: () => void
   onCancelOccurrence: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
+  onTogglePauseItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
   onScheduleItem: (entry: SelfCareTodayItem) => void
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
@@ -504,6 +516,7 @@ export function SelfCarePlanTab({
               onArchive={onArchiveItem}
               onCancelOccurrence={onCancelOccurrence}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
             />
           ))}
         </SelfCareSection>
@@ -533,6 +546,7 @@ export function SelfCarePlanTab({
               isBusy={isBusy}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onSchedule={onScheduleItem}
             />
           ))}
@@ -548,6 +562,7 @@ export function SelfCarePlanTab({
               isBusy={isBusy}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
             />
           ))}
         </SelfCareSection>
@@ -566,6 +581,7 @@ export function SelfCarePlanTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onTogglePause={onTogglePauseItem}
               onRestartCourse={onRestartCourse}
             />
           ))}
@@ -589,6 +605,7 @@ export function SelfCareRitualsTab({
   onAddCare,
   onArchiveItem,
   onEditItem,
+  onTogglePauseItem,
   onRestartCourse,
   onScheduleItem,
 }: {
@@ -605,6 +622,7 @@ export function SelfCareRitualsTab({
   onAddCare: () => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
+  onTogglePauseItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
   onScheduleItem: (entry: SelfCareTodayItem) => void
 }) {
@@ -697,6 +715,7 @@ export function SelfCareRitualsTab({
                   uploadedIcons={uploadedIcons}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
+                  onTogglePause={onTogglePauseItem}
                   onRestartCourse={onRestartCourse}
                   onSchedule={() => onScheduleItem(scheduleEntry)}
                   scheduleActionLabel="Запланировать"
@@ -862,6 +881,7 @@ function SelfCareItemCard({
   onArchive,
   onCancelOccurrence,
   onEdit,
+  onTogglePause,
   onRestartCourse,
   onSchedule,
   onSkipOccurrence,
@@ -881,6 +901,7 @@ function SelfCareItemCard({
   onArchive: (entry: SelfCareTodayItem) => void
   onCancelOccurrence?: (entry: SelfCareTodayItem) => void
   onEdit: (entry: SelfCareTodayItem) => void
+  onTogglePause: (entry: SelfCareTodayItem) => void
   onRestartCourse?: ((entry: SelfCareTodayItem) => void) | undefined
   onSchedule?: (entry: SelfCareTodayItem) => void
   onSkipOccurrence?: ((entry: SelfCareTodayItem) => void) | undefined
@@ -892,6 +913,7 @@ function SelfCareItemCard({
 }) {
   const plannerTimeZone = usePlannerTimeZone()
   const isInactive = !entry.item.isActive || entry.item.isArchived
+  const isPaused = !entry.item.isActive && canPauseSelfCareEntry(entry)
   const isDone = isEntryDoneToday(entry, todayKey)
   const primaryActionLabel = getPrimaryActionLabel(entry, isDone)
   const flexibleProgressLabel = entry.flexibleProgress
@@ -918,11 +940,12 @@ function SelfCareItemCard({
     entry.item.type === 'course'
       ? formatCourseCompletionState(entry, todayKey)
       : formatCompletionState(entry.completion, todayKey)
-  const nextLabel = nextOccurrenceDate
-    ? canRestartCourse(entry)
-      ? null
-      : `Следующее выполнение: ${formatDate(nextOccurrenceDate)}`
-    : null
+  const nextLabel =
+    !isInactive && nextOccurrenceDate
+      ? canRestartCourse(entry)
+        ? null
+        : `Следующее выполнение: ${formatDate(nextOccurrenceDate)}`
+      : null
   const restartCourseAction = canRestartCourse(entry)
     ? onRestartCourse
     : undefined
@@ -1032,7 +1055,7 @@ function SelfCareItemCard({
       className={cx(
         styles.card,
         compact && styles.cardCompact,
-        (isDone || isInactive) && styles.cardDone,
+        (isDone || isInactive) && !isPaused && styles.cardDone,
       )}
     >
       <div className={styles.cardMain}>
@@ -1047,7 +1070,11 @@ function SelfCareItemCard({
           {!isTodayView ? (
             <p className={styles.cardMeta}>{cardMetaLabel}</p>
           ) : null}
-          {isInactive ? <p className={styles.progressText}>Неактивна</p> : null}
+          {isInactive ? (
+            <p className={styles.progressText}>
+              {isPaused ? 'На паузе' : 'Неактивна'}
+            </p>
+          ) : null}
           {todayScheduleLabel ? (
             <p className={styles.cardMeta}>{todayScheduleLabel}</p>
           ) : null}
@@ -1104,7 +1131,7 @@ function SelfCareItemCard({
           {entry.steps.length ? (
             <ChecklistPreview
               entry={entry}
-              isBusy={isBusy}
+              isBusy={isBusy || isInactive}
               isDone={isDone}
               selectedStepIds={getEffectiveRitualStepIds(entry, stepDraft)}
               onToggleStep={onToggleStep}
@@ -1113,6 +1140,11 @@ function SelfCareItemCard({
         </div>
       </div>
       <div className={styles.cardActions}>
+        <SelfCarePauseButton
+          entry={entry}
+          isBusy={isBusy}
+          onToggle={onTogglePause}
+        />
         {actions === 'plan' ? (
           <>
             <button
@@ -1145,12 +1177,49 @@ function SelfCareItemCard({
   )
 }
 
+function canPauseSelfCareEntry(entry: SelfCareTodayItem): boolean {
+  return Boolean(
+    !entry.item.isArchived &&
+    !entry.item.deletedAt &&
+    entry.scheduleRule &&
+    entry.scheduleRule.repeatKind !== 'none' &&
+    !entry.courseDetails?.isCompleted,
+  )
+}
+
+function SelfCarePauseButton({
+  entry,
+  isBusy,
+  onToggle,
+}: {
+  entry: SelfCareTodayItem
+  isBusy: boolean
+  onToggle: (entry: SelfCareTodayItem) => void
+}) {
+  if (!canPauseSelfCareEntry(entry)) return null
+  const label = entry.item.isActive ? 'Поставить на паузу' : 'Возобновить'
+  const Icon = entry.item.isActive ? PauseIcon : PlayIcon
+  return (
+    <button
+      className={cx(styles.cardActionButton, styles.cardActionButtonSoft)}
+      type="button"
+      disabled={isBusy}
+      title={label}
+      aria-label={`${label}: «${entry.item.title}»`}
+      onClick={() => onToggle(entry)}
+    >
+      <Icon size={18} strokeWidth={2.1} />
+    </button>
+  )
+}
+
 function PlanningHintCard({
   entry,
   isBusy,
   isTodayView = false,
   onArchive,
   onEdit,
+  onTogglePause,
   onSchedule,
 }: {
   entry: SelfCareTodayItem
@@ -1158,6 +1227,7 @@ function PlanningHintCard({
   isTodayView?: boolean
   onArchive?: (entry: SelfCareTodayItem) => void
   onEdit?: (entry: SelfCareTodayItem) => void
+  onTogglePause: (entry: SelfCareTodayItem) => void
   onSchedule?: (entry: SelfCareTodayItem) => void
 }) {
   const plannerTimeZone = usePlannerTimeZone()
@@ -1174,6 +1244,11 @@ function PlanningHintCard({
       ) : null}
       {shouldShowPlanningText ? <p>{planningText}</p> : null}
       <div className={styles.hintActions}>
+        <SelfCarePauseButton
+          entry={entry}
+          isBusy={Boolean(isBusy)}
+          onToggle={onTogglePause}
+        />
         {onSchedule && !entry.occurrence ? (
           <button
             className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}

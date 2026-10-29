@@ -108,7 +108,11 @@ const NON_RESTORED_UPDATE_COLUMNS = new Set([
   'version',
 ])
 
-const JSON_BACKUP_COLUMNS = new Set(['exercise_sets', 'metadata'])
+const JSON_BACKUP_COLUMNS = new Set([
+  'exercise_sets',
+  'metadata',
+  'pause_periods',
+])
 
 const ASSET_EXTENSIONS = new Map([
   ['image/gif', 'gif'],

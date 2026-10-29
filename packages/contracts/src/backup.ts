@@ -98,7 +98,7 @@ const USER_BACKUP_V1_COLUMNS = {
   habit_entries:
     'id,workspace_id,user_id,habit_id,date,status,value,target_value,note,created_by,updated_by,created_at,updated_at,deleted_at,version',
   self_care_items:
-    'id,workspace_id,user_id,type,category,custom_category_id,title,description,icon,color,importance,preferred_time_of_day,default_duration_minutes,minimum_version_title,minimum_version_description,minimum_version_duration_minutes,is_private,is_active,is_archived,created_from_template_id,migrated_from_habit_id,created_by,updated_by,created_at,updated_at,deleted_at,version',
+    'id,workspace_id,user_id,type,category,custom_category_id,title,description,icon,color,importance,preferred_time_of_day,default_duration_minutes,minimum_version_title,minimum_version_description,minimum_version_duration_minutes,is_private,is_active,is_archived,pause_periods,created_from_template_id,migrated_from_habit_id,created_by,updated_by,created_at,updated_at,deleted_at,version',
   self_care_item_alternatives:
     'id,item_id,title,description,counts_as_completion',
   self_care_schedule_rules:
@@ -141,6 +141,7 @@ const USER_BACKUP_STRUCTURED_COLUMNS = new Set([
   'focus_task_ids',
   'keywords',
   'metadata',
+  'pause_periods',
   'recurrence_rule',
   'reminder_offsets_minutes',
   'reminder_strategy',

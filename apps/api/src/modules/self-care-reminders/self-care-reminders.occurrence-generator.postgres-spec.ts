@@ -8,6 +8,7 @@ import {
   getTimeInTimeZone,
   selfCareItemInputSchema,
   selfCareItemScheduleInputSchema,
+  selfCareItemUpdateInputSchema,
 } from '@planner/contracts'
 import type { Transaction } from 'kysely'
 
@@ -71,6 +72,60 @@ async function withFixture(
     await destroyDatabaseConnection(connection)
   }
 }
+
+void test('self-care pause suppresses reminders until the recurring item is resumed', async () => {
+  await withFixture(async ({ context, repository, trx }) => {
+    const due = new Date(Date.now() + 2 * 60_000)
+    const item = await repository.createItem({
+      context,
+      input: selfCareItemInputSchema.parse({
+        category: 'movement',
+        title: 'Pause reminders',
+        type: 'habit',
+        scheduleRule: {
+          repeatKind: 'daily',
+          startDate: getDateKeyInTimeZone(due, 'UTC'),
+          preferredTime: getTimeInTimeZone(due, 'UTC'),
+          timezone: 'UTC',
+          reminderOffsetsMinutes: [15],
+        },
+      }),
+    })
+    const reminders = new PostgresSelfCareReminderRepository(trx)
+    const claimed = (await reminders.claimDueReminders(250)).filter(
+      (entry) => entry.itemId === item.id,
+    )
+    assert.equal(claimed.length, 1)
+    await repository.updateItem({
+      context,
+      itemId: item.id,
+      input: selfCareItemUpdateInputSchema.parse({ isActive: false }),
+    })
+    assert.equal(
+      (await reminders.claimDueReminders(250)).some(
+        (entry) => entry.itemId === item.id,
+      ),
+      false,
+    )
+    await repository.updateItem({
+      context,
+      itemId: item.id,
+      input: selfCareItemUpdateInputSchema.parse({ isActive: true }),
+    })
+    // The page refresh materializes the resumed date. This fixture uses one
+    // transaction, so PostgreSQL now() cannot advance item.updated_at between actions.
+    await repository.getDashboard({
+      context,
+      date: getDateKeyInTimeZone(due, 'UTC'),
+    })
+    assert.equal(
+      (await reminders.claimDueReminders(250)).filter(
+        (entry) => entry.itemId === item.id,
+      ).length,
+      1,
+    )
+  })
+})
 
 void test('self-care worker claims a recurring reminder without any interactive read', async () => {
   await withFixture(async ({ context, repository, trx }) => {

@@ -13,6 +13,7 @@ import {
   type SelfCareRitualStep,
   type SelfCareScheduleRule,
   type SelfCareSettings,
+  updateSelfCarePausePeriods,
 } from '@planner/contracts'
 import { type Kysely, sql, type Transaction } from 'kysely'
 
@@ -285,6 +286,16 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         this.db,
         command.context.auth,
         async (trx) => {
+          const currentItem =
+            command.input.isActive !== undefined
+              ? mapItemRow(
+                  await this.loadActiveItemRow(
+                    trx,
+                    command.context,
+                    command.itemId,
+                  ),
+                )
+              : null
           let updateQuery = trx
             .updateTable('app.self_care_items')
             .set({
@@ -313,7 +324,19 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
                 ? { importance: command.input.importance }
                 : {}),
               ...(command.input.isActive !== undefined
-                ? { is_active: command.input.isActive }
+                ? {
+                    is_active: command.input.isActive,
+                    pause_periods: JSON.stringify(
+                      updateSelfCarePausePeriods(
+                        currentItem!,
+                        command.input.isActive,
+                        getDateKeyInTimeZone(
+                          command.actedAt ?? new Date(),
+                          command.context.clientTimeZone ?? 'UTC',
+                        ),
+                      ),
+                    ),
+                  }
                 : {}),
               ...(command.input.isArchived !== undefined
                 ? { is_archived: command.input.isArchived }
@@ -521,7 +544,11 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           }
 
           const item = mapItemRow(updated)
-          if (command.input.scheduleRule || command.input.courseDetails) {
+          if (
+            command.input.scheduleRule ||
+            command.input.courseDetails ||
+            command.input.isActive !== undefined
+          ) {
             await this.reconcileStoredSchedule(trx, command, item)
           }
           return item
@@ -2030,11 +2057,30 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       context.auth,
       async (trx) => {
+        const current = !isArchived
+          ? mapItemRow(
+              await this.loadOwnedItemRowForUpdate(trx, context, itemId),
+            )
+          : null
         let updateQuery = trx
           .updateTable('app.self_care_items')
           .set({
             is_active: isArchived ? false : true,
             is_archived: isArchived,
+            ...(!isArchived
+              ? {
+                  pause_periods: JSON.stringify(
+                    updateSelfCarePausePeriods(
+                      current!,
+                      true,
+                      getDateKeyInTimeZone(
+                        new Date(),
+                        context.clientTimeZone ?? 'UTC',
+                      ),
+                    ),
+                  ),
+                }
+              : {}),
             updated_by: context.actorUserId,
           })
           .where('id', '=', itemId)
@@ -2442,7 +2488,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       completions: completionRows.map(mapCompletionRow),
       courseDetails: courseRow ? mapCourseRow(courseRow) : null,
       from: getDateKeyInTimeZone(
-        new Date(),
+        command.actedAt ?? new Date(),
         command.context.clientTimeZone ?? timeZone,
       ),
       item,

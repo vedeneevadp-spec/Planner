@@ -15,6 +15,7 @@ import {
   type SelfCareRitualStepCompletion,
   type SelfCareScheduleRule,
   type SelfCareSettings,
+  updateSelfCarePausePeriods,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -218,7 +219,17 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         ? { importance: command.input.importance }
         : {}),
       ...(command.input.isActive !== undefined
-        ? { isActive: command.input.isActive }
+        ? {
+            isActive: command.input.isActive,
+            pausePeriods: updateSelfCarePausePeriods(
+              item,
+              command.input.isActive,
+              getDateKeyInTimeZone(
+                command.actedAt ?? now,
+                command.context.clientTimeZone ?? 'UTC',
+              ),
+            ),
+          }
         : {}),
       ...(command.input.isArchived !== undefined
         ? { isArchived: command.input.isArchived }
@@ -378,7 +389,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
     const reconciliationRule =
       nextRule ??
-      (command.input.courseDetails
+      (command.input.courseDetails || command.input.isActive !== undefined
         ? [...this.scheduleRules.values()].find(
             (entry) => entry.itemId === item.id,
           )
@@ -393,7 +404,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
             (entry) => entry.itemId === item.id,
           ) ?? null,
         from: getDateKeyInTimeZone(
-          new Date(),
+          command.actedAt ?? now,
           command.context.clientTimeZone ??
             reconciliationRule.timezone ??
             'UTC',
@@ -1509,6 +1520,13 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ...item,
       isActive: isArchived ? false : true,
       isArchived,
+      pausePeriods: isArchived
+        ? item.pausePeriods
+        : updateSelfCarePausePeriods(
+            item,
+            true,
+            getDateKeyInTimeZone(new Date(), context.clientTimeZone ?? 'UTC'),
+          ),
       updatedAt: new Date().toISOString(),
       version: item.version + 1,
     }

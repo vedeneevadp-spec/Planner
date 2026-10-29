@@ -181,6 +181,11 @@ export interface AppSelfCareItemsTable {
   is_archived: boolean
   is_private: boolean
   migrated_from_habit_id: string | null
+  pause_periods: ColumnType<
+    Array<{ from: string; to: string | null }>,
+    string | undefined,
+    string
+  >
   minimum_version_description: string | null
   minimum_version_duration_minutes: number | null
   minimum_version_title: string | null

@@ -111,6 +111,168 @@ export async function assertRitualHistorySurvivesEditing(
   )
 }
 
+export async function assertRecurringCarePausePreservesHistory(
+  repository: SelfCareRepository,
+  context: SelfCareWriteContext,
+) {
+  const today = getDateKeyInTimeZone(new Date(), 'UTC')
+  const from = addDateDays(today, -6)
+  const pausedFrom = addDateDays(today, -4)
+  const to = addDateDays(today, 3)
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      title: 'Pauseable ritual',
+      type: 'ritual',
+      steps: [{ title: 'Wash' }],
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: from,
+        timezone: 'UTC',
+        preferredTime: '09:00',
+      },
+    }),
+  })
+  const initial = await repository.getOccurrences({ context, from, to })
+  const completed = initial.find((entry) => entry.scheduledFor === from)!
+  const step = (await repository.listItems(context)).steps.find(
+    (entry) => entry.itemId === item.id,
+  )!
+  await repository.completeOccurrence({
+    context,
+    occurrenceId: completed.id,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: `${from}T09:00:00.000Z`,
+      status: 'done',
+      steps: [{ stepId: step.id, isDone: true }],
+    }),
+  })
+  const inProgress = initial.find((entry) => entry.scheduledFor === today)!
+  await repository.upsertRitualStepDraft({
+    context,
+    input: {
+      itemId: item.id,
+      occurrenceId: inProgress.id,
+      date: today,
+      stepIds: [step.id],
+    },
+  })
+  const historyBefore = await repository.getHistory(context, from, to)
+  const ruleBefore = (await repository.listItems(context)).scheduleRules.find(
+    (rule) => rule.itemId === item.id,
+  )
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    operationId: generateUuidV7(),
+    command: {
+      type: 'update_item',
+      itemId: item.id,
+      expectedVersion: item.version,
+      actedAt: `${pausedFrom}T10:00:00Z`,
+      input: { isActive: false },
+    },
+  })
+  const pausedResult = await repository.executeOfflineCommand({
+    context,
+    request,
+  })
+  assert.equal(
+    (await repository.executeOfflineCommand({ context, request })).replayed,
+    true,
+  )
+  assert.equal(pausedResult.result.kind, 'item')
+  const pausedItem = (await repository.listItems(context)).items.find(
+    (entry) => entry.id === item.id,
+  )!
+  assert.equal(pausedItem.isActive, false)
+  assert.equal(pausedItem.isArchived, false)
+  assert.deepEqual(pausedItem.pausePeriods, [{ from: pausedFrom, to: null }])
+  const pausedPlan = await repository.getPlan({ context, from, to })
+  assert.equal(
+    pausedPlan.occurrences.some((entry) => entry.item.id === item.id),
+    false,
+  )
+  const dashboard = await repository.getDashboard({ context, date: today })
+  assert.equal(
+    [...dashboard.todayItems, ...dashboard.overdueItems].some(
+      (entry) => entry.item.id === item.id,
+    ),
+    false,
+  )
+  const retained = await repository.getOccurrences({ context, from, to })
+  assert.deepEqual(
+    retained
+      .filter((entry) => entry.scheduledFor >= pausedFrom)
+      .map((entry) => entry.id),
+    [inProgress.id],
+  )
+  const historyPaused = await repository.getHistory(context, from, to)
+  assert.deepEqual(historyPaused.completions, historyBefore.completions)
+  assert.deepEqual(historyPaused.stepCompletions, historyBefore.stepCompletions)
+  assert.equal(
+    (await repository.getAnalytics(context, from, to)).selectedSelfCareCount,
+    1,
+  )
+  // Editing a paused item must not reset the pause start date.
+  const edited = await repository.updateItem({
+    context,
+    itemId: item.id,
+    input: selfCareItemUpdateInputSchema.parse({ title: 'Edited on pause' }),
+  })
+  await repository.updateItem({
+    context,
+    itemId: item.id,
+    actedAt: `${today}T10:00:00Z`,
+    input: selfCareItemUpdateInputSchema.parse({
+      isActive: true,
+      expectedVersion: edited.version,
+    }),
+  })
+  const resumed = await repository.getOccurrences({ context, from, to })
+  assert.equal(
+    resumed.some(
+      (entry) => entry.scheduledFor >= pausedFrom && entry.scheduledFor < today,
+    ),
+    false,
+  )
+  assert.equal(resumed.filter((entry) => entry.scheduledFor >= today).length, 4)
+  assert.equal(
+    resumed.find((entry) => entry.id === inProgress.id)?.id,
+    inProgress.id,
+  )
+  assert.deepEqual(
+    (await repository.getRitualStepDrafts({ context, date: today })).drafts[0]
+      ?.stepIds,
+    [step.id],
+  )
+  const list = await repository.listItems(context)
+  assert.deepEqual(
+    list.scheduleRules.find((rule) => rule.itemId === item.id),
+    ruleBefore,
+  )
+  assert.deepEqual(
+    list.items.find((entry) => entry.id === item.id)?.pausePeriods,
+    [{ from: pausedFrom, to: today }],
+  )
+  await repository.updateItem({
+    context,
+    itemId: item.id,
+    input: selfCareItemUpdateInputSchema.parse({ isActive: false }),
+  })
+  await repository.archiveItem({ context, itemId: item.id })
+  const restored = await repository.restoreItem({ context, itemId: item.id })
+  assert.equal(
+    restored.pausePeriods?.some((period) => period.to === null),
+    false,
+  )
+  assert.equal(
+    (await repository.getDashboard({ context, date: today })).todayItems.some(
+      (entry) => entry.item.id === item.id,
+    ),
+    true,
+  )
+}
+
 export async function assertAtomicRuleEditPreservesSingleSchedule(
   repository: SelfCareRepository,
   context: SelfCareWriteContext,

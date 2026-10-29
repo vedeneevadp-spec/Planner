@@ -72,6 +72,7 @@ export interface CreateSelfCareItemCommand {
 }
 
 export interface UpdateSelfCareItemCommand {
+  actedAt?: string | undefined
   context: SelfCareWriteContext
   input: SelfCareItemUpdateInput
   itemId: string
