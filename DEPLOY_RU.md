@@ -86,12 +86,17 @@ apt install -y curl git ufw caddy rsync postgresql-client util-linux
 Установить закрепленные Node.js и npm:
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-apt install -y nodejs=24.19.0-1nodesource1
-npm install -g npm@12.0.1
+curl -fsSL https://deb.nodesource.com/setup_26.x | bash -
+apt install -y libatomic1 nodejs=26.13.0-1nodesource1
+npm install -g npm@12.2.1
 node -v
 npm -v
 ```
+
+Версии должны совпадать с `.node-version` и `packageManager` в `package.json`
+выпускаемого commit. Перед обновлением существующего сервера сохраните текущий
+пакет Node и установленный npm для отката. Сервисы переключает `deploy:prod`
+после сборки, резервной копии и проверок; отдельно перезапускать их не нужно.
 
 Включить firewall:
 
