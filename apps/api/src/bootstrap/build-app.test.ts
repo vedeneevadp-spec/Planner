@@ -3703,6 +3703,19 @@ void describe('buildApiApp', () => {
       /script-src/,
     )
     assert.match(response.payload, /Swagger UI/)
+
+    for (const [asset, contentType] of [
+      ['swagger-ui.css', /text\/css/],
+      ['swagger-ui-bundle.js', /(?:application|text)\/javascript/],
+    ] as const) {
+      const staticResponse: typeof response = await app.inject({
+        method: 'GET',
+        url: `/api/docs/static/${asset}`,
+      })
+      assert.equal(staticResponse.statusCode, 200)
+      assert.match(staticResponse.headers['content-type'] ?? '', contentType)
+      assert.ok(staticResponse.rawPayload.length > 0)
+    }
   })
 
   void it('requires a bearer token when request authentication is enabled', async () => {

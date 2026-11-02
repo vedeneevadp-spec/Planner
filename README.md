@@ -515,3 +515,12 @@ Workspace`: роли, права, жизненный цикл и правила 
 - `npm run audit:prod` и `npm run audit:dev-tooling` должны оставаться чистыми;
   tooling для native assets запускается из isolated `npx`, чтобы не держать
   уязвимые transient dev-dependencies в lockfile
+- `glob` закреплен на `14.0.3`, а современный `minimatch` у TypeScript ESLint —
+  на `11.0.4` для исправления GHSA-3g3m-2fjr-6pw4 и GHSA-g3hv-75wg-m249.
+  Для четырех dev-only копий `minimatch 3.1.5` действует узкое исключение
+  GHSA-g3hv-75wg-m249 до 2 декабря 2026: эта версия не содержит описанный в
+  advisory оптимизатор `firstPhasePreProcess`/`optimizationLevel`, а ее
+  потребители используют несовместимый с v11 CommonJS API. Проверка сверяет
+  версии и dev-only пути с lockfile, не допускает другие advisory или повышение
+  severity. До истечения срока нужно повторно проверить upstream-исправления
+  ESLint и `eslint-plugin-jsx-a11y`. В production audit исключений нет.
