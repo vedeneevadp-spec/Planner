@@ -5,6 +5,7 @@ import process from 'node:process'
 import {
   getDevToolingAuditExceptionSummary,
   isAllowedEslintToolingVulnerability,
+  isAllowedLegacyMinimatchToolingVulnerability,
 } from './audit-dev-tooling-policy.mjs'
 
 const allowedVulnerabilityNames = new Set([
@@ -20,6 +21,9 @@ const allowedNodePrefixes = [
 const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
 )
+const packageLock = JSON.parse(
+  await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'),
+)
 const audit = await runNpmAudit()
 const vulnerabilities = Object.values(audit.vulnerabilities ?? {})
 
@@ -31,7 +35,12 @@ if (vulnerabilities.length === 0) {
 const unexpected = vulnerabilities.filter(
   (vulnerability) =>
     !isAllowedDevToolingVulnerability(vulnerability) &&
-    !isAllowedEslintToolingVulnerability(vulnerability, packageJson),
+    !isAllowedEslintToolingVulnerability(vulnerability, packageJson) &&
+    !isAllowedLegacyMinimatchToolingVulnerability(
+      vulnerability,
+      audit,
+      packageLock,
+    ),
 )
 
 if (unexpected.length > 0) {
@@ -64,7 +73,7 @@ console.log(
   [
     'Only the known dev-only @capacitor/assets and ESLint audit chains remain.',
     'Production npm audit has no exceptions.',
-    `ESLint exception expires at ${eslintException.expiresAt}.`,
+    `Legacy minimatch 3.1.5 review expires at ${eslintException.legacyMinimatchExpiresAt}.`,
   ].join(' '),
 )
 
