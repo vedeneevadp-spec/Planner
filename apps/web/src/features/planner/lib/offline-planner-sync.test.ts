@@ -7,7 +7,7 @@ import type {
   TaskRecord,
   TaskUpdateInput,
 } from '@planner/contracts'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   clearPlannerOfflineWorkspaceData,
@@ -22,6 +22,7 @@ import {
   replaceCachedTaskRecords,
   replaceCachedTaskRecordsFromServer,
   resetPlannerOfflineDatabaseForTests,
+  resetPlannerOfflineRuntimeForTests,
   resolvePlannerOfflineConflict,
   setPlannerDataLastSuccessfulSyncAt,
 } from './offline-planner-store'
@@ -73,6 +74,11 @@ const createSphereInput: NewLifeSphereInput = {
 describe('offline planner sync', () => {
   beforeEach(async () => {
     await resetPlannerOfflineDatabaseForTests()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it.each([400, 403, 409, 422])(
@@ -276,84 +282,106 @@ describe('offline planner sync', () => {
     ).toEqual([])
   })
 
-  it('blocks task references to a refused sphere and discards only its dependent group for the current actor', async () => {
-    const root = await enqueuePlannerOfflineMutation({
-      actorUserId: ACTOR_USER_ID,
-      workspaceId: WORKSPACE_ID,
-      type: 'lifeSphere.create',
-      sphereId: createSphereInput.id!,
-      input: createSphereInput,
-    })
-    await waitForNextMutationTimestamp()
-    await enqueuePlannerOfflineMutation({
-      actorUserId: ACTOR_USER_ID,
-      workspaceId: WORKSPACE_ID,
-      type: 'task.create',
-      taskId: 'dependent',
-      input: {
-        ...createInput,
-        id: 'dependent',
+  it.each([
+    { clock: 'does not advance', deltaMs: 0 },
+    { clock: 'moves backwards', deltaMs: -60_000 },
+  ])(
+    'blocks a refused sphere and discards only its actor-scoped dependent group when the clock $clock',
+    async ({ deltaMs }) => {
+      const timestamp = Date.parse('2026-11-02T10:00:00.000Z')
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(timestamp)
+      let randomByte = 255
+      vi.spyOn(crypto, 'getRandomValues').mockImplementation((array) => {
+        if (array) {
+          new Uint8Array(array.buffer, array.byteOffset, array.byteLength).fill(
+            randomByte--,
+          )
+        }
+        return array
+      })
+      const root = await enqueuePlannerOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        type: 'lifeSphere.create',
         sphereId: createSphereInput.id!,
-      },
-    })
-    await enqueuePlannerOfflineMutation({
-      actorUserId: 'other-user',
-      workspaceId: WORKSPACE_ID,
-      type: 'task.create',
-      taskId: 'other-actor',
-      input: {
-        ...createInput,
-        id: 'other-actor',
-        sphereId: createSphereInput.id!,
-      },
-    })
-    await enqueuePlannerOfflineMutation({
-      actorUserId: ACTOR_USER_ID,
-      workspaceId: WORKSPACE_ID,
-      type: 'task.create',
-      taskId: 'independent',
-      input: { ...createInput, id: 'independent' },
-    })
-    const api = createPlannerApiClientMock({
-      createLifeSphere: vi.fn().mockRejectedValue(
-        new PlannerApiError('Ошибка данных', {
-          status: 400,
-          code: 'invalid_request',
-        }),
-      ),
-      createTask: vi.fn().mockResolvedValue(createTaskRecord('independent')),
-    })
-    await drainPlannerOfflineQueue({
-      actorUserId: ACTOR_USER_ID,
-      workspaceId: WORKSPACE_ID,
-      api,
-    })
-    expect(api.createTask).toHaveBeenCalledTimes(1)
-    expect(api.createTask).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'independent' }),
-    )
-    await resolvePlannerOfflineConflict(
-      WORKSPACE_ID,
-      'other-user',
-      root!.id,
-      'discard',
-    )
-    expect(
-      await countConflictedPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
-    ).toBe(2)
-    await resolvePlannerOfflineConflict(
-      WORKSPACE_ID,
-      ACTOR_USER_ID,
-      root!.id,
-      'discard',
-    )
-    expect(
-      await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
-    ).toEqual([])
-    expect(
-      await listPlannerOfflineMutations(WORKSPACE_ID, 'other-user'),
-    ).toHaveLength(1)
-  })
+        input: createSphereInput,
+      })
+      resetPlannerOfflineRuntimeForTests()
+      vi.setSystemTime(timestamp + deltaMs)
+      await enqueuePlannerOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        type: 'task.create',
+        taskId: 'dependent',
+        input: {
+          ...createInput,
+          id: 'dependent',
+          sphereId: createSphereInput.id!,
+        },
+      })
+      await enqueuePlannerOfflineMutation({
+        actorUserId: 'other-user',
+        workspaceId: WORKSPACE_ID,
+        type: 'task.create',
+        taskId: 'other-actor',
+        input: {
+          ...createInput,
+          id: 'other-actor',
+          sphereId: createSphereInput.id!,
+        },
+      })
+      await enqueuePlannerOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        type: 'task.create',
+        taskId: 'independent',
+        input: { ...createInput, id: 'independent' },
+      })
+      const api = createPlannerApiClientMock({
+        createLifeSphere: vi.fn().mockRejectedValue(
+          new PlannerApiError('Ошибка данных', {
+            status: 400,
+            code: 'invalid_request',
+          }),
+        ),
+        createTask: vi.fn().mockResolvedValue(createTaskRecord('independent')),
+      })
+      await drainPlannerOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        api,
+      })
+      expect(api.createTask).toHaveBeenCalledTimes(1)
+      expect(api.createTask).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'independent' }),
+      )
+      await resolvePlannerOfflineConflict(
+        WORKSPACE_ID,
+        'other-user',
+        root!.id,
+        'discard',
+      )
+      expect(
+        await countConflictedPlannerOfflineMutations(
+          WORKSPACE_ID,
+          ACTOR_USER_ID,
+        ),
+      ).toBe(2)
+      await resolvePlannerOfflineConflict(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        root!.id,
+        'discard',
+      )
+      expect(
+        await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+      ).toEqual([])
+      expect(
+        await listPlannerOfflineMutations(WORKSPACE_ID, 'other-user'),
+      ).toHaveLength(1)
+    },
+  )
 
   it('does not block a task referencing an existing sphere whose edit was refused', async () => {
     await enqueuePlannerOfflineMutation({
