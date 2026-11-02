@@ -1018,6 +1018,20 @@ export async function enqueuePlannerOfflineMutation(
     expectedWriteGeneration,
     updatesCachedTask ? [db.mutationQueue, db.cachedTasks] : [db.mutationQueue],
     async () => {
+      // Allocate queue order inside the write transaction, including across tabs.
+      // Wall-clock ties and clock rollback must not reorder dependent commands.
+      const queued = await db.mutationQueue
+        .where('workspaceId')
+        .equals(input.workspaceId)
+        .toArray()
+      const orderedTimestamp = queued.reduce((timestamp, candidate) => {
+        const candidateTimestamp = Date.parse(candidate.createdAt)
+        return Number.isFinite(candidateTimestamp)
+          ? Math.max(timestamp, candidateTimestamp + 1)
+          : timestamp
+      }, Date.parse(now))
+      mutation.createdAt = new Date(orderedTimestamp).toISOString()
+      mutation.updatedAt = mutation.createdAt
       await db.mutationQueue.put(mutation)
 
       if (optimisticTasks.length > 0) {
