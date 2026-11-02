@@ -89,6 +89,8 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // Use jsdom storage; Node 26's native globals otherwise hide it from Vitest.
+    execArgv: ['--no-experimental-webstorage'],
     setupFiles: './src/test/setup.ts',
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
