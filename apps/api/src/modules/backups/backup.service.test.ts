@@ -250,7 +250,7 @@ void test('user backup v1 schema accepts self-care concurrency metadata', () => 
     true,
     result.error?.issues
       .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-      .join('\n'),
+      .join('\n') ?? 'Backup schema validation failed',
   )
 })
 

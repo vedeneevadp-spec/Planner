@@ -19,7 +19,7 @@ SQL-first схема PostgreSQL.
 
 ## Требования
 
-- Node `24.22.2`
+- Node `26.13.0` LTS
 - npm `12.2.1`
 - Docker для локального Postgres
 
@@ -33,6 +33,10 @@ env config; перед project commands уберите `NPM_CONFIG_MIN_RELEASE_A
 окружении серверной сборки, затем выполните `npm run toolchain:check`.
 Deploy проверяет точное совпадение обеих версий до установки зависимостей;
 слияние PR само по себе не обновляет runtime сервера.
+
+Официальная Linux-сборка Node 26 требует системную библиотеку `libatomic`.
+Ее наличие нужно проверить при отдельном обновлении серверного runtime
+([release notes Node 26.13.0](https://nodejs.org/en/blog/release/v26.13.0)).
 
 Для зависимости `xcode` из Capacitor CLI используется проверенный override
 `uuid` версии `11.1.1`. Renovate ограничивает только этот override веткой
@@ -500,6 +504,12 @@ Workspace`: роли, права, жизненный цикл и правила 
 - отдельный CI job `postgres-17-compat` применяет те же миграции и проверяет
   security invariants, PostgreSQL contract tests и production API smoke на
   production-compatible PostgreSQL 17
+- Renovate сохраняет ветку 17.x для образа в `postgres-17-compat`; PostgreSQL
+  18 в основном CI и локальном Docker Compose обновляется независимо
+- `eslint` и `@eslint/js` обновляются одной группой Renovate; major/minor
+  требуют approval в Dependency Dashboard. ESLint 10 пока блокируется
+  peer dependency `eslint-plugin-jsx-a11y@6.10.2`, которая допускает ESLint
+  только до 9.x. Переход требует совместимого релиза плагина доступности
 - отдельный CI job `android` запускает `npm run mobile:android:ci`, включая
   Capacitor sync, Gradle unit-тесты и debug assemble smoke
 - локальный pre-release gate: `npm run release:check` запускает `npm run ci` и

@@ -58,6 +58,7 @@
         "/^@fastify\\//",
         "/^@vitejs\\//",
         "/^@vitest\\//",
+        "@eslint/js",
         "/^eslint/",
         "/^react/",
         "/^typescript/",
@@ -104,6 +105,21 @@
       "matchPackageNames": ["uuid"],
       "matchJsonata": ["managerData.parents[0] = 'xcode'"],
       "allowedVersions": ">=11.1.1 <12"
+    },
+    {
+      "description": "Update ESLint and its core rules together so their peer dependency stays aligned.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["eslint", "@eslint/js"],
+      "groupName": "ESLint core updates"
+    },
+    {
+      "description": "Keep the dedicated PostgreSQL 17 compatibility job on 17.x; PostgreSQL 18 is tested separately.",
+      "matchManagers": ["github-actions"],
+      "matchDatasources": ["docker"],
+      "matchFileNames": [".github/workflows/ci.yml"],
+      "matchPackageNames": ["postgres"],
+      "matchCurrentValue": "/^17(?:[.-]|$)/",
+      "allowedVersions": "/^17(?:[.-]|$)/"
     },
     {
       "matchDepTypes": ["dependencies"],

@@ -93,6 +93,7 @@ jobs:
 
     services:
       postgres:
+        # Keep PostgreSQL 17 coverage; the quality job already tests PostgreSQL 18.
         image: postgres:17-alpine
         env:
           POSTGRES_DB: planner_ci
