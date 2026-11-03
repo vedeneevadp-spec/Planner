@@ -196,7 +196,7 @@ async function runSmoke(targetBaseUrl, health) {
     body: {
       assigneeUserId: null,
       dueDate: null,
-      note: '',
+      note: `Searchable note ${smokeId}`,
       plannedDate: null,
       plannedEndTime: null,
       plannedStartTime: null,
@@ -216,6 +216,62 @@ async function runSmoke(targetBaseUrl, health) {
     )
   }
 
+  console.log('Production API smoke: searching task notes')
+  const searchPath = `/api/v1/planner-search?source=tasks&query=${encodeURIComponent(`Searchable note ${smokeId}`)}`
+  const activeSearch = await requestJson(
+    targetBaseUrl,
+    `${searchPath}&includeCompleted=false`,
+    { headers: workspaceHeaders },
+  )
+  if (
+    !activeSearch.items?.some(
+      (item) => item.id === createdTask.id && item.status === 'active',
+    )
+  ) {
+    throw new Error('Planner search did not find the new task by its note.')
+  }
+
+  console.log('Production API smoke: rescheduling and restoring task date')
+  const targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+  const movedTask = await requestJson(
+    targetBaseUrl,
+    `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/schedule`,
+    {
+      method: 'PATCH',
+      headers: workspaceHeaders,
+      body: {
+        expectedVersion: createdTask.version,
+        schedule: {
+          plannedDate: targetDate,
+          plannedStartTime: null,
+          plannedEndTime: null,
+        },
+      },
+    },
+  )
+  if (movedTask.plannedDate !== targetDate)
+    throw new Error('Task rescheduling did not persist the selected date.')
+  const restoredTask = await requestJson(
+    targetBaseUrl,
+    `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/schedule`,
+    {
+      method: 'PATCH',
+      headers: workspaceHeaders,
+      body: {
+        expectedVersion: movedTask.version,
+        schedule: {
+          plannedDate: null,
+          plannedStartTime: null,
+          plannedEndTime: null,
+        },
+      },
+    },
+  )
+  if (restoredTask.plannedDate !== null)
+    throw new Error('Undo did not restore the original task date.')
+
   console.log('Production API smoke: completing task')
   const doneTask = await requestJson(
     targetBaseUrl,
@@ -224,7 +280,7 @@ async function runSmoke(targetBaseUrl, health) {
       method: 'PATCH',
       headers: workspaceHeaders,
       body: {
-        expectedVersion: createdTask.version,
+        expectedVersion: restoredTask.version,
         status: 'done',
       },
     },
@@ -232,6 +288,25 @@ async function runSmoke(targetBaseUrl, health) {
   assertPositiveInteger(doneTask.version, 'doneTask.version')
   if (doneTask.status !== 'done') {
     throw new Error(`Expected task status done, got ${doneTask.status}`)
+  }
+
+  const completedSearch = await requestJson(
+    targetBaseUrl,
+    `${searchPath}&includeCompleted=true`,
+    { headers: workspaceHeaders },
+  )
+  const activeOnlySearch = await requestJson(
+    targetBaseUrl,
+    `${searchPath}&includeCompleted=false`,
+    { headers: workspaceHeaders },
+  )
+  if (
+    !completedSearch.items?.some(
+      (item) => item.id === createdTask.id && item.status === 'done',
+    ) ||
+    activeOnlySearch.items?.some((item) => item.id === createdTask.id)
+  ) {
+    throw new Error('Planner search did not respect the completed-task filter.')
   }
 
   console.log('Production API smoke: deleting task')

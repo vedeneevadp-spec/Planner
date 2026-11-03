@@ -575,7 +575,7 @@
   }
 
   .topTodayDate {
-    min-width: 7rem;
+    min-width: 0;
     font-size: 0.72rem;
   }
 
@@ -685,4 +685,13 @@
   .topSegmentTab {
     transition: none;
   }
+}
+
+.topSearchAction {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.topSearchAction + .topActionList,
+.topSearchAction + .topSegmentList {
+  margin-left: 0;
 }

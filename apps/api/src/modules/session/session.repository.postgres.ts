@@ -1467,7 +1467,7 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   private createPersonalWorkspaceSlug(actorUserId: string): string {
-    return `personal-${actorUserId.replaceAll('-', '').slice(0, 12)}`
+    return `personal-${actorUserId.replaceAll('-', '')}`
   }
 
   private createSharedWorkspaceSlug(

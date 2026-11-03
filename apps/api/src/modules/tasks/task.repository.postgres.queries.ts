@@ -625,6 +625,19 @@ function applyTaskListFilters(
 
   let filteredQuery = query
 
+  if (filters.includeClosed === false) {
+    filteredQuery = filteredQuery.where('status', 'in', [
+      'todo',
+      'in_progress',
+      'ready_for_review',
+    ])
+  }
+  if (filters.search) {
+    filteredQuery = filteredQuery.where(
+      sql<boolean>`position(lower(${filters.search}) in lower(concat_ws(' ', app.tasks.title, app.tasks.description))) > 0`,
+    )
+  }
+
   if (filters.status) {
     filteredQuery = filteredQuery.where('status', '=', filters.status)
   }

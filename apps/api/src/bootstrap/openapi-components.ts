@@ -44,6 +44,48 @@ export function createComponentSchemas(): Record<
       type: 'object',
     },
     JsonObject: genericJsonObjectSchema(),
+    PlannerSearchItem: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'id',
+        'source',
+        'title',
+        'description',
+        'context',
+        'date',
+        'status',
+      ],
+      properties: {
+        id: { type: 'string' },
+        source: {
+          type: 'string',
+          enum: ['tasks', 'shopping', 'cleaning', 'care'],
+        },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        context: { type: 'string' },
+        date: nullableStringSchema(),
+        status: { type: 'string', enum: ['active', 'done', 'archived'] },
+      },
+    },
+    PlannerSearchResponse: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['items', 'hasMore', 'page', 'unavailableSources'],
+      properties: {
+        items: genericJsonArraySchema('PlannerSearchItem'),
+        hasMore: { type: 'boolean' },
+        page: positiveIntegerSchema(),
+        unavailableSources: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['tasks', 'shopping', 'cleaning', 'care'],
+          },
+        },
+      },
+    },
     AliceOAuthAuthorizeForm: genericJsonObjectSchema(),
     AliceOAuthTokenRequest: genericJsonObjectSchema(),
     AliceOAuthTokenResponse: genericJsonObjectSchema(),

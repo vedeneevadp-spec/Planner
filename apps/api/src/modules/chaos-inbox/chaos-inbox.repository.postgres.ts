@@ -1,5 +1,5 @@
 import { generateUuidV7, serializeDateOnly } from '@planner/contracts'
-import { type Kysely, type Selectable } from 'kysely'
+import { type Kysely, type Selectable, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import {
@@ -387,6 +387,15 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       query = query.where('kind', '=', filters.kind)
     }
 
+    if (filters?.search) {
+      query = query.where(
+        sql<boolean>`position(lower(${filters.search}) in lower(text)) > 0`,
+      )
+    }
+    if (filters?.includeCompleted === false) {
+      query = query.where('status', '!=', 'archived')
+    }
+
     if (filters?.sphereId) {
       query = query.where('sphere_id', '=', filters.sphereId)
     }
@@ -415,6 +424,15 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
 
     if (filters?.kind) {
       query = query.where('kind', '=', filters.kind)
+    }
+
+    if (filters?.search) {
+      query = query.where(
+        sql<boolean>`position(lower(${filters.search}) in lower(text)) > 0`,
+      )
+    }
+    if (filters?.includeCompleted === false) {
+      query = query.where('status', '!=', 'archived')
     }
 
     if (filters?.sphereId) {

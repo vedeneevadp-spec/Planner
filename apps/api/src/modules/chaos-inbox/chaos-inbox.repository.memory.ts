@@ -32,6 +32,18 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
     const filtered = [...this.items.values()]
       .filter((item) => this.matchesContext(item, command.context))
       .filter((item) => item.deletedAt === null)
+      .filter(
+        (item) =>
+          !command.filters?.search ||
+          item.text
+            .toLowerCase()
+            .includes(command.filters.search.toLowerCase()),
+      )
+      .filter(
+        (item) =>
+          command.filters?.includeCompleted !== false ||
+          item.status !== 'archived',
+      )
       .filter((item) =>
         command.filters?.status ? item.status === command.filters.status : true,
       )

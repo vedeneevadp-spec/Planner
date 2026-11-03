@@ -24,6 +24,72 @@ export function defineChaosInboxRepositoryContractSuite(input: {
   name: string
 }): void {
   void describe(input.name, () => {
+    void test('searches shopping before pagination, treats wildcards literally and can include purchases', async () => {
+      const harness = await input.createHarness()
+      const { repository, context } = harness
+      try {
+        const [active, bought] = await repository.create({
+          context,
+          input: createChaosInboxItemsInputSchema.parse({
+            items: [
+              { text: 'МОЛОКО 100%_готов', kind: 'shopping' },
+              { text: 'Молоко для кофе', kind: 'shopping' },
+              { text: 'Молоко: заметка', kind: 'note' },
+              { text: 'Хлеб', kind: 'shopping' },
+            ],
+          }),
+        })
+        assert.ok(active)
+        assert.ok(bought)
+        await repository.update({
+          context,
+          id: bought.id,
+          input: chaosInboxItemUpdateInputSchema.parse({ status: 'archived' }),
+        })
+        await repository.create({
+          context: harness.otherContext,
+          input: createChaosInboxItemsInputSchema.parse({
+            items: [{ text: 'Молоко чужое', kind: 'shopping' }],
+          }),
+        })
+        const filters = {
+          search: 'молоко',
+          kind: 'shopping' as const,
+          limit: 1,
+          page: 1,
+        }
+        const first = await repository.list({ context, filters })
+        const second = await repository.list({
+          context,
+          filters: { ...filters, page: 2 },
+        })
+        assert.equal(first.total, 2)
+        assert.deepEqual(
+          [...first.items, ...second.items].map((item) => item.id).sort(),
+          [active.id, bought.id].sort(),
+        )
+        assert.deepEqual(
+          (
+            await repository.list({
+              context,
+              filters: { ...filters, includeCompleted: false },
+            })
+          ).items.map((item) => item.id),
+          [active.id],
+        )
+        assert.equal(
+          (
+            await repository.list({
+              context,
+              filters: { ...filters, search: '%_' },
+            })
+          ).total,
+          1,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
     void test('keeps chaos inbox create, list, update, convert, delete, and workspace isolation consistent', async () => {
       const harness = await input.createHarness()
 

@@ -11,6 +11,7 @@ const e2eClientAddresses = [
   '192.0.2.12',
   '192.0.2.13',
   '192.0.2.14',
+  '192.0.2.15',
 ]
 const authRateLimitedActions = [
   'password-reset-confirm',

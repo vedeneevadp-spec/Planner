@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, test } from 'node:test'
 
+import { generateUuidV7 } from '@planner/contracts'
+
 import {
   createDatabaseConnection,
   type DatabaseConnection,
@@ -91,6 +93,71 @@ defineSessionRepositoryContractSuite({
     }
   },
   name: 'PostgresSessionRepository contract',
+})
+
+void test('PostgresSessionRepository isolates users created in the same millisecond and preserves legacy workspaces', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const timestamp = Date.now()
+  const legacyUserId = generateUuidV7(timestamp)
+  const newUserIds = [generateUuidV7(timestamp), generateUuidV7(timestamp)]
+  const userIds = [legacyUserId, ...newUserIds]
+  const emailFor = (userId: string) =>
+    `contract-bootstrap-${userId}@example.test`
+  const resolveUser = (userId: string, workspaceId?: string) =>
+    repository.resolve({
+      actorUserId: undefined,
+      auth: createSessionAuthContext({ email: emailFor(userId), userId }),
+      workspaceId,
+    })
+
+  try {
+    await seedUserSession({
+      appRole: 'user',
+      email: emailFor(legacyUserId),
+      userId: legacyUserId,
+    })
+    const legacyWorkspaceId = await resolvePersonalWorkspaceId(legacyUserId)
+    const legacySlug = `personal-${legacyUserId.replaceAll('-', '').slice(0, 12)}`
+    await connection.pool.query(
+      'update app.workspaces set slug = $1 where id = $2',
+      [legacySlug, legacyWorkspaceId],
+    )
+    for (const userId of newUserIds) {
+      await connection.pool.query(
+        `insert into app.users (id, email, display_name, app_role, locale, timezone)
+         values ($1, $2, 'Workspace bootstrap test', 'user', 'en-US', 'UTC')`,
+        [userId, emailFor(userId)],
+      )
+    }
+
+    const sessions = await Promise.all(
+      userIds.map((userId) => resolveUser(userId)),
+    )
+    assert.equal(
+      new Set(sessions.map((session) => session.workspaceId)).size,
+      3,
+    )
+    assert.equal(sessions[0]?.workspaceId, legacyWorkspaceId)
+    for (const session of sessions) {
+      assert.equal(session.workspace.kind, 'personal')
+      assert.equal(session.role, 'owner')
+      assert.equal(
+        (await resolveUser(session.actorUserId)).workspaceId,
+        session.workspaceId,
+      )
+    }
+    await assert.rejects(resolveUser(newUserIds[0]!, legacyWorkspaceId), {
+      code: 'workspace_access_denied',
+      statusCode: 403,
+    })
+    const legacyWorkspace = await connection.pool.query<{ slug: string }>(
+      'select slug from app.workspaces where id = $1',
+      [legacyWorkspaceId],
+    )
+    assert.equal(legacyWorkspace.rows[0]?.slug, legacySlug)
+  } finally {
+    await cleanupUsers(userIds)
+  }
 })
 
 void test('PostgresSessionRepository exposes admin user metrics under runtime RLS', async () => {

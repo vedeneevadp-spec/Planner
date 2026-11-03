@@ -194,6 +194,12 @@ vi.mock('@/features/planner', () => ({
       refetch: mocks.taskCursorRefetch,
     }
   },
+  usePlannerTaskCursor: () => ({
+    data: { items: [], truncated: false },
+    isError: false,
+    isFetching: false,
+    refetch: mocks.taskCursorRefetch,
+  }),
 }))
 
 vi.mock('@/shared/lib/offline-sync', async (importOriginal) => {
@@ -1993,7 +1999,7 @@ describe('TodayPage', () => {
     })
   })
 
-  it('moves the selected unload candidate to tomorrow', () => {
+  it('previews an unload date before moving the task', () => {
     const todayKey = getDateKey(new Date())
     const tomorrowKey = getDateKey(addDays(new Date(), 1))
     mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage(2)
@@ -2018,7 +2024,14 @@ describe('TodayPage', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Открыть антиперегруз' }),
     )
-    fireEvent.click(screen.getAllByRole('button', { name: 'На завтра' })[0]!)
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Подобрать день' })[0]!,
+    )
+    expect(mocks.setTaskPlannedDate).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('dialog', { name: 'Куда перенести?' }),
+    ).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: /^Перенести на/ }))
 
     expect(mocks.setTaskPlannedDate).toHaveBeenCalledWith(
       'heavy-1',

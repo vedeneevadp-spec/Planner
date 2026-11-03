@@ -22,6 +22,10 @@ export {
   setTaskStatus,
   sortTasks,
 } from './planner'
+export {
+  buildRecurringGhostTasks,
+  type CalendarGhostTask,
+} from './recurring-projection'
 export { getTaskResource } from './resource'
 export {
   buildRoutineTaskFromForm,

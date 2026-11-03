@@ -19,7 +19,7 @@ interface ResourcePlanPanelProps {
   isTaskPending?: ((taskId: string) => boolean) | undefined
   tasks: Task[]
   onEnergyModeChange: (mode: EnergyMode) => void
-  onMoveTaskTomorrow: (taskId: string) => void
+  onChooseTaskDate: (taskId: string) => void
 }
 
 const energyModes: EnergyMode[] = ['minimum', 'normal', 'maximum']
@@ -30,7 +30,7 @@ export function ResourcePlanPanel({
   isTaskPending,
   tasks,
   onEnergyModeChange,
-  onMoveTaskTomorrow,
+  onChooseTaskDate,
 }: ResourcePlanPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const analysis = analyzeDailyLoad(tasks, energyMode, isTaskDataComplete)
@@ -170,9 +170,9 @@ export function ResourcePlanPanel({
                     <button
                       type="button"
                       disabled={isTaskPending?.(task.id)}
-                      onClick={() => onMoveTaskTomorrow(task.id)}
+                      onClick={() => onChooseTaskDate(task.id)}
                     >
-                      На завтра
+                      Подобрать день
                     </button>
                   </div>
                 ))}

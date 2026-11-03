@@ -1282,6 +1282,41 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['auth'],
       }),
     },
+    '/api/v1/planner-search': {
+      get: createJsonOperation({
+        operationId: 'searchPlanner',
+        parameters: [
+          ...workspaceReadParameters(),
+          {
+            in: 'query',
+            name: 'query',
+            required: true,
+            schema: { type: 'string', minLength: 1, maxLength: 200 },
+          },
+          {
+            in: 'query',
+            name: 'source',
+            schema: {
+              type: 'string',
+              enum: ['all', 'tasks', 'shopping', 'cleaning', 'care'],
+              default: 'all',
+            },
+          },
+          {
+            in: 'query',
+            name: 'includeCompleted',
+            schema: { type: 'boolean', default: true },
+          },
+          optionalIntegerQueryParameter('page', 1, 10000),
+          optionalIntegerQueryParameter('limit', 1, 50),
+        ],
+        responseSchema: 'PlannerSearchResponse',
+        security: authenticatedSecurity(),
+        summary:
+          'Search names and notes in the current workspace, including completed records',
+        tags: ['search'],
+      }),
+    },
     '/api/v1/chaos-inbox': {
       get: createJsonOperation({
         operationId: 'listChaosInboxItems',
