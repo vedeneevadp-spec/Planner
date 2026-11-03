@@ -3,6 +3,10 @@ export {
   PLANNER_OFFLINE_DATABASE_NAME,
   PLANNER_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
 } from './lib/offline-planner-store'
+export {
+  isUnauthorizedPlannerApiError,
+  PlannerApiError,
+} from './lib/planner-api'
 export { usePlanner } from './lib/usePlanner'
 export { usePlannerApiClient } from './lib/usePlannerApiClient'
 export {

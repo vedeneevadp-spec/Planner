@@ -1,0 +1,180 @@
+.legend {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.76rem;
+  color: var(--text-soft);
+}
+.days {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.day {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr) minmax(5rem, 0.7fr);
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--field-bg);
+}
+.day[data-selected='true'] {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.day[data-disabled='true'] {
+  opacity: 0.55;
+}
+.day input {
+  accent-color: var(--accent-fill);
+  margin: 0;
+}
+.dayInfo {
+  display: grid;
+  gap: 0.2rem;
+}
+.dayDate {
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+.dayDate small {
+  display: inline-block;
+  margin-left: 0.3rem;
+  color: var(--accent-strong);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.meta {
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+.dayLoad {
+  display: grid;
+  gap: 0.35rem;
+  text-align: right;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.dayLoad strong[data-overload='true'] {
+  color: var(--danger);
+}
+.track {
+  display: block;
+  height: 4px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.track > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.track > span[data-overload='true'] {
+  background: var(--danger);
+}
+.selection {
+  padding: 0.7rem;
+  margin: 0.85rem 0;
+  border-radius: 10px;
+  background: var(--accent-muted);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+.notice,
+.error {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+.notice button {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  text-decoration: underline;
+}
+.error {
+  color: var(--danger);
+}
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-top: 0.6rem;
+  background: var(--surface-elevated);
+}
+.footer button {
+  min-height: 2.75rem;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.footer .primary {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+  color: var(--accent-text-on-fill);
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.snackbar {
+  position: fixed;
+  z-index: 120;
+  bottom: calc(1rem + var(--safe-area-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: calc(100vw - 2rem);
+  width: max-content;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
+  box-shadow: var(--shadow-elevated);
+  font-size: 0.85rem;
+}
+.snackbar > span {
+  overflow-wrap: anywhere;
+}
+.snackbar button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  flex-shrink: 0;
+  min-height: 2.5rem;
+}
+@media (max-width: 560px) {
+  .footer .primary {
+    flex: 1;
+  }
+  .day {
+    gap: 0.5rem;
+    padding: 0.65rem 0.5rem;
+  }
+  .snackbar {
+    flex-wrap: wrap;
+  }
+}

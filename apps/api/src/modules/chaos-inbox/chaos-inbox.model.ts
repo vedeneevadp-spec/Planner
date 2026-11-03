@@ -42,7 +42,9 @@ export interface CreateChaosInboxItemsCommand {
 
 export interface ListChaosInboxItemsCommand {
   context: ChaosInboxReadContext
-  filters?: ChaosInboxListFilters | undefined
+  filters?:
+    | (ChaosInboxListFilters & { search?: string; includeCompleted?: boolean })
+    | undefined
 }
 
 export interface UpdateChaosInboxItemCommand {

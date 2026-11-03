@@ -29,6 +29,8 @@ export interface StoredTaskRecord extends Task {
 }
 
 export interface TaskListFilters {
+  search?: string | undefined
+  includeClosed?: boolean | undefined
   limit?: number | undefined
   offset?: number | undefined
   plannedDate?: string | undefined

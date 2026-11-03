@@ -31,6 +31,85 @@ export function defineTaskRepositoryContractSuite(input: {
   name: string
 }): void {
   void describe(input.name, () => {
+    void test('searches titles and notes before pagination and keeps closed, deleted and foreign tasks isolated', async () => {
+      const harness = await input.createHarness()
+      const { repository, personalContext: context } = harness
+      try {
+        const active = await repository.create({
+          context,
+          input: createTaskInput({ title: 'ДОГОВОР 100%_готов' }),
+        })
+        const done = await repository.create({
+          context,
+          input: createTaskInput({
+            title: 'Старая запись',
+            note: 'Договор: условия',
+            plannedDate: '2020-01-01',
+          }),
+        })
+        await repository.updateStatus({
+          context,
+          taskId: done.id,
+          status: 'done',
+        })
+        const removed = await repository.create({
+          context,
+          input: createTaskInput({ title: 'Договор удалён' }),
+        })
+        await repository.remove({ context, taskId: removed.id })
+        await repository.create({
+          context: harness.sharedContext,
+          input: createTaskInput({ title: 'Договор чужого пространства' }),
+        })
+        for (let i = 0; i < 12; i++)
+          await repository.create({
+            context,
+            input: createTaskInput({ title: 'Другая задача ' + i }),
+          })
+        const first = await repository.listPageByWorkspace(context, {
+          search: 'договор',
+          includeClosed: true,
+          limit: 1,
+          offset: 0,
+        })
+        const second = await repository.listPageByWorkspace(context, {
+          search: 'договор',
+          includeClosed: true,
+          limit: 1,
+          offset: 1,
+        })
+        assert.equal(first.hasMore, true)
+        assert.equal(second.hasMore, false)
+        assert.deepEqual(
+          [...first.items, ...second.items].map((task) => task.id).sort(),
+          [active.id, done.id].sort(),
+        )
+        assert.deepEqual(
+          (
+            await repository.listPageByWorkspace(context, {
+              search: 'договор',
+              includeClosed: false,
+              limit: 1,
+            })
+          ).items.map((task) => task.id),
+          [active.id],
+        )
+        assert.deepEqual(
+          (
+            await repository.listPageByWorkspace(context, { search: '%_' })
+          ).items.map((task) => task.id),
+          [active.id],
+        )
+        assert.deepEqual(
+          (
+            await repository.listPageByWorkspace(context, { search: 'условия' })
+          ).items.map((task) => task.id),
+          [done.id],
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
     void test('keeps task create, list, filters, pagination, and event cursor consistent', async () => {
       const harness = await input.createHarness()
 

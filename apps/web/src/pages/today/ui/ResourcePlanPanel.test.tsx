@@ -47,7 +47,7 @@ describe('ResourcePlanPanel', () => {
         energyMode="normal"
         tasks={[]}
         onEnergyModeChange={onEnergyModeChange}
-        onMoveTaskTomorrow={vi.fn()}
+        onChooseTaskDate={vi.fn()}
       />,
     )
 
@@ -93,7 +93,7 @@ describe('ResourcePlanPanel', () => {
           createTask({ id: 'edge-2', resource: -3 }),
         ]}
         onEnergyModeChange={vi.fn()}
-        onMoveTaskTomorrow={vi.fn()}
+        onChooseTaskDate={vi.fn()}
       />,
     )
 
@@ -108,7 +108,7 @@ describe('ResourcePlanPanel', () => {
           createTask({ id: String(index), resource: null }),
         )}
         onEnergyModeChange={vi.fn()}
-        onMoveTaskTomorrow={vi.fn()}
+        onChooseTaskDate={vi.fn()}
       />,
     )
     expect(screen.queryByText(/^Оценено /)).not.toBeInTheDocument()
@@ -123,7 +123,7 @@ describe('ResourcePlanPanel', () => {
       screen.queryByText(/План.*(реалистич|укладывается)/),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'На завтра' }),
+      screen.queryByRole('button', { name: 'Подобрать день' }),
     ).not.toBeInTheDocument()
   })
 
@@ -131,7 +131,7 @@ describe('ResourcePlanPanel', () => {
     const props = {
       energyMode: 'normal' as const,
       onEnergyModeChange: vi.fn(),
-      onMoveTaskTomorrow: vi.fn(),
+      onChooseTaskDate: vi.fn(),
     }
     const { rerender } = render(
       <ResourcePlanPanel
@@ -176,7 +176,7 @@ describe('ResourcePlanPanel', () => {
           createTask({ id: 'unknown', resource: null }),
         ]}
         onEnergyModeChange={vi.fn()}
-        onMoveTaskTomorrow={vi.fn()}
+        onChooseTaskDate={vi.fn()}
       />,
     )
     expect(screen.getByText('неполная оценка')).toBeVisible()
@@ -188,7 +188,9 @@ describe('ResourcePlanPanel', () => {
       screen.getByRole('heading', { name: 'Оценённая часть выше лимита' }),
     ).toBeVisible()
     expect(screen.getByText('6 из 4 ресурса')).toBeVisible()
-    expect(screen.getAllByRole('button', { name: 'На завтра' })).toHaveLength(2)
+    expect(
+      screen.getAllByRole('button', { name: 'Подобрать день' }),
+    ).toHaveLength(2)
     expect(
       screen.queryByText('Похоже, день перегружен'),
     ).not.toBeInTheDocument()
@@ -203,7 +205,7 @@ describe('ResourcePlanPanel', () => {
           isTaskDataComplete={false}
           tasks={tasks}
           onEnergyModeChange={vi.fn()}
-          onMoveTaskTomorrow={vi.fn()}
+          onChooseTaskDate={vi.fn()}
         />,
       )
       expect(screen.getByText('неполная оценка')).toBeVisible()
@@ -229,7 +231,7 @@ describe('ResourcePlanPanel', () => {
   )
 
   it('keeps unload ordering, pending state and tomorrow callback', () => {
-    const onMoveTaskTomorrow = vi.fn()
+    const onChooseTaskDate = vi.fn()
 
     render(
       <ResourcePlanPanel
@@ -262,7 +264,7 @@ describe('ResourcePlanPanel', () => {
           }),
         ]}
         onEnergyModeChange={vi.fn()}
-        onMoveTaskTomorrow={onMoveTaskTomorrow}
+        onChooseTaskDate={onChooseTaskDate}
       />,
     )
 
@@ -272,7 +274,7 @@ describe('ResourcePlanPanel', () => {
     )
 
     const titles = screen
-      .getAllByRole('button', { name: 'На завтра' })
+      .getAllByRole('button', { name: 'Подобрать день' })
       .map((button) => button.parentElement?.textContent)
 
     expect(titles).toEqual([
@@ -281,12 +283,14 @@ describe('ResourcePlanPanel', () => {
       expect.stringContaining('Важная задача'),
     ])
 
-    const moveButtons = screen.getAllByRole('button', { name: 'На завтра' })
+    const moveButtons = screen.getAllByRole('button', {
+      name: 'Подобрать день',
+    })
     expect(moveButtons[0]).toBeDisabled()
     expect(moveButtons[1]).toBeEnabled()
 
     fireEvent.click(moveButtons[1]!)
 
-    expect(onMoveTaskTomorrow).toHaveBeenCalledWith('medium')
+    expect(onChooseTaskDate).toHaveBeenCalledWith('medium')
   })
 })

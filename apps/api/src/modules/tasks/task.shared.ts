@@ -586,6 +586,8 @@ export function markTaskDeleted(
 export function matchesTaskFilters(
   task: StoredTaskRecord,
   filters?: {
+    search?: string | undefined
+    includeClosed?: boolean | undefined
     plannedDate?: string | undefined
     projectId?: string | undefined
     project?: string | undefined
@@ -599,6 +601,19 @@ export function matchesTaskFilters(
 
   if (!filters) {
     return true
+  }
+
+  if (filters.includeClosed === false && !isActiveTaskStatus(task.status)) {
+    return false
+  }
+
+  if (
+    filters.search &&
+    !`${task.title} ${task.note}`
+      .toLowerCase()
+      .includes(filters.search.toLowerCase())
+  ) {
+    return false
   }
 
   if (filters.status && task.status !== filters.status) {

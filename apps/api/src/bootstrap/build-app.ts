@@ -44,6 +44,7 @@ import {
   type McpOAuthService,
   registerMcpHaotikaRoutes,
 } from '../modules/mcp-haotika/index.js'
+import { registerPlannerSearchRoutes } from '../modules/planner-search/planner-search.routes.js'
 import type { PushNotificationsService } from '../modules/push-notifications/index.js'
 import { registerPushNotificationsRoutes } from '../modules/push-notifications/index.js'
 import type { SelfCareService } from '../modules/self-care/index.js'
@@ -286,6 +287,12 @@ export function buildApiApp({
     if (taskTemplateService) {
       registerTaskTemplateRoutes(instance, sessionService, taskTemplateService)
     }
+    registerPlannerSearchRoutes(instance, sessionService, {
+      taskService,
+      chaosInboxService,
+      cleaningService,
+      selfCareService,
+    })
     registerTaskRoutes(instance, sessionService, taskService)
     if (dailyPlanService) {
       registerDailyPlanRoutes(instance, sessionService, dailyPlanService)

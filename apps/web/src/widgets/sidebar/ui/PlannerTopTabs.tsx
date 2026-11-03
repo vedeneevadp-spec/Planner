@@ -6,6 +6,7 @@ import {
   getCleaningFocusModeAriaLabel,
   getCleaningFocusModeFromSearchParams,
 } from '@/features/cleaning/focus-query'
+import { PlannerSearchButton } from '@/features/planner-search'
 import {
   setSelectedWorkspaceIdForActors,
   usePlannerSession,
@@ -296,6 +297,10 @@ export function PlannerTopTabs() {
           {formatLongDate(todayKey)}
         </time>
       ) : null}
+
+      <PlannerSearchButton
+        className={`${styles.topIconAction} ${styles.topSearchAction}`}
+      />
 
       {isCleaningSettingsActive ? (
         <div

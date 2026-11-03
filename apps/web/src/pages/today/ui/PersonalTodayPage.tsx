@@ -21,7 +21,7 @@ import { buildTodayTaskModel } from '../lib/today-task-model'
 import { useTodayClosedTaskPagination } from '../model/useTodayClosedTaskPagination'
 import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
 import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
-import { ResourcePlanPanel } from './ResourcePlanPanel'
+import { ResourcePlanWithReschedule } from './ResourcePlanWithReschedule'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
 import { TodayPageLayout } from './TodayPageLayout'
@@ -178,15 +178,12 @@ export function PersonalTodayPage({
       }
       todayKey={todayKey}
     >
-      <ResourcePlanPanel
+      <ResourcePlanWithReschedule
         energyMode={energyMode}
         isTaskDataComplete={isTaskDataComplete}
         isTaskPending={isTaskPending}
         tasks={taskModel.resourceTasks}
         onEnergyModeChange={selectEnergyMode}
-        onMoveTaskTomorrow={(taskId) => {
-          void setTaskPlannedDate(taskId, tomorrowKey)
-        }}
       />
 
       <TodayTaskSections
