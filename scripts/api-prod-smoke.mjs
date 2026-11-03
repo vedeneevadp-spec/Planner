@@ -374,12 +374,15 @@ async function cleanupSmokeDatabase({ email, userId, workspaceId }) {
         delete from app.workspaces
         where id = $1
           and owner_user_id = $2
-          and slug = $3
+          and slug = any($3::text[])
       `,
       [
         workspaceId,
         userId,
-        `personal-${userId.replaceAll('-', '').slice(0, 12)}`,
+        [
+          `personal-${userId.replaceAll('-', '')}`,
+          `personal-${userId.replaceAll('-', '').slice(0, 12)}`,
+        ],
       ],
     )
     await client.query(
