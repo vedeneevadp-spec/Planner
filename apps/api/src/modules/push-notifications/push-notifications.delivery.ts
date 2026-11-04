@@ -243,6 +243,24 @@ function buildFcmSendRequestBody(
   token: string,
   message: PushNotificationMessage,
 ): Record<string, unknown> {
+  if (message.androidDataOnly) {
+    return {
+      message: {
+        android: { priority: 'HIGH', ttl: '86400s' },
+        data: {
+          ...message.data,
+          title: limitNotificationText(message.title, 80),
+          body: limitNotificationText(message.body, 400),
+          taskTitle: limitNotificationText(
+            message.taskTitle ?? message.body,
+            200,
+          ),
+          notificationTag: message.notificationTag ?? '',
+        },
+        token,
+      },
+    }
+  }
   return {
     message: {
       android: {
@@ -261,6 +279,15 @@ function buildFcmSendRequestBody(
       token,
     },
   }
+}
+
+function limitNotificationText(value: string, maxCharacters: number): string {
+  // The task title appears twice in action reminders; leave room in FCM's
+  // payload for routing/account data even with long multibyte titles.
+  const characters = Array.from(value)
+  return characters.length > maxCharacters
+    ? `${characters.slice(0, maxCharacters - 1).join('')}…`
+    : value
 }
 
 async function readResponsePayload(response: Response): Promise<unknown> {

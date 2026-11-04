@@ -3,6 +3,7 @@ import { generateUuidV7 } from '@planner/contracts'
 import type {
   PushDeviceRecord,
   PushDeviceUpsertInput,
+  PushNotificationDevice,
   PushNotificationRecipient,
   PushNotificationSession,
 } from './push-notifications.model.js'
@@ -98,9 +99,17 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
     return Promise.resolve()
   }
 
-  listActiveTokens(
+  async listActiveTokens(
     recipient: PushNotificationRecipient | PushNotificationSession,
   ): Promise<string[]> {
+    return (await this.listActiveDevices(recipient)).map(
+      (device) => device.token,
+    )
+  }
+
+  listActiveDevices(
+    recipient: PushNotificationRecipient | PushNotificationSession,
+  ): Promise<PushNotificationDevice[]> {
     return Promise.resolve(
       [...this.devices.values()]
         .filter(
@@ -111,7 +120,11 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
         .sort((left, right) =>
           right.lastRegisteredAt.localeCompare(left.lastRegisteredAt),
         )
-        .map((device) => device.token),
+        .map(({ appVersion, platform, token }) => ({
+          appVersion,
+          platform,
+          token,
+        })),
     )
   }
 

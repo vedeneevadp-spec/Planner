@@ -35,6 +35,7 @@ export class TaskRemindersService {
               workspaceId: reminder.workspaceId,
             },
             notificationTag: `task-reminder:${reminder.id}`,
+            taskTitle: reminder.taskTitle,
             title: 'Скоро задача',
           },
         )

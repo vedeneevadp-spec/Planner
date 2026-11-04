@@ -111,7 +111,7 @@ final class PlannerWidgetBackgroundSync {
         }
     }
 
-    private static PlannerWidgetAuthSession getUsableSession(
+    static PlannerWidgetAuthSession getUsableSession(
         Context context,
         PlannerWidgetSyncConfig config
     ) throws IOException, JSONException, PlannerWidgetHttpException {
@@ -128,7 +128,7 @@ final class PlannerWidgetBackgroundSync {
         return refreshSession(context, config, session);
     }
 
-    private static PlannerWidgetAuthSession recoverAfterUnauthorized(
+    static PlannerWidgetAuthSession recoverAfterUnauthorized(
         Context context,
         PlannerWidgetSyncConfig config,
         PlannerWidgetAuthSession failedSession

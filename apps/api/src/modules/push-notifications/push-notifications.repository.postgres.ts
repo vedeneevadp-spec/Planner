@@ -9,6 +9,7 @@ import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   PushDeviceRecord,
   PushDeviceUpsertInput,
+  PushNotificationDevice,
   PushNotificationRecipient,
   PushNotificationSession,
 } from './push-notifications.model.js'
@@ -115,13 +116,21 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
   async listActiveTokens(
     recipient: PushNotificationRecipient | PushNotificationSession,
   ): Promise<string[]> {
+    return (await this.listActiveDevices(recipient)).map(
+      (device) => device.token,
+    )
+  }
+
+  async listActiveDevices(
+    recipient: PushNotificationRecipient | PushNotificationSession,
+  ): Promise<PushNotificationDevice[]> {
     const rows = await withOptionalRls(
       this.db,
       resolveRecipientAuth(recipient),
       (executor) =>
         executor
           .selectFrom('app.push_devices')
-          .select('token')
+          .select(['token', 'app_version', 'platform'])
           .where('user_id', '=', resolveRecipientUserId(recipient))
           .where('deleted_at', 'is', null)
           .orderBy('last_registered_at', 'desc')
@@ -129,7 +138,11 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
       resolveRecipientActorOverride(recipient),
     )
 
-    return rows.map((row) => row.token)
+    return rows.map((row) => ({
+      appVersion: row.app_version,
+      platform: row.platform,
+      token: row.token,
+    }))
   }
 
   async deactivateTokens(

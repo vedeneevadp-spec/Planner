@@ -24,11 +24,18 @@ export interface PushNotificationRecipient {
 }
 
 export interface PushNotificationMessage {
+  androidDataOnly?: boolean | undefined
   body: string
   data?: Record<string, string> | undefined
   notificationTag?: string | undefined
+  taskTitle?: string | undefined
   title: string
 }
+
+export type PushNotificationDevice = Pick<
+  PushDeviceRecord,
+  'appVersion' | 'platform' | 'token'
+>
 
 export interface PushNotificationSendResult {
   deliveredCount: number

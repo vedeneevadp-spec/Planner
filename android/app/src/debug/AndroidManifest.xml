@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Local test API only; the release manifest keeps HTTPS-only defaults. -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>

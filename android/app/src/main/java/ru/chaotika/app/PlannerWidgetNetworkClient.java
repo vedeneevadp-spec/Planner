@@ -25,6 +25,19 @@ final class PlannerWidgetNetworkClient {
         this.config = config;
     }
 
+    JSONObject loadTask(String accessToken, String taskId)
+        throws IOException, JSONException, PlannerWidgetHttpException {
+        return getObject("/api/v1/tasks/" + taskId, accessToken);
+    }
+
+    JSONObject completeTask(String accessToken, String taskId, int expectedVersion)
+        throws IOException, JSONException, PlannerWidgetHttpException {
+        JSONObject body = new JSONObject();
+        body.put("status", "done");
+        body.put("expectedVersion", expectedVersion);
+        return requestObject("/api/v1/tasks/" + taskId + "/status", "PATCH", accessToken, body.toString(), null);
+    }
+
     PlannerWidgetRemoteData loadWidgetData(String accessToken, String dateKey)
         throws IOException, JSONException, PlannerWidgetHttpException {
         String encodedDate = URLEncoder.encode(dateKey, StandardCharsets.UTF_8.name());
@@ -121,6 +134,7 @@ final class PlannerWidgetNetworkClient {
             }
 
             if (requestBody != null) {
+                connection.setRequestProperty("Content-Type", "application/json");
                 byte[] bytes = requestBody.getBytes(StandardCharsets.UTF_8);
 
                 connection.setDoOutput(true);
