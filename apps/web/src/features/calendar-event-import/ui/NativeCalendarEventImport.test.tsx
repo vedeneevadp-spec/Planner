@@ -1,0 +1,153 @@
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import { StrictMode } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { CalendarEventDraft } from '../lib/native-calendar-events'
+
+const mocks = vi.hoisted(() => ({
+  read: vi.fn(),
+  ack: vi.fn(),
+  pendingListener: undefined as (() => void) | undefined,
+  resumeListener: undefined as
+    ((state: { isActive: boolean }) => void) | undefined,
+  loading: false,
+}))
+vi.mock('../lib/native-calendar-events', () => ({
+  nativeCalendarEvents: {
+    readPendingEvent: mocks.read,
+    acknowledgeEvent: mocks.ack,
+    addListener: vi.fn((_name: string, listener: () => void) => {
+      mocks.pendingListener = listener
+      return Promise.resolve({ remove: vi.fn() })
+    }),
+  },
+}))
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn(
+      (_name: string, listener: (state: { isActive: boolean }) => void) => {
+        mocks.resumeListener = listener
+        return Promise.resolve({ remove: vi.fn() })
+      },
+    ),
+  },
+}))
+vi.mock('@/features/planner', () => ({
+  usePlanner: () => ({ isLoading: mocks.loading }),
+}))
+vi.mock('@/features/session', () => ({
+  usePlannerTimeZone: () => 'Asia/Novosibirsk',
+}))
+vi.mock('@/features/task-create', () => ({
+  TaskComposer: ({
+    openDraft,
+    onClose,
+  }: {
+    openDraft: { title: string }
+    onClose: () => void
+  }) => (
+    <div role="dialog" aria-label="Новая задача">
+      <input aria-label="Задача" defaultValue={openDraft.title} />
+      <button onClick={onClose}>Закрыть</button>
+    </div>
+  ),
+}))
+
+import { NativeCalendarEventImport } from './NativeCalendarEventImport'
+
+const event: CalendarEventDraft = {
+  requestId: 'first',
+  title: 'Встреча',
+  description: '',
+  location: '',
+  beginTime: Date.parse('2026-11-05T11:40:00Z'),
+  endTime: null,
+  allDay: false,
+}
+let queue: CalendarEventDraft[]
+
+describe('native calendar event import', () => {
+  beforeEach(() => {
+    queue = [event]
+    mocks.loading = false
+    mocks.read
+      .mockReset()
+      .mockImplementation(() => Promise.resolve({ event: queue[0] ?? null }))
+    mocks.ack
+      .mockReset()
+      .mockImplementation(({ requestId }: { requestId: string }) => {
+        queue = queue.filter((item) => item.requestId !== requestId)
+        return Promise.resolve()
+      })
+  })
+  afterEach(cleanup)
+
+  it('retains the draft through StrictMode setup and acknowledges only after closing', async () => {
+    render(
+      <StrictMode>
+        <NativeCalendarEventImport />
+      </StrictMode>,
+    )
+    expect(await screen.findByRole('dialog')).toBeVisible()
+    expect(screen.getByLabelText('Задача')).toHaveValue('Встреча')
+    expect(mocks.ack).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
+    await waitFor(() =>
+      expect(mocks.ack).toHaveBeenCalledWith({ requestId: 'first' }),
+    )
+    await act(async () => {
+      mocks.resumeListener?.({ isActive: true })
+      await Promise.resolve()
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('waits for an existing form to close before reading the incoming event', async () => {
+    const other = document.createElement('div')
+    other.setAttribute('role', 'dialog')
+    document.body.append(other)
+    render(<NativeCalendarEventImport />)
+    expect(mocks.read).not.toHaveBeenCalled()
+    act(() => other.remove())
+    expect(await screen.findByLabelText('Задача')).toHaveValue('Встреча')
+  })
+
+  it('does not overwrite edited text when another event arrives', async () => {
+    render(<NativeCalendarEventImport />)
+    fireEvent.change(await screen.findByLabelText('Задача'), {
+      target: { value: 'Моя правка' },
+    })
+    queue.push({ ...event, requestId: 'second', title: 'Второе событие' })
+    await act(async () => {
+      mocks.pendingListener?.()
+      await Promise.resolve()
+    })
+    expect(screen.getByLabelText('Задача')).toHaveValue('Моя правка')
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Задача')).toHaveValue('Второе событие'),
+    )
+  })
+
+  it('waits until the planner has loaded and retries a failed native read on resume', async () => {
+    mocks.loading = true
+    const view = render(<NativeCalendarEventImport />)
+    expect(mocks.read).not.toHaveBeenCalled()
+    mocks.loading = false
+    mocks.read.mockRejectedValueOnce(new Error('bridge unavailable'))
+    view.rerender(<NativeCalendarEventImport />)
+    await waitFor(() => expect(mocks.read).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      mocks.resumeListener?.({ isActive: true })
+      await Promise.resolve()
+    })
+    expect(await screen.findByLabelText('Задача')).toHaveValue('Встреча')
+  })
+})

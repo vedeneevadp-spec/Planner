@@ -20,7 +20,6 @@ import {
 import { buildTodayTaskModel } from '../lib/today-task-model'
 import { useTodayClosedTaskPagination } from '../model/useTodayClosedTaskPagination'
 import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
-import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { ResourcePlanWithReschedule } from './ResourcePlanWithReschedule'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
@@ -61,7 +60,6 @@ export function PersonalTodayPage({
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
-  const widgetTaskComposerDraft = useWidgetTaskComposerDraft()
   const selfCareDashboardEnabled =
     sessionQuery.data?.workspace.kind === 'personal'
   const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
@@ -147,7 +145,6 @@ export function PersonalTodayPage({
 
   return (
     <TodayPageLayout
-      openDraft={widgetTaskComposerDraft}
       status={
         <TodayRoutineStatus
           additionalSources={

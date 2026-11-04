@@ -3,28 +3,30 @@ import { useSearchParams } from 'react-router'
 
 import type { TaskComposerDraft } from '@/features/task-create'
 
-export function useWidgetTaskComposerDraft(): TaskComposerDraft | null {
+export function useWidgetTaskComposerDraft(
+  enabled = true,
+): TaskComposerDraft | null {
   const [searchParams, setSearchParams] = useSearchParams()
   const createTaskRequestId = searchParams.get('createTask')
 
   useEffect(() => {
-    if (!createTaskRequestId) {
+    if (!enabled || !createTaskRequestId) {
       return
     }
 
     const nextSearchParams = new URLSearchParams(searchParams)
     nextSearchParams.delete('createTask')
     setSearchParams(nextSearchParams, { replace: true })
-  }, [createTaskRequestId, searchParams, setSearchParams])
+  }, [createTaskRequestId, enabled, searchParams, setSearchParams])
 
   return useMemo(
     () =>
-      createTaskRequestId
+      enabled && createTaskRequestId
         ? {
             plannedDate: null,
             requestId: createTaskRequestId,
           }
         : null,
-    [createTaskRequestId],
+    [createTaskRequestId, enabled],
   )
 }

@@ -8,11 +8,13 @@ import type { TaskComposerDraft } from '@/features/task-create'
 import { useWidgetTaskComposerDraft } from './useWidgetTaskComposerDraft'
 
 function DraftProbe({
+  enabled = true,
   onDraft,
 }: {
+  enabled?: boolean
   onDraft: (draft: TaskComposerDraft | null) => void
 }) {
-  const draft = useWidgetTaskComposerDraft()
+  const draft = useWidgetTaskComposerDraft(enabled)
   const location = useLocation()
 
   useEffect(() => {
@@ -62,6 +64,33 @@ describe('useWidgetTaskComposerDraft', () => {
     expect(onDraft).toHaveBeenCalledWith(null)
     expect(screen.getByTestId('search-params')).toHaveTextContent(
       '?taskView=list',
+    )
+  })
+
+  it('keeps the request in the URL until the planner can open the form', async () => {
+    const onDraft = vi.fn()
+    const view = render(
+      <MemoryRouter initialEntries={['/today?createTask=waiting']}>
+        <DraftProbe enabled={false} onDraft={onDraft} />
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('search-params')).toHaveTextContent(
+      'createTask=waiting',
+    )
+    expect(onDraft).toHaveBeenCalledTimes(1)
+    expect(onDraft).toHaveBeenCalledWith(null)
+
+    view.rerender(
+      <MemoryRouter initialEntries={['/today?createTask=waiting']}>
+        <DraftProbe onDraft={onDraft} />
+      </MemoryRouter>,
+    )
+    expect(onDraft).toHaveBeenCalledWith({
+      plannedDate: null,
+      requestId: 'waiting',
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('search-params')).toBeEmptyDOMElement(),
     )
   })
 })

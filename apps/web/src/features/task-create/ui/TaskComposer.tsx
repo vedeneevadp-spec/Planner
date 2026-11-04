@@ -47,6 +47,7 @@ interface TaskComposerProps {
   showTimeFields?: boolean
   defaultTaskType?: TaskTypeValue | undefined
   onTaskCreated?: ((input: NewTaskInput) => Promise<void> | void) | undefined
+  onClose?: (() => void) | undefined
 }
 
 export function TaskComposer({
@@ -61,6 +62,7 @@ export function TaskComposer({
   showTimeFields = true,
   defaultTaskType = '',
   onTaskCreated,
+  onClose,
 }: TaskComposerProps) {
   const { addTask, spheres } = usePlanner()
   const createHabitMutation = useCreateHabit()
@@ -164,6 +166,7 @@ export function TaskComposer({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape' && !submitLockRef.current) {
         setIsOpen(false)
+        onClose?.()
       }
     }
 
@@ -190,7 +193,7 @@ export function TaskComposer({
         returnFocusElement.focus({ preventScroll: true })
       }
     }
-  }, [isOpen])
+  }, [isOpen, onClose])
 
   useEffect(() => {
     if (!openDraft || openDraftRequestIdRef.current === openDraft.requestId) {
@@ -220,7 +223,7 @@ export function TaskComposer({
     )
     setPlannedStartTime(openDraft.plannedStartTime ?? '')
     setPreservePlannedDate(openDraft.preservePlannedDate ?? false)
-    setPlannedEndTime('')
+    setPlannedEndTime(openDraft.plannedEndTime ?? '')
     setReminderOffsets([])
     reminderAvailabilityRef.current = false
     setNote(openDraft.note ?? '')
@@ -371,6 +374,7 @@ export function TaskComposer({
         await createHabitMutation.mutateAsync(habitInput)
         resetForm()
         setIsOpen(false)
+        onClose?.()
       } finally {
         submitLockRef.current = false
         setIsSubmitting(false)
@@ -398,6 +402,7 @@ export function TaskComposer({
 
       resetForm()
       setIsOpen(false)
+      onClose?.()
     } finally {
       submitLockRef.current = false
       setIsSubmitting(false)
@@ -419,6 +424,7 @@ export function TaskComposer({
   function closeComposer() {
     if (!submitLockRef.current) {
       setIsOpen(false)
+      onClose?.()
     }
   }
 

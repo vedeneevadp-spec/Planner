@@ -14,7 +14,6 @@ import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import { buildTodayTaskModel } from '../lib/today-task-model'
 import { useTodayClosedTaskPagination } from '../model/useTodayClosedTaskPagination'
 import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
-import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
 import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineStatus } from './TodayRoutineStatus'
@@ -50,7 +49,6 @@ export function SharedTodayPage({
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
-  const widgetTaskComposerDraft = useWidgetTaskComposerDraft()
   const taskView = useTodayTaskView(searchParams)
   const routineSummary = useTodayRoutineSummary(todayKey)
   const closedTaskPagination = useTodayClosedTaskPagination({
@@ -74,7 +72,6 @@ export function SharedTodayPage({
 
   return (
     <TodayPageLayout
-      openDraft={widgetTaskComposerDraft}
       status={<TodayRoutineStatus status={status} summary={routineSummary} />}
     >
       <TodayTaskSections

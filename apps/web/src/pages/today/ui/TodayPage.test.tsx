@@ -15,6 +15,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -152,7 +153,7 @@ const mocks = vi.hoisted(() => {
       | undefined,
     shoppingQueryOverrides,
     shoppingRefetch: vi.fn<() => Promise<unknown>>(),
-    taskComposer: vi.fn(),
+    taskComposer: vi.fn<(props: unknown) => ReactNode>(),
     taskCursorRefetch: vi.fn(),
     updateTask: vi.fn(),
     updateUserPreferences: vi.fn(),
@@ -281,8 +282,7 @@ vi.mock('@/features/session', () => ({
 
 vi.mock('@/features/task-create', () => ({
   TaskComposer: (props: unknown) => {
-    mocks.taskComposer(props)
-    return null
+    return mocks.taskComposer(props) ?? null
   },
 }))
 
@@ -1088,6 +1088,34 @@ describe('TodayPage', () => {
       screen.queryByText('Не удалось отметить покупку купленной'),
     ).not.toBeInTheDocument()
     expect(screen.queryByText('Покупки: список пуст.')).not.toBeInTheDocument()
+  })
+
+  it('keeps the composer mounted while a foreground refresh reloads task data', () => {
+    mocks.taskComposer.withImplementation(
+      () => <input aria-label="Незавершённый черновик" />,
+      () => {
+        const rendered = renderTodayPage({ tasks: [] })
+        const input = screen.getByLabelText('Незавершённый черновик')
+        fireEvent.change(input, { target: { value: 'Моя правка' } })
+
+        Object.assign(mocks.plannerState, {
+          hasTaskRecords: false,
+          isTaskCacheHydrating: true,
+        })
+        rerenderTodayPage(rendered)
+        expect(screen.getByText('Загружаем план на сегодня')).toBeVisible()
+        expect(screen.getByLabelText('Незавершённый черновик')).toBe(input)
+        expect(input).toHaveValue('Моя правка')
+
+        Object.assign(mocks.plannerState, {
+          hasTaskRecords: true,
+          isTaskCacheHydrating: false,
+        })
+        rerenderTodayPage(rendered)
+        expect(screen.getByLabelText('Незавершённый черновик')).toBe(input)
+        expect(input).toHaveValue('Моя правка')
+      },
+    )
   })
 
   it('shows a skeleton while the task cache is being checked', () => {
