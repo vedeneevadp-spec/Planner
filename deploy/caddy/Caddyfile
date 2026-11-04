@@ -3,6 +3,12 @@ chaotika.ru {
   encode gzip zstd
   root * /opt/planner/current/apps/web/dist
 
+  handle_path /android-updates/* {
+    root * /var/lib/planner/android-updates
+    header Cache-Control "no-store"
+    file_server
+  }
+
   handle /api/* {
     reverse_proxy 127.0.0.1:3001
   }

@@ -1516,6 +1516,8 @@ cd "$release_dir"
 
 validate_production_env
 
+install -d -o root -g root -m 0755 /var/lib/planner/android-updates
+
 mkdir -p \
   "$build_cache_dir" \
   "$shared_state_dir/tmp" \

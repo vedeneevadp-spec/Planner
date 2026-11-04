@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlannerBackupFilesPlugin.class);
         registerPlugin(PlannerWidgetPlugin.class);
         registerPlugin(PlannerAppSettingsPlugin.class);
+        registerPlugin(PlannerAppUpdatesPlugin.class);
         super.onCreate(savedInstanceState);
         PlannerWidgetStorage.storePendingRouteFromIntent(this, getIntent());
         try {
