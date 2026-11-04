@@ -50,7 +50,7 @@ export function SharedTodayPage({
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
-  const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
+  const widgetTaskComposerDraft = useWidgetTaskComposerDraft()
   const taskView = useTodayTaskView(searchParams)
   const routineSummary = useTodayRoutineSummary(todayKey)
   const closedTaskPagination = useTodayClosedTaskPagination({
@@ -76,7 +76,6 @@ export function SharedTodayPage({
     <TodayPageLayout
       openDraft={widgetTaskComposerDraft}
       status={<TodayRoutineStatus status={status} summary={routineSummary} />}
-      todayKey={todayKey}
     >
       <TodayTaskSections
         actions={{

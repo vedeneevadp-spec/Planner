@@ -96,7 +96,8 @@ describe('today task model', () => {
     expect(ids(model.routineTasks)).toEqual(['routine'])
     expect(ids(model.overdueTasks)).toEqual(['overdue'])
     expect(ids(model.tomorrowTasks)).toEqual(['tomorrow'])
-    expect(ids(model.otherTasks)).toEqual(['inbox', 'future'])
+    expect(ids(model.flexibleTasks)).toEqual(['inbox'])
+    expect(ids(model.otherTasks)).toEqual(['future'])
     expect(ids(model.doneTodayTasks)).toEqual(['done-today'])
     expect(ids(model.doneHistoryTasks)).toEqual(['done-history'])
     expect(ids(model.archivedTasks)).toEqual(['archive'])
@@ -112,6 +113,7 @@ describe('today task model', () => {
       ...model.routineTasks,
       ...model.overdueTasks,
       ...model.tomorrowTasks,
+      ...model.flexibleTasks,
       ...model.otherTasks,
       ...model.doneTodayTasks,
       ...model.doneHistoryTasks,
@@ -150,6 +152,34 @@ describe('today task model', () => {
 
     expect(ids(model.mainTodayTasks)).toEqual(['keyword-only'])
     expect(model.routineTasks).toEqual([])
+  })
+
+  it('keeps undated active tasks current across days without adding daily load', () => {
+    const tasks = [
+      createTask({ id: 'flexible', resource: -4 }),
+      createTask({ id: 'in-progress', status: 'in_progress' }),
+      createTask({ id: 'review', status: 'ready_for_review' }),
+      createTask({ id: 'done', status: 'done' }),
+      createTask({ id: 'archived', status: 'archived' }),
+      createTask({ id: 'scheduled', plannedDate: TODAY_KEY }),
+    ]
+
+    for (const todayKey of [TODAY_KEY, '2026-06-01']) {
+      const model = buildTodayTaskModel({
+        plannerTimeZone: 'UTC',
+        tasks,
+        todayKey,
+        tomorrowKey: '2026-06-02',
+      })
+
+      expect(ids(model.flexibleTasks)).toEqual([
+        'flexible',
+        'in-progress',
+        'review',
+      ])
+      expect(ids(model.overdueTasks)).not.toContain('flexible')
+      expect(ids(model.resourceTasks)).not.toContain('flexible')
+    }
   })
 
   it('uses the provided timezone for completed task day boundaries', () => {
@@ -242,6 +272,16 @@ describe('today task model', () => {
         doneHistory: true,
         doneToday: true,
         other: true,
+        tomorrow: true,
+      },
+      label: 'flexible tasks before later sections',
+      values: { flexibleTasks: [createTask()] },
+    },
+    {
+      expected: {
+        doneHistory: true,
+        doneToday: true,
+        other: true,
         tomorrow: false,
       },
       label: 'tomorrow self-care before other',
@@ -250,6 +290,7 @@ describe('today task model', () => {
   ])('preserves collapse defaults for $label', ({ expected, values }) => {
     const empty = {
       doneTodayTasks: [],
+      flexibleTasks: [],
       mainTodayTasks: [],
       otherTasks: [],
       overdueTasks: [],

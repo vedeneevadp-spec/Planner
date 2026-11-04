@@ -61,7 +61,7 @@ export function PersonalTodayPage({
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
-  const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
+  const widgetTaskComposerDraft = useWidgetTaskComposerDraft()
   const selfCareDashboardEnabled =
     sessionQuery.data?.workspace.kind === 'personal'
   const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
@@ -176,7 +176,6 @@ export function PersonalTodayPage({
           summary={routineSummary}
         />
       }
-      todayKey={todayKey}
     >
       <ResourcePlanWithReschedule
         energyMode={energyMode}

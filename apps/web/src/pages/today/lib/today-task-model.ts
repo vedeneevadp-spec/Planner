@@ -2,6 +2,7 @@ import {
   selectArchivedTasks,
   selectDoneBeforeTodayTasks,
   selectDoneTodayTasks,
+  selectInboxTasks,
   selectOverdueTasks,
   selectTodayTasks,
   selectTodoTasks,
@@ -20,6 +21,7 @@ export interface TodayTaskModel {
   archivedTasks: Task[]
   doneHistoryTasks: Task[]
   doneTodayTasks: Task[]
+  flexibleTasks: Task[]
   mainTodayTasks: Task[]
   otherTasks: Task[]
   overdueTasks: Task[]
@@ -38,6 +40,7 @@ export interface TodaySectionDefaultCollapseState {
 export interface TodaySectionDefaultCollapseStateInput {
   doneTodayExtraItemCount?: number
   doneTodayTasks: Task[]
+  flexibleTasks: Task[]
   mainTodayTasks: Task[]
   otherTasks: Task[]
   overdueTasks: Task[]
@@ -73,11 +76,13 @@ export function buildTodayTaskModel({
   const mainTodayTasks = todayTasks.filter((task) => !isRoutineTask(task))
   const overdueTasks = selectOverdueTasks(tasks, todayKey)
   const tomorrowTasks = selectTomorrowTasks(tasks, tomorrowKey)
+  const flexibleTasks = selectInboxTasks(tasks)
   const visibleTaskIds = new Set([
     ...mainTodayTasks.map((task) => task.id),
     ...routineTasks.map((task) => task.id),
     ...overdueTasks.map((task) => task.id),
     ...tomorrowTasks.map((task) => task.id),
+    ...flexibleTasks.map((task) => task.id),
   ])
   const otherTasks = selectTodoTasks(tasks).filter(
     (task) => !visibleTaskIds.has(task.id),
@@ -87,6 +92,7 @@ export function buildTodayTaskModel({
     archivedTasks,
     doneHistoryTasks,
     doneTodayTasks,
+    flexibleTasks,
     mainTodayTasks,
     otherTasks,
     overdueTasks,
@@ -99,6 +105,7 @@ export function buildTodayTaskModel({
 export function getTodaySectionDefaultCollapseState({
   doneTodayExtraItemCount = 0,
   doneTodayTasks,
+  flexibleTasks,
   mainTodayTasks,
   otherTasks,
   overdueTasks,
@@ -111,7 +118,10 @@ export function getTodaySectionDefaultCollapseState({
   const hasRoutineSection = hasSectionItems(routineTasks, routineExtraItemCount)
   const hasOverdueSection = hasSectionItems(overdueTasks)
   const beforeTomorrow =
-    hasTodaySection || hasRoutineSection || hasOverdueSection
+    hasTodaySection ||
+    hasRoutineSection ||
+    hasOverdueSection ||
+    hasSectionItems(flexibleTasks)
   const hasTomorrowSection = hasSectionItems(
     tomorrowTasks,
     tomorrowExtraItemCount,

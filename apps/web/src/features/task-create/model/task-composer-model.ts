@@ -105,20 +105,16 @@ export function buildTaskComposerTaskInput({
 
   const selectedProject =
     spheres.find((project) => project.id === projectId) ?? null
-  const resolvedPlannedDate =
-    canUseRecurrence && recurrenceForm.isEnabled && !plannedDate
-      ? (initialPlannedDate ?? todayKey)
-      : plannedDate
-  const hasPlannedDate = Boolean(resolvedPlannedDate)
+  const hasPlannedDate = Boolean(plannedDate)
   const resolvedReminderOffsets =
     !isSharedWorkspace && hasPlannedDate && plannedStartTime
       ? reminderOffsets
       : []
   const reminderPlannedDate = preservePlannedDate
-    ? resolvedPlannedDate
+    ? plannedDate
     : resolveReminderPlannedDate({
         now,
-        plannedDate: resolvedPlannedDate,
+        plannedDate,
         plannedStartTime,
         reminderOffsets: resolvedReminderOffsets,
         todayKey,
@@ -141,7 +137,7 @@ export function buildTaskComposerTaskInput({
     recurrence: canUseRecurrence
       ? buildTaskRecurrenceFromForm(
           recurrenceForm,
-          reminderPlannedDate || todayKey,
+          reminderPlannedDate || initialPlannedDate || todayKey,
         )
       : null,
     remindBeforeStart: resolvedReminderOffsets.length > 0,

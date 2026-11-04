@@ -3,9 +3,7 @@ import { useSearchParams } from 'react-router'
 
 import type { TaskComposerDraft } from '@/features/task-create'
 
-export function useWidgetTaskComposerDraft(
-  todayKey: string,
-): TaskComposerDraft | null {
+export function useWidgetTaskComposerDraft(): TaskComposerDraft | null {
   const [searchParams, setSearchParams] = useSearchParams()
   const createTaskRequestId = searchParams.get('createTask')
 
@@ -23,10 +21,10 @@ export function useWidgetTaskComposerDraft(
     () =>
       createTaskRequestId
         ? {
-            plannedDate: todayKey,
+            plannedDate: null,
             requestId: createTaskRequestId,
           }
         : null,
-    [createTaskRequestId, todayKey],
+    [createTaskRequestId],
   )
 }

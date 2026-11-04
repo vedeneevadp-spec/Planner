@@ -409,7 +409,7 @@ describe('CalendarPage', () => {
     })
   })
 
-  it('opens task creation with time fields from the calendar query trigger and clears it', async () => {
+  it('opens an undated draft from the generic calendar create trigger and clears it', async () => {
     renderCalendarPage('/calendar?foo=bar&createTask=request-1')
 
     await waitFor(() => {
@@ -419,7 +419,8 @@ describe('CalendarPage', () => {
       const props = triggerCall?.[0]
 
       expect(props?.desktopOpenButtonHidden).toBe(true)
-      expect(typeof props?.openDraft?.plannedDate).toBe('string')
+      expect(props?.openDraft?.plannedDate).toBeNull()
+      expect(props?.initialPlannedDate).toBeNull()
       expect(props?.openButtonLabel).toBe('Задача')
       expect(props?.showTimeFields).toBe(true)
     })

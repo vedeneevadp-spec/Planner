@@ -63,7 +63,7 @@ describe('task-composer-model', () => {
       assigneeUserId: 'user-2',
       importance: 'important',
       necessity: 'required',
-      plannedDate: '2026-04-22',
+      plannedDate: null,
       project: 'Работа',
       projectId: PROJECT.id,
       reminderOffsets: [],

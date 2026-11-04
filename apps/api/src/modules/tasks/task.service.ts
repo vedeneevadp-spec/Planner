@@ -669,7 +669,10 @@ function buildNextRecurringOccurrence(
   return {
     input: {
       assigneeUserId: task.assigneeUserId,
-      dueDate: task.dueDate === task.plannedDate ? plannedDate : null,
+      dueDate:
+        task.dueDate !== null && task.dueDate === task.plannedDate
+          ? plannedDate
+          : null,
       icon: task.icon,
       id: generateUuidV7(),
       importance: task.importance,

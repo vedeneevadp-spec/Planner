@@ -688,11 +688,11 @@ export function CalendarPage() {
         ? requestedTaskDraft?.requestId === createTaskRequestId
           ? requestedTaskDraft
           : {
-              plannedDate: anchorDate,
+              plannedDate: null,
               requestId: createTaskRequestId,
             }
         : null,
-    [anchorDate, createTaskRequestId, requestedTaskDraft],
+    [createTaskRequestId, requestedTaskDraft],
   )
   const weekDateKeys = useMemo(() => getWeekDateKeys(anchorDate), [anchorDate])
   const weekDateLabels = useMemo(
@@ -1350,7 +1350,7 @@ export function CalendarPage() {
             key={anchorDate}
             desktopOpenButtonHidden
             hideOpenButton={!canUseCalendarActions}
-            initialPlannedDate={anchorDate}
+            initialPlannedDate={null}
             openDraft={canUseCalendarActions ? taskComposerDraft : null}
             openButtonAriaLabel="Создать задачу"
             openButtonLabel="Задача"
