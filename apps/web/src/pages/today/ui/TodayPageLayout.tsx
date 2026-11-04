@@ -9,21 +9,19 @@ interface TodayPageLayoutProps {
   children: ReactNode
   openDraft: TaskComposerDraft | null
   status?: ReactNode | undefined
-  todayKey: string
 }
 
 export function TodayPageLayout({
   children,
   openDraft,
   status,
-  todayKey,
 }: TodayPageLayoutProps) {
   return (
     <section className={`${pageStyles.page} ${styles.todayPage}`}>
       <h1 className={pageStyles.visuallyHidden}>Сегодня</h1>
       <TaskComposer
         desktopOpenButtonHidden
-        initialPlannedDate={todayKey}
+        initialPlannedDate={null}
         openDraft={openDraft}
       />
 

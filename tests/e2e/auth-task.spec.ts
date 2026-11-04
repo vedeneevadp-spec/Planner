@@ -44,6 +44,9 @@ async function expectComposerLayout(page: Page) {
 
   await expect(dialog).toBeVisible()
   await expect(titleField).toBeVisible()
+  await expect(planField).toBeHidden()
+  await dialog.getByRole('button', { name: 'Указать дату' }).click()
+  await expect(planField).toBeVisible()
 
   const [headingBox, titleBox, planBox, panelBox] = await Promise.all([
     heading.boundingBox(),

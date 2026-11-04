@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { addDateDays } from '@planner/contracts'
+import { addDateDays, getTodayDate } from '@planner/contracts'
 import { expect, test } from '@playwright/test'
 
 test.use({
@@ -23,6 +23,8 @@ test('previews load, reschedules and undoes, then searches historical records on
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
   await page.getByRole('button', { name: 'Новая задача', exact: true }).click()
   const composer = page.getByRole('dialog', { name: 'Новая задача' })
+  await composer.getByRole('button', { name: 'Указать дату' }).click()
+  await composer.getByLabel('План').fill(getTodayDate('UTC'))
   await composer
     .getByRole('textbox', { name: 'Задача' })
     .fill('Разобрать документы')

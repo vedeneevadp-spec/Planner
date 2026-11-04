@@ -213,7 +213,11 @@ export function TaskComposer({
     setProjectId(openDraft.projectId ?? '')
     setAssigneeUserId('')
     setRequiresConfirmation(false)
-    setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
+    setPlannedDate(
+      openDraft.plannedDate === undefined
+        ? (initialPlannedDate ?? '')
+        : (openDraft.plannedDate ?? ''),
+    )
     setPlannedStartTime(openDraft.plannedStartTime ?? '')
     setPreservePlannedDate(openDraft.preservePlannedDate ?? false)
     setPlannedEndTime('')
@@ -281,10 +285,6 @@ export function TaskComposer({
 
   function handleRecurrenceChange(nextForm: TaskRecurrenceFormState) {
     setRecurrenceForm(nextForm)
-
-    if (nextForm.isEnabled && !plannedDate) {
-      setPlannedDate(initialPlannedDate ?? todayKey)
-    }
   }
 
   function buildCurrentTaskInput(): NewTaskInput | null {

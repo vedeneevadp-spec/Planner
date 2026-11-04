@@ -87,6 +87,7 @@ const EMPTY_COPY = {
     doneHistory: 'Выполненные раньше задачи появятся здесь.',
     doneToday:
       'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
+    flexible: 'Задачи без даты остаются здесь до выполнения.',
     other:
       'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
     overdue: 'Просроченных задач сейчас нет.',
@@ -98,6 +99,7 @@ const EMPTY_COPY = {
     archive: 'Архивированные задачи общего workspace появятся здесь.',
     doneHistory: 'Закрытые раньше задачи общего workspace появятся здесь.',
     doneToday: 'Закрытые сегодня задачи общего workspace появятся здесь.',
+    flexible: 'Задачи без даты остаются здесь до выполнения.',
     other:
       'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
     overdue: 'Просроченных задач сейчас нет.',
@@ -246,6 +248,7 @@ export function TodayTaskSections({
   const copy = EMPTY_COPY[workspace.kind]
   const defaultCollapsedSections = getTodaySectionDefaultCollapseState({
     doneTodayTasks: model.doneTodayTasks,
+    flexibleTasks: model.flexibleTasks,
     mainTodayTasks: model.mainTodayTasks,
     otherTasks: model.otherTasks,
     overdueTasks: model.overdueTasks,
@@ -291,6 +294,14 @@ export function TodayTaskSections({
         ],
         taskView,
       )}
+
+      {renderTaskSection({
+        ...common,
+        emptyMessage: copy.flexible,
+        key: 'flexible',
+        sectionTasks: model.flexibleTasks,
+        title: 'Актуальное',
+      })}
 
       {renderTaskSection({
         ...common,

@@ -1,3 +1,4 @@
+import { getTodayDate } from '@planner/contracts'
 import { expect, type Page, test } from '@playwright/test'
 
 test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.14' } })
@@ -49,6 +50,11 @@ async function createTodayTask(page: Page, title: string) {
   const dialog = page.getByRole('dialog', { name: 'Новая задача' })
 
   await dialog.getByRole('textbox', { name: 'Задача' }).fill(title)
+  const timeZone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  )
+  await dialog.getByRole('button', { name: 'Указать дату' }).click()
+  await dialog.getByLabel('План').fill(getTodayDate(timeZone))
   await dialog.getByRole('button', { name: 'Добавить задачу' }).click()
   await expect(page.getByText(title)).toBeVisible()
 }

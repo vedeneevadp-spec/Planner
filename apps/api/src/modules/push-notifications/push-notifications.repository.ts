@@ -1,11 +1,15 @@
 import type {
   PushDeviceRecord,
   PushDeviceUpsertInput,
+  PushNotificationDevice,
   PushNotificationRecipient,
   PushNotificationSession,
 } from './push-notifications.model.js'
 
 export interface PushNotificationsRepository {
+  listActiveDevices: (
+    recipient: PushNotificationRecipient | PushNotificationSession,
+  ) => Promise<PushNotificationDevice[]>
   deactivateTokens: (
     tokens: readonly string[],
     recipient?: PushNotificationRecipient | PushNotificationSession,

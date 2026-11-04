@@ -108,6 +108,14 @@ public class PlannerAuthStoragePlugin extends Plugin {
                 return;
             }
 
+            if ("planner.auth.planner.auth.session".equals(key)) {
+                try {
+                    PlannerTaskNotificationScheduler.restore(getContext());
+                } catch (RuntimeException exception) {
+                    android.util.Log.e("PlannerNotifications", "Could not restore notification actions.");
+                }
+            }
+
             call.resolve();
         } catch (RuntimeException exception) {
             call.reject("Failed to write secure auth storage.", exception);
@@ -127,6 +135,14 @@ public class PlannerAuthStoragePlugin extends Plugin {
             if (!PlannerSecureStorage.remove(getContext(), key, PREFERENCES_GROUP)) {
                 call.reject("Failed to commit secure auth storage removal.");
                 return;
+            }
+
+            if ("planner.auth.planner.auth.session".equals(key)) {
+                try {
+                    PlannerTaskNotifications.clearAll(getContext());
+                } catch (RuntimeException exception) {
+                    android.util.Log.e("PlannerNotifications", "Could not clear notification actions.");
+                }
             }
 
             call.resolve();

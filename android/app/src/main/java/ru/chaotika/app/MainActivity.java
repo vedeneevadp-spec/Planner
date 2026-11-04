@@ -15,6 +15,11 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlannerAppSettingsPlugin.class);
         super.onCreate(savedInstanceState);
         PlannerWidgetStorage.storePendingRouteFromIntent(this, getIntent());
+        try {
+            PlannerTaskNotificationScheduler.restore(this);
+        } catch (RuntimeException exception) {
+            android.util.Log.e("PlannerNotifications", "Could not restore notification actions.");
+        }
     }
 
     @Override

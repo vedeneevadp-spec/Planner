@@ -17,6 +17,82 @@ const PRIVATE_KEY = generateKeyPairSync('rsa', {
 }).privateKey
 
 void describe('FirebasePushNotificationSender', () => {
+  void it('sends action reminders as high-priority data without an auto-rendered notification', async () => {
+    const bodies: unknown[] = []
+    const sender = new FirebasePushNotificationSender(
+      {
+        clientEmail: 'firebase-admin@example.iam.gserviceaccount.com',
+        privateKey: PRIVATE_KEY,
+        projectId: 'planner-mobile',
+      },
+      (url, init) => {
+        if (stringifyFetchUrl(url) === 'https://oauth2.googleapis.com/token') {
+          return Promise.resolve(
+            jsonResponse({ access_token: 'oauth-token', expires_in: 3600 }),
+          )
+        }
+        bodies.push(parseBody(init?.body))
+        return Promise.resolve(
+          jsonResponse({
+            name: 'projects/planner-mobile/messages/action-reminder',
+          }),
+        )
+      },
+    )
+    await sender.sendToTokens(['new-apk-token'], {
+      androidDataOnly: true,
+      title: 'Скоро задача',
+      body: 'Через 15 минут: Позвонить',
+      taskTitle: 'Позвонить',
+      notificationTag: 'task-reminder:1',
+      data: {
+        type: 'task-reminder',
+        actionsVersion: '1',
+        recipientUserId: 'user-1',
+        taskId: 'task-1',
+      },
+    })
+    assert.deepEqual(bodies, [
+      {
+        message: {
+          android: { priority: 'HIGH', ttl: '86400s' },
+          data: {
+            type: 'task-reminder',
+            actionsVersion: '1',
+            recipientUserId: 'user-1',
+            taskId: 'task-1',
+            title: 'Скоро задача',
+            body: 'Через 15 минут: Позвонить',
+            taskTitle: 'Позвонить',
+            notificationTag: 'task-reminder:1',
+          },
+          token: 'new-apk-token',
+        },
+      },
+    ])
+
+    bodies.length = 0
+    const longTitle = '🙂'.repeat(2000)
+    await sender.sendToTokens(['new-apk-token'], {
+      androidDataOnly: true,
+      title: 'Скоро задача',
+      body: `Через 15 минут: ${longTitle}`,
+      taskTitle: longTitle,
+      notificationTag: 'task-reminder:1',
+      data: {
+        type: 'task-reminder',
+        actionsVersion: '1',
+        recipientUserId: 'user-1',
+        workspaceId: 'workspace-1',
+        taskId: 'task-1',
+      },
+    })
+    const payload = JSON.stringify(bodies[0])
+    assert.ok(Buffer.byteLength(payload, 'utf8') < 4096)
+    assert.ok(payload.includes('…'))
+    assert.ok(!payload.includes('\\ud83d'))
+  })
+
   void it('sends unique tokens through FCM HTTP v1 with cached OAuth token', async () => {
     const calls: Array<{ body: unknown; url: string }> = []
     const sender = new FirebasePushNotificationSender(

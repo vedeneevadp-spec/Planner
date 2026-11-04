@@ -1,3 +1,4 @@
+import { getTodayDate } from '@planner/contracts'
 import { expect, type Page, test, type TestInfo } from '@playwright/test'
 
 test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.14' } })
@@ -122,6 +123,11 @@ test('defaults task forms to neutral and preserves legacy unknown resource cover
 
   const composer = page.getByRole('dialog', { name: 'Новая задача' })
   await composer.getByRole('textbox', { name: 'Задача' }).fill(title)
+  const timeZone = await page.evaluate(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+  )
+  await composer.getByRole('button', { name: 'Указать дату' }).click()
+  await composer.getByLabel('План').fill(getTodayDate(timeZone))
   await expect(
     composer.getByRole('button', { name: 'Не указано', exact: true }),
   ).toHaveCount(0)

@@ -65,6 +65,102 @@ describe('TaskComposer', () => {
     vi.useRealTimers()
   })
 
+  it('creates a flexible task without opening scheduling and resets to that default', async () => {
+    mocks.addTask.mockResolvedValue(true)
+    render(<TaskComposer initialPlannedDate={null} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
+    expect(screen.getByLabelText('План')).not.toBeVisible()
+    expect(screen.getByLabelText('Старт')).not.toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Указать дату' }),
+    ).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Задача' }), {
+      target: { value: 'Разобрать документы' },
+    })
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Добавить задачу' }).at(-1)!,
+    )
+
+    await waitFor(() =>
+      expect(mocks.addTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          plannedDate: null,
+          plannedStartTime: null,
+          plannedEndTime: null,
+          reminderOffsets: [],
+          title: 'Разобрать документы',
+        }),
+      ),
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
+    expect(screen.getByLabelText('План')).not.toBeVisible()
+  })
+
+  it('removes a chosen schedule without losing importance, recurrence, resource or note', async () => {
+    mocks.addTask.mockResolvedValue(true)
+    render(<TaskComposer initialPlannedDate={null} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Задача' }), {
+      target: { value: 'Проверять документы' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Заметка' }), {
+      target: { value: 'Паспорта и страховки' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Пометить как важное' }))
+    fireEvent.click(screen.getByRole('button', { name: 'По возможности' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Расход 2' }))
+    fireEvent.click(screen.getByLabelText('Повторять задачу'))
+    expect(screen.getByLabelText('План')).not.toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Указать дату' }))
+    fireEvent.change(screen.getByLabelText('План'), {
+      target: { value: '2026-11-06' },
+    })
+    fireEvent.change(screen.getByLabelText('Старт'), {
+      target: { value: '18:00' },
+    })
+    expect(screen.getByText('Напомнить')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Оставить без даты' }))
+    expect(screen.getByLabelText('План')).not.toBeVisible()
+    expect(screen.queryByText('Напомнить')).toBeNull()
+    expect(screen.getByLabelText('Повторять задачу')).toBeChecked()
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Добавить задачу' }).at(-1)!,
+    )
+    await waitFor(() =>
+      expect(mocks.addTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          plannedDate: null,
+          plannedStartTime: null,
+          plannedEndTime: null,
+          reminderOffsets: [],
+          importance: 'important',
+          necessity: 'optional',
+          resource: -2,
+          note: 'Паспорта и страховки',
+        }),
+      ),
+    )
+    expect(mocks.addTask.mock.calls[0]?.[0]).toMatchObject({
+      recurrence: { isActive: true },
+    })
+  })
+
+  it('respects an explicitly undated draft even in a dated context', () => {
+    render(
+      <TaskComposer
+        initialPlannedDate="2026-11-04"
+        openDraft={{ requestId: 'flexible', plannedDate: null }}
+      />,
+    )
+
+    expect(screen.getByLabelText('План')).toHaveValue('')
+    expect(screen.getByLabelText('План')).not.toBeVisible()
+  })
+
   it('prefills a calendar draft and preserves its date even when the selected hour has passed', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-08T08:00:00Z'))

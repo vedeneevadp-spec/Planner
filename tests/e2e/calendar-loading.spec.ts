@@ -117,7 +117,9 @@ test('keeps week geometry stable while loading and rapidly switching periods', a
           .map((animation) => animation.finished.catch(() => undefined)),
       )
     })
-    const baseline = (await sampleWeekGeometry(week))[0]!
+    // Initial positioning runs in a requestAnimationFrame; use the settled
+    // sample so navigation is not compared with the pre-positioning frame.
+    const baseline = (await sampleWeekGeometry(week)).at(-1)!
     let releaseReads = () => {}
     pendingReads = new Promise<void>((resolve) => {
       releaseReads = resolve

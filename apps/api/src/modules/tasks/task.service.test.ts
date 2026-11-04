@@ -533,6 +533,38 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.necessity, 'required')
 })
 
+void test('TaskService repeats an undated task from completion without inventing a deadline', async () => {
+  const service = new TaskService(
+    new MemoryTaskRepository(),
+    () => new Date('2026-11-06T23:00:00.000Z'),
+  )
+  const context = { ...PERSONAL_CONTEXT, clientTimeZone: 'Asia/Novosibirsk' }
+  const task = await service.createTask(context, {
+    ...BASE_INPUT,
+    plannedDate: null,
+    plannedStartTime: null,
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000010',
+      startDate: '2026-11-04',
+    },
+  })
+
+  assert.equal(task.plannedDate, null)
+  await service.setTaskStatus(context, task.id, 'done', task.version)
+  const nextTask = (await service.listTasks(context)).find(
+    (candidate) => candidate.status === 'todo',
+  )
+
+  assert.equal(nextTask?.plannedDate, '2026-11-08')
+  assert.equal(nextTask?.dueDate, null)
+  assert.equal(nextTask?.plannedStartTime, null)
+})
+
 void test('TaskService preserves the fixed schedule timezone for next recurring reminders', async () => {
   const repository = new RecordingMemoryTaskRepository()
   const service = new TaskService(repository)

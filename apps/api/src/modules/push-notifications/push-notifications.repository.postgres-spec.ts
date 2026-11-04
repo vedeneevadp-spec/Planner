@@ -70,6 +70,7 @@ void test('PostgresPushNotificationsRepository registers devices under RLS auth 
     }
 
     const device = await repository.upsertDevice(session, {
+      appVersion: '1.1.27',
       installationId: `android-${actorUserId}`,
       platform: 'android',
       token: `fcm-token-${actorUserId}`,
@@ -77,6 +78,14 @@ void test('PostgresPushNotificationsRepository registers devices under RLS auth 
 
     assert.equal(device.userId, actorUserId)
     assert.equal(device.workspaceId, workspace.workspaceId)
+    assert.deepEqual(await repository.listActiveDevices(session), [
+      {
+        appVersion: '1.1.27',
+        platform: 'android',
+        token: `fcm-token-${actorUserId}`,
+      },
+    ])
+    assert.deepEqual(await repository.listActiveDevices(otherSession), [])
     assert.deepEqual(await repository.listActiveTokens(session), [
       `fcm-token-${actorUserId}`,
     ])

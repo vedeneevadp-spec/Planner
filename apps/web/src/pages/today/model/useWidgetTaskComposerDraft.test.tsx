@@ -9,12 +9,10 @@ import { useWidgetTaskComposerDraft } from './useWidgetTaskComposerDraft'
 
 function DraftProbe({
   onDraft,
-  todayKey,
 }: {
   onDraft: (draft: TaskComposerDraft | null) => void
-  todayKey: string
 }) {
-  const draft = useWidgetTaskComposerDraft(todayKey)
+  const draft = useWidgetTaskComposerDraft()
   const location = useLocation()
 
   useEffect(() => {
@@ -36,12 +34,12 @@ describe('useWidgetTaskComposerDraft', () => {
       <MemoryRouter
         initialEntries={['/today?taskView=list&createTask=request-1&foo=bar']}
       >
-        <DraftProbe onDraft={onDraft} todayKey="2026-05-20" />
+        <DraftProbe onDraft={onDraft} />
       </MemoryRouter>,
     )
 
     expect(onDraft).toHaveBeenCalledWith({
-      plannedDate: '2026-05-20',
+      plannedDate: null,
       requestId: 'request-1',
     })
     await waitFor(() => {
@@ -57,7 +55,7 @@ describe('useWidgetTaskComposerDraft', () => {
 
     render(
       <MemoryRouter initialEntries={['/today?taskView=list']}>
-        <DraftProbe onDraft={onDraft} todayKey="2026-05-20" />
+        <DraftProbe onDraft={onDraft} />
       </MemoryRouter>,
     )
 

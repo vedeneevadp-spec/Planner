@@ -1544,7 +1544,7 @@ describe('TodayPage', () => {
 
   it('keeps other tasks expanded when no earlier task section is visible', () => {
     renderTodayPage({
-      tasks: [createTask()],
+      tasks: [createTask({ plannedDate: getDateKey(addDays(new Date(), 3)) })],
     })
 
     expect(screen.queryByRole('button', { name: 'Завтра' })).toBeNull()
@@ -1552,6 +1552,30 @@ describe('TodayPage', () => {
       screen.getByRole('button', { name: 'Остальные задачи' }),
     ).toHaveAttribute('aria-expanded', 'true')
   })
+
+  it.each(['personal', 'shared'] as const)(
+    'keeps flexible tasks visible alongside scheduled tasks in %s workspaces',
+    (kind) => {
+      renderTodayPage({
+        kind,
+        tasks: [
+          createTask({ id: 'today', plannedDate: getDateKey(new Date()) }),
+          createTask({
+            id: 'flexible',
+            title: 'Дело без ежедневного переноса',
+          }),
+        ],
+      })
+
+      expect(
+        screen.getByRole('button', { name: 'Актуальное' }),
+      ).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByText('Дело без ежедневного переноса')).toBeVisible()
+      expect(
+        screen.queryByRole('button', { name: 'Остальные задачи' }),
+      ).toBeNull()
+    },
+  )
 
   it('starts other tasks collapsed when today is visible and tomorrow is empty', () => {
     const todayKey = getDateKey(new Date())
@@ -1565,6 +1589,7 @@ describe('TodayPage', () => {
         }),
         createTask({
           id: 'other-task',
+          plannedDate: getDateKey(addDays(new Date(), 3)),
           title: 'Неразложенная задача',
         }),
       ],
@@ -1599,9 +1624,10 @@ describe('TodayPage', () => {
       ],
     })
 
-    expect(
-      screen.getByRole('button', { name: 'Остальные задачи' }),
-    ).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Актуальное' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
     const dialog = await screen.findByRole('dialog', {
       name: 'Карточка задачи',
     })
@@ -1614,7 +1640,10 @@ describe('TodayPage', () => {
 
     renderTodayPage({
       tasks: [
-        createTask({ id: 'task-1' }),
+        createTask({
+          id: 'task-1',
+          plannedDate: getDateKey(addDays(new Date(), 3)),
+        }),
         createTask({
           id: 'task-2',
           plannedDate: tomorrowKey,
@@ -1679,7 +1708,7 @@ describe('TodayPage', () => {
   it('keeps shared other tasks expanded when tomorrow is empty', () => {
     renderTodayPage({
       kind: 'shared',
-      tasks: [createTask()],
+      tasks: [createTask({ plannedDate: getDateKey(addDays(new Date(), 3)) })],
     })
 
     expect(screen.queryByRole('button', { name: 'Завтра' })).toBeNull()
@@ -2040,8 +2069,6 @@ describe('TodayPage', () => {
   })
 
   it('opens a widget draft once and preserves unrelated query parameters', async () => {
-    const todayKey = getDateKey(new Date())
-
     renderTodayPage({
       initialEntry: '/today?taskView=list&createTask=request-1&foo=bar',
       tasks: [],
@@ -2049,9 +2076,9 @@ describe('TodayPage', () => {
 
     expect(mocks.taskComposer).toHaveBeenCalledWith(
       expect.objectContaining({
-        initialPlannedDate: todayKey,
+        initialPlannedDate: null,
         openDraft: {
-          plannedDate: todayKey,
+          plannedDate: null,
           requestId: 'request-1',
         },
       }),

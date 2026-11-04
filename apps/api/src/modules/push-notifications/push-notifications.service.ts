@@ -40,9 +40,21 @@ export class PushNotificationsService {
       )
     }
 
-    const tokens = await this.repository.listActiveTokens(recipient)
+    const devices = await this.repository.listActiveDevices(recipient)
+    const actionableTokens: string[] = []
+    const legacyTokens: string[] = []
 
-    if (tokens.length === 0) {
+    for (const device of devices) {
+      const target =
+        message.data?.type === 'task-reminder' &&
+        device.platform === 'android' &&
+        supportsTaskNotificationActions(device.appVersion)
+          ? actionableTokens
+          : legacyTokens
+      target.push(device.token)
+    }
+
+    if (devices.length === 0) {
       return {
         deliveredCount: 0,
         failedCount: 0,
@@ -50,7 +62,42 @@ export class PushNotificationsService {
       }
     }
 
-    const result = await this.sender.sendToTokens(tokens, message)
+    // Older APKs rely on Firebase's system-tray rendering. Only versions
+    // shipping the native receiver may receive data-only task reminders.
+    const groups = [
+      { tokens: legacyTokens, message },
+      {
+        tokens: actionableTokens,
+        message: {
+          ...message,
+          androidDataOnly: true,
+          data: {
+            ...message.data,
+            actionsVersion: '1',
+            recipientUserId:
+              'actorUserId' in recipient
+                ? recipient.actorUserId
+                : recipient.userId,
+          },
+        },
+      },
+    ]
+    const result = {
+      deliveredCount: 0,
+      failedCount: 0,
+      invalidTokens: [] as string[],
+    }
+    for (const group of groups) {
+      if (group.tokens.length === 0) continue
+      try {
+        const sent = await this.sender.sendToTokens(group.tokens, group.message)
+        result.deliveredCount += sent.deliveredCount
+        result.failedCount += sent.failedCount
+        result.invalidTokens.push(...sent.invalidTokens)
+      } catch {
+        result.failedCount += group.tokens.length
+      }
+    }
 
     if (result.invalidTokens.length > 0) {
       await this.repository.deactivateTokens(result.invalidTokens, recipient)
@@ -73,4 +120,13 @@ export class PushNotificationsService {
       title: input.title,
     })
   }
+}
+
+function supportsTaskNotificationActions(version: string | null): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version ?? '')
+  if (!match) return false
+  const [major, minor, patch] = match.slice(1).map(Number)
+  return (
+    major! > 1 || (major === 1 && (minor! > 1 || (minor === 1 && patch! >= 27)))
+  )
 }
