@@ -14,6 +14,7 @@ import {
 } from 'react'
 import { Link } from 'react-router'
 
+import { useAppUpdate } from '@/features/app-update'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
@@ -56,6 +57,7 @@ import pageStyles from '@/shared/ui/Page'
 import styles from './MorePage.module.css'
 
 export function MorePage() {
+  const appUpdate = useAppUpdate()
   const queryClient = useQueryClient()
   const { data: session } = usePlannerSession()
   const auth = useSessionAuth()
@@ -613,6 +615,26 @@ export function MorePage() {
       ) : null}
 
       <section className={styles.controlList} aria-label="Настройки">
+        {appUpdate ? (
+          <button
+            className={styles.listAction}
+            type="button"
+            disabled={appUpdate.busy}
+            onClick={appUpdate.check}
+          >
+            <span className={styles.listIcon} aria-hidden="true">
+              <DownloadIcon size={19} strokeWidth={2} />
+            </span>
+            <span>
+              {appUpdate.checking
+                ? 'Проверяем обновление…'
+                : 'Проверить обновление'}
+              {appUpdate.installedVersion
+                ? ` · ${appUpdate.installedVersion}`
+                : ''}
+            </span>
+          </button>
+        ) : null}
         <button
           className={styles.listAction}
           type="button"

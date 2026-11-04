@@ -1,0 +1,69 @@
+.banner {
+  position: fixed;
+  z-index: 80;
+  inset-inline: max(12px, var(--safe-area-left))
+    max(12px, var(--safe-area-right));
+  bottom: max(12px, var(--safe-area-bottom));
+  width: min(28rem, calc(100% - 24px));
+  margin-inline: auto;
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface-overlay);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.copy {
+  min-width: 0;
+}
+.copy strong {
+  font-size: 0.95rem;
+}
+.copy p {
+  margin: 0.35rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.notes {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.copy progress {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  accent-color: var(--accent);
+}
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.actions button {
+  flex: 1;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.5rem 0.8rem;
+  background: var(--surface-muted);
+  color: var(--text);
+  font: inherit;
+}
+.actions .primary {
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
+  border-color: var(--accent-fill);
+}
+.actions button:disabled {
+  opacity: 0.6;
+}
+.actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}

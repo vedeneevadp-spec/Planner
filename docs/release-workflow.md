@@ -406,6 +406,11 @@ ANDROID_KEY_PASSWORD=...
 android/app/build/outputs/apk/release/app-release.apk
 ```
 
+Для Android APK с поддержкой обновлений внутри приложения после проверки
+сборки опубликуйте её через `npm run mobile:update:publish`. Подготовка без
+публикации, требования к подписи и порядок первого выпуска описаны в
+[инструкции обновления Android](./android-app-updates.md).
+
 После успешной сборки signed AAB лежит в:
 
 ```text

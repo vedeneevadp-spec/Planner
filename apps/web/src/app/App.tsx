@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { AppUpdatesProvider } from '@/features/app-update/provider'
 import {
   NativePlannerWidgetSync,
   PlannerProvider,
@@ -21,38 +22,40 @@ function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   return (
-    <SessionProvider>
-      <PlannerQueryProvider>
-        <AuthGate>
-          <NativePushRegistration />
-          <TimeZoneChangeBanner />
-          <PlannerProvider>
-            <NativePlannerWidgetSync />
-            <div
-              className={cx(
-                styles.shell,
-                isSidebarCollapsed && styles.shellSidebarCollapsed,
-              )}
-            >
-              <Sidebar
-                isCollapsed={isSidebarCollapsed}
-                navigationMode="service"
-                onCollapsedChange={setIsSidebarCollapsed}
-              />
-              <div className={styles.content}>
-                <PlannerTopTabs />
-                <main className={styles.main}>
-                  <PlannerMobileHeader />
-                  <div className={styles.routeSlot}>
-                    <AppRouter />
-                  </div>
-                </main>
+    <AppUpdatesProvider>
+      <SessionProvider>
+        <PlannerQueryProvider>
+          <AuthGate>
+            <NativePushRegistration />
+            <TimeZoneChangeBanner />
+            <PlannerProvider>
+              <NativePlannerWidgetSync />
+              <div
+                className={cx(
+                  styles.shell,
+                  isSidebarCollapsed && styles.shellSidebarCollapsed,
+                )}
+              >
+                <Sidebar
+                  isCollapsed={isSidebarCollapsed}
+                  navigationMode="service"
+                  onCollapsedChange={setIsSidebarCollapsed}
+                />
+                <div className={styles.content}>
+                  <PlannerTopTabs />
+                  <main className={styles.main}>
+                    <PlannerMobileHeader />
+                    <div className={styles.routeSlot}>
+                      <AppRouter />
+                    </div>
+                  </main>
+                </div>
               </div>
-            </div>
-          </PlannerProvider>
-        </AuthGate>
-      </PlannerQueryProvider>
-    </SessionProvider>
+            </PlannerProvider>
+          </AuthGate>
+        </PlannerQueryProvider>
+      </SessionProvider>
+    </AppUpdatesProvider>
   )
 }
 
