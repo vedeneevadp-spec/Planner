@@ -244,6 +244,27 @@ describe('CalendarPage', () => {
     ).toHaveAttribute('data-calendar-view', 'week')
   })
 
+  it('positions the week at the morning hour after a slow first load', () => {
+    vi.useFakeTimers()
+    mocks.hasTaskRecords = false
+    mocks.isLoading = true
+    const route = '/calendar?calendarView=week'
+    const { rerender } = renderCalendarPage(route)
+    expect(screen.queryByLabelText('Неделя')).toBeNull()
+    vi.advanceTimersByTime(32)
+
+    mocks.hasTaskRecords = true
+    mocks.isLoading = false
+    rerenderCalendarPage(rerender, route)
+    const week = screen.getByLabelText('Неделя')
+    const morning = within(week).getByText('07:00')
+    vi.spyOn(morning, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 304, 60, 44),
+    )
+    vi.advanceTimersByTime(32)
+    expect(week.scrollTop).toBe(304)
+  })
+
   it.each(['tasks', 'self-care'] as const)(
     'keeps the week usable without a loading banner while %s load',
     (source) => {

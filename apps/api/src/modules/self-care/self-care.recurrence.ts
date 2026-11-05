@@ -2,6 +2,7 @@ import {
   addDateDays,
   addDateMonthsClamped,
   getDateDistance,
+  getDateKeyInTimeZone,
   getIsoWeekday as getIsoWeekdayForDateOnly,
   getIsoWeekStartDate,
   type SelfCareCompletion,
@@ -15,6 +16,7 @@ const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]
 
 export function generateSelfCareOccurrenceDates(input: {
   completions: SelfCareCompletion[]
+  plannerTimeZone?: string | undefined
   from: string
   item: Pick<SelfCareItem, 'createdAt' | 'type'>
   rule: SelfCareScheduleRule
@@ -54,6 +56,7 @@ export function generateSelfCareOccurrenceDates(input: {
         boundedFrom,
         boundedTo,
         start,
+        input.plannerTimeZone ?? input.rule.timezone ?? 'UTC',
       )
     case 'course':
       return generateCourseDates(input.rule, boundedFrom, boundedTo, start)
@@ -65,18 +68,25 @@ export function generateSelfCareOccurrenceDates(input: {
 
 export function getFlexibleGoalProgress(input: {
   completions: SelfCareCompletion[]
+  plannerTimeZone?: string | undefined
   itemId: string
   periodEnd: string
   periodStart: string
   targetCount: number
 }): SelfCareFlexibleGoalProgress {
-  const completedCount = input.completions.filter(
-    (completion) =>
-      completion.itemId === input.itemId &&
-      isCompletionProgressStatus(completion.status) &&
-      completion.completedAt.slice(0, 10) >= input.periodStart &&
-      completion.completedAt.slice(0, 10) <= input.periodEnd,
-  ).length
+  const completedCount = input.completions.filter((completion) => {
+    if (
+      completion.itemId !== input.itemId ||
+      !isCompletionProgressStatus(completion.status)
+    ) {
+      return false
+    }
+    const date = getDateKeyInTimeZone(
+      completion.completedAt,
+      input.plannerTimeZone ?? 'UTC',
+    )
+    return date >= input.periodStart && date <= input.periodEnd
+  }).length
 
   return {
     completedCount,
@@ -266,11 +276,14 @@ function generateAfterCompletionDate(
   from: string,
   to: string,
   start: string,
+  plannerTimeZone: string,
 ): string[] {
   const lastCompletion = completions
     .filter((completion) => isCompletionProgressStatus(completion.status))
     .sort((left, right) => right.completedAt.localeCompare(left.completedAt))[0]
-  const baseDate = lastCompletion?.completedAt.slice(0, 10) ?? start
+  const baseDate = lastCompletion
+    ? getDateKeyInTimeZone(lastCompletion.completedAt, plannerTimeZone)
+    : start
   const nextDate = lastCompletion
     ? addInterval(
         baseDate,

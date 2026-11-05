@@ -6,8 +6,12 @@ export {
   type HaotikaMcpScope,
   PLANNER_SEARCH_TYPES,
   type PlannerSearchType,
+  resolveTodayContextInclude,
+  resolveWeekContextInclude,
   TODAY_CONTEXT_INCLUDE_KEYS,
   type TodayContextInclude,
+  WEEK_CONTEXT_INCLUDE_KEYS,
+  type WeekContextInclude,
 } from './ai-context.permissions.js'
 export {
   AiContextService,

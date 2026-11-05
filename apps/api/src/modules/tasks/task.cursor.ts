@@ -9,7 +9,8 @@ interface TaskCursorPayload extends TaskCursorAnchor {
   dateTo: string | null
   direction: TaskCursorFilters['direction']
   scope: TaskCursorFilters['scope']
-  version: 1 | 2
+  contextFilter?: TaskCursorFilters['contextFilter']
+  version: 1 | 2 | 3
 }
 
 export function encodeTaskCursor(
@@ -23,7 +24,8 @@ export function encodeTaskCursor(
     dateTo: filters.dateTo ?? null,
     direction: filters.direction,
     scope: filters.scope,
-    version: 2,
+    ...(filters.contextFilter ? { contextFilter: filters.contextFilter } : {}),
+    version: filters.contextFilter ? 3 : 2,
   }
 
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
@@ -45,7 +47,7 @@ export function decodeTaskCursor(
     const isLegacyCursor =
       payload.version === 1 && payload.closedPriority === undefined
     const isCurrentCursor =
-      payload.version === 2 &&
+      (payload.version === 2 || payload.version === 3) &&
       (filters.scope === 'closed'
         ? payload.closedPriority === 0 || payload.closedPriority === 1
         : payload.closedPriority === null)
@@ -60,7 +62,9 @@ export function decodeTaskCursor(
       payload.dateTo !== (filters.dateTo ?? null) ||
       payload.dateMode !== filters.dateMode ||
       payload.direction !== filters.direction ||
-      payload.scope !== filters.scope
+      payload.scope !== filters.scope ||
+      JSON.stringify(payload.contextFilter ?? null) !==
+        JSON.stringify(filters.contextFilter ?? null)
     ) {
       throw new Error('Cursor payload does not match the query.')
     }

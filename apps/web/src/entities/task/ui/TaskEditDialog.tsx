@@ -5,7 +5,11 @@ import { createPortal } from 'react-dom'
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
-import { CheckIcon, type UploadedIconAsset } from '@/shared/ui/Icon'
+import {
+  CalendarIcon,
+  CheckIcon,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
@@ -66,6 +70,7 @@ export function TaskEditDialog({
   onUpdate,
 }: TaskEditDialogProps) {
   const confirmationFieldId = useId()
+  const scheduleId = useId()
   const submissionLockRef = useRef(false)
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
@@ -78,7 +83,9 @@ export function TaskEditDialog({
   )
   const [title, setTitle] = useState(task.title)
   const [projectId, setProjectId] = useState(task.projectId ?? '')
+  const [dueDate, setDueDate] = useState(task.dueDate ?? null)
   const [plannedDate, setPlannedDate] = useState(task.plannedDate ?? '')
+  const [isScheduleExpanded, setIsScheduleExpanded] = useState(false)
   const [plannedStartTime, setPlannedStartTime] = useState(
     task.plannedStartTime ?? '',
   )
@@ -118,6 +125,7 @@ export function TaskEditDialog({
   const isRoutineTask = Boolean(task.routine)
   const canEditRecurrence = !isRoutineTask
   const hasPlannedStartTime = Boolean(plannedStartTime)
+  const showSchedule = Boolean(plannedDate || dueDate) || isScheduleExpanded
   const isSubmitPending = isPending || isSubmitting
 
   useEffect(() => {
@@ -148,6 +156,7 @@ export function TaskEditDialog({
     setPlannedDate(nextPlannedDate)
 
     if (!nextPlannedDate) {
+      setDueDate(null)
       setPlannedStartTime('')
       setPlannedEndTime('')
       setReminderOffsets([])
@@ -169,14 +178,6 @@ export function TaskEditDialog({
     } else if (!wasAvailable) {
       setReminderOffsets([15])
       reminderAvailabilityRef.current = true
-    }
-  }
-
-  function handleRecurrenceChange(nextForm: TaskRecurrenceFormState) {
-    setRecurrenceForm(nextForm)
-
-    if (nextForm.isEnabled && !plannedDate) {
-      setPlannedDate(todayKey)
     }
   }
 
@@ -205,23 +206,19 @@ export function TaskEditDialog({
         project: selectedSphere?.name ?? '',
         projectId: selectedSphere?.id ?? null,
       }
-      const resolvedPlannedDate =
-        canEditRecurrence && recurrenceForm.isEnabled && !plannedDate
-          ? todayKey
-          : plannedDate
-      const hasPlannedDate = Boolean(resolvedPlannedDate)
+      const hasPlannedDate = Boolean(plannedDate)
       const resolvedReminderOffsets =
         !isSharedWorkspace && hasPlannedDate && plannedStartTime
           ? reminderOffsets
           : []
       isUpdated = await onUpdate(task.id, {
         assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
-        dueDate: task.dueDate ?? null,
+        dueDate,
         icon,
         importance: isImportant ? 'important' : 'not_important',
         necessity,
         note,
-        plannedDate: resolvedPlannedDate || null,
+        plannedDate: plannedDate || null,
         plannedEndTime:
           hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
         plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
@@ -230,7 +227,7 @@ export function TaskEditDialog({
         recurrence: canEditRecurrence
           ? buildTaskRecurrenceFromForm(
               recurrenceForm,
-              task.recurrence?.startDate ?? (resolvedPlannedDate || todayKey),
+              task.recurrence?.startDate ?? (plannedDate || todayKey),
               task.recurrence?.seriesId,
             )
           : null,
@@ -335,7 +332,27 @@ export function TaskEditDialog({
               <section
                 className={cx(styles.editorSection, styles.scheduleSection)}
               >
+                <button
+                  className={styles.scheduleToggle}
+                  type="button"
+                  aria-expanded={showSchedule}
+                  aria-controls={scheduleId}
+                  disabled={isSubmitPending}
+                  onClick={() => {
+                    if (showSchedule) {
+                      handlePlannedDateChange('')
+                    }
+                    setIsScheduleExpanded(!showSchedule)
+                  }}
+                >
+                  <CalendarIcon size={16} />
+                  <span>
+                    {showSchedule ? 'Оставить без даты' : 'Указать дату'}
+                  </span>
+                </button>
                 <div
+                  id={scheduleId}
+                  hidden={!showSchedule}
                   className={cx(
                     styles.editorGrid,
                     hasPlannedStartTime && styles.editorGridTimeline,
@@ -535,7 +552,7 @@ export function TaskEditDialog({
                 >
                   <TaskRecurrenceFields
                     value={recurrenceForm}
-                    onChange={handleRecurrenceChange}
+                    onChange={setRecurrenceForm}
                   />
                 </section>
               ) : null}

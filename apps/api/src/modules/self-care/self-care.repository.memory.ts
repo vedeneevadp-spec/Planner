@@ -396,6 +396,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         : null)
     if (reconciliationRule) {
       const result = reconcileSelfCareSchedule({
+        plannerTimeZone: command.context.clientTimeZone,
         completions: [...this.completions.values()].filter(
           (entry) => entry.itemId === item.id,
         ),
@@ -481,6 +482,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         state.courseDetails.find((candidate) => candidate.itemId === item.id) ??
         null
       const occurrences = generateSelfCareOccurrencesForRange({
+        plannerTimeZone: command.context.clientTimeZone,
         completions: state.completions,
         courseDetails: course,
         existingOccurrences: state.occurrences,
@@ -503,6 +505,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     this.generateReadOccurrences(command.context, command.date, command.date)
     return buildDashboardResponse({
       date: command.date,
+      plannerTimeZone: command.context.clientTimeZone,
       state: this.loadState(command.context),
     })
   }
@@ -511,6 +514,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     this.generateReadOccurrences(command.context, command.from, command.to)
     return buildPlanResponse({
       from: command.from,
+      plannerTimeZone: command.context.clientTimeZone,
       state: this.loadState(command.context),
       to: command.to,
     })
@@ -1382,12 +1386,22 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async getHistory(context: SelfCareReadContext, from: string, to: string) {
     this.generateReadOccurrences(context, from, to)
-    return buildHistoryResponse({ from, state: this.loadState(context), to })
+    return buildHistoryResponse({
+      from,
+      plannerTimeZone: context.clientTimeZone,
+      state: this.loadState(context),
+      to,
+    })
   }
 
   async getAnalytics(context: SelfCareReadContext, from: string, to: string) {
     this.generateReadOccurrences(context, from, to)
-    return buildAnalyticsResponse({ from, state: this.loadState(context), to })
+    return buildAnalyticsResponse({
+      from,
+      plannerTimeZone: context.clientTimeZone,
+      state: this.loadState(context),
+      to,
+    })
   }
 
   async listTemplates(context: SelfCareReadContext) {
@@ -1892,6 +1906,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       !item ||
       !shouldDeactivateCompletedFlexibleGoal({
         completion,
+        plannerTimeZone: context.clientTimeZone,
         completions: [...this.completions.values()].filter(
           (candidate) => candidate.userId === context.actorUserId,
         ),

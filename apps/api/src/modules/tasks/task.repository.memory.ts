@@ -1,5 +1,6 @@
 import { generateUuidV7 } from '@planner/contracts'
 
+import { matchesTaskContextFilter } from './task.context-filter.js'
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
   CloseTaskChainCommand,
@@ -817,6 +818,13 @@ function matchesTaskCursorQuery(
       : isActiveTaskStatus(task.status) &&
           task.schedule?.kind !== 'fixed_zone_datetime' &&
           task.plannedDate === date
+  }
+
+  if (
+    query.contextFilter &&
+    !matchesTaskContextFilter(task, query.contextFilter)
+  ) {
+    return false
   }
 
   if (!query.dateFrom || !query.dateTo) {

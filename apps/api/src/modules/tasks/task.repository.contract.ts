@@ -31,6 +31,206 @@ export function defineTaskRepositoryContractSuite(input: {
   name: string
 }): void {
   void describe(input.name, () => {
+    void test('filters AI task search, ownership and local completion dates before cursor pagination', async () => {
+      const harness = await input.createHarness()
+      const { repository, personalContext: context } = harness
+      const now = new Date()
+      const utcDate = getDateKeyInTimeZone(now, 'UTC')
+      const timezone =
+        getDateKeyInTimeZone(now, 'Pacific/Kiritimati') !== utcDate
+          ? 'Pacific/Kiritimati'
+          : 'Etc/GMT+12'
+      const date = getDateKeyInTimeZone(now, timezone)
+      const base = {
+        dateMode: 'relevant' as const,
+        direction: 'desc' as const,
+        limit: 1,
+        scope: 'all' as const,
+        contextFilter: {
+          asOfDate: date,
+          from: date,
+          to: date,
+          timezone,
+          userId: context.actorUserId,
+          status: 'any' as const,
+          search: 'needle',
+        },
+      }
+      try {
+        const active = await repository.create({
+          context,
+          input: createTaskInput({
+            title: 'Needle 100%_literal',
+            plannedDate: addDateDays(date, 3),
+            dueDate: date,
+            plannedStartTime: '10:00',
+          }),
+        })
+        const done = await repository.create({
+          context,
+          input: createTaskInput({
+            title: 'Older plan',
+            importance: 'important',
+            note: 'Needle completion',
+            plannedDate: '2020-01-01',
+          }),
+        })
+        await repository.updateStatus({
+          context,
+          taskId: done.id,
+          status: 'done',
+        })
+        const archived = await repository.create({
+          context,
+          input: createTaskInput({
+            title: 'Needle archived',
+            plannedDate: date,
+          }),
+        })
+        await repository.updateStatus({
+          context,
+          taskId: archived.id,
+          status: 'archived',
+        })
+        const removed = await repository.create({
+          context,
+          input: createTaskInput({
+            title: 'Needle removed',
+            plannedDate: date,
+          }),
+        })
+        await repository.remove({ context, taskId: removed.id })
+        await repository.create({
+          context: harness.sharedContext,
+          input: createTaskInput({
+            title: 'Needle foreign',
+            plannedDate: date,
+          }),
+        })
+        for (let index = 0; index < 12; index++)
+          await repository.create({
+            context,
+            input: createTaskInput({
+              title: `Unrelated ${index}`,
+              plannedDate: date,
+            }),
+          })
+        const first = await repository.listCursorPageByWorkspace(context, base)
+        assert.equal(first.totalCount, 3)
+        assert.equal(first.items.length, 1)
+        const ids = first.items.map((item) => item.id)
+        let page = first
+        while (page.hasMore) {
+          const last = page.items.at(-1)!
+          page = await repository.listCursorPageByWorkspace(context, {
+            ...base,
+            anchor: {
+              closedPriority: null,
+              createdAt: last.createdAt,
+              id: last.id,
+            },
+          })
+          ids.push(...page.items.map((item) => item.id))
+        }
+        assert.deepEqual(
+          new Set(ids),
+          new Set([active.id, done.id, archived.id]),
+        )
+        const completions = await repository.listCursorPageByWorkspace(
+          context,
+          { ...base, contextFilter: { ...base.contextFilter, status: 'done' } },
+        )
+        assert.deepEqual(
+          completions.items.map((item) => item.id),
+          [done.id],
+        )
+        const otherLocalDay = await repository.listCursorPageByWorkspace(
+          context,
+          {
+            ...base,
+            contextFilter: {
+              ...base.contextFilter,
+              from: utcDate,
+              to: utcDate,
+              status: 'done',
+            },
+          },
+        )
+        assert.equal(otherLocalDay.totalCount, 0)
+        const importantDone = await repository.listCursorPageByWorkspace(
+          context,
+          {
+            ...base,
+            contextFilter: {
+              ...base.contextFilter,
+              status: 'done',
+              highPriorityOnly: true,
+            },
+          },
+        )
+        assert.deepEqual(
+          importantDone.items.map((item) => item.id),
+          [done.id],
+        )
+        const importantActive = await repository.listCursorPageByWorkspace(
+          context,
+          {
+            ...base,
+            contextFilter: {
+              ...base.contextFilter,
+              status: 'active',
+              highPriorityOnly: true,
+            },
+          },
+        )
+        assert.equal(importantActive.totalCount, 0)
+        const unfinished = await repository.listCursorPageByWorkspace(context, {
+          ...base,
+          contextFilter: { ...base.contextFilter, status: 'active' },
+        })
+        assert.deepEqual(
+          unfinished.items.map((item) => item.id),
+          [active.id],
+        )
+        const calendar = await repository.listCursorPageByWorkspace(context, {
+          ...base,
+          contextFilter: {
+            ...base.contextFilter,
+            status: 'active',
+            calendarOnly: true,
+          },
+        })
+        assert.equal(calendar.totalCount, 0)
+        const plannedCalendar = await repository.listCursorPageByWorkspace(
+          context,
+          {
+            ...base,
+            contextFilter: {
+              ...base.contextFilter,
+              from: addDateDays(date, 3),
+              to: addDateDays(date, 3),
+              status: 'active',
+              calendarOnly: true,
+            },
+          },
+        )
+        assert.deepEqual(
+          plannedCalendar.items.map((item) => item.id),
+          [active.id],
+        )
+        const literal = await repository.listCursorPageByWorkspace(context, {
+          ...base,
+          contextFilter: { ...base.contextFilter, search: '%_literal' },
+        })
+        assert.deepEqual(
+          literal.items.map((item) => item.id),
+          [active.id],
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('searches titles and notes before pagination and keeps closed, deleted and foreign tasks isolated', async () => {
       const harness = await input.createHarness()
       const { repository, personalContext: context } = harness

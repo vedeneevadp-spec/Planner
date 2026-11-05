@@ -260,6 +260,148 @@ describe('TaskEditDialog', () => {
     )
   })
 
+  it.each([false, true])(
+    'removes dates, times and reminders while preserving task settings (recurring: %s)',
+    async (isRecurring) => {
+      const onUpdate = vi.fn().mockResolvedValue(true)
+      const recurrence: Task['recurrence'] = isRecurring
+        ? {
+            daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+            endDate: null,
+            frequency: 'daily',
+            interval: 1,
+            isActive: true,
+            seriesId: 'daily-series',
+            startDate: '2026-05-01',
+          }
+        : null
+      render(
+        <TaskEditDialog
+          task={createTask({
+            dueDate: '2026-05-20',
+            plannedStartTime: '10:00',
+            plannedEndTime: '11:00',
+            reminderOffsets: [15, 60],
+            remindBeforeStart: true,
+            importance: 'important',
+            necessity: 'optional',
+            resource: -2,
+            recurrence,
+          })}
+          todayKey="2026-05-19"
+          spheres={[]}
+          uploadedIcons={[]}
+          onClose={vi.fn()}
+          onUpdate={onUpdate}
+        />,
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Оставить без даты' }))
+      expect(screen.getByLabelText('План')).not.toBeVisible()
+      expect(screen.getByLabelText('Старт')).toBeDisabled()
+      expect(screen.queryByText('Напомнить')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Указать дату' }),
+      ).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(
+        screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+      )
+
+      await waitFor(() =>
+        expect(onUpdate).toHaveBeenCalledWith(
+          'task-1',
+          expect.objectContaining({
+            dueDate: null,
+            plannedDate: null,
+            plannedStartTime: null,
+            plannedEndTime: null,
+            reminderOffsets: [],
+            remindBeforeStart: false,
+            recurrence,
+            importance: 'important',
+            necessity: 'optional',
+            resource: -2,
+            note: 'Old note',
+          }),
+        ),
+      )
+    },
+  )
+
+  it('keeps an undated task flexible when enabling recurrence', async () => {
+    const onUpdate = vi
+      .fn<(taskId: string, input: TaskUpdateInput) => Promise<boolean>>()
+      .mockResolvedValue(true)
+    render(
+      <TaskEditDialog
+        task={createTask({ plannedDate: null })}
+        todayKey="2026-05-19"
+        spheres={[]}
+        uploadedIcons={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    )
+
+    fireEvent.click(screen.getByLabelText('Повторять задачу'))
+    expect(screen.getByLabelText('План')).not.toBeVisible()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+    )
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        'task-1',
+        expect.objectContaining({
+          plannedDate: null,
+          dueDate: null,
+        }),
+      ),
+    )
+    expect(onUpdate.mock.calls[0]?.[1].recurrence).toMatchObject({
+      isActive: true,
+      startDate: '2026-05-19',
+    })
+  })
+
+  it('can schedule a flexible task again with the default reminder', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(true)
+    render(
+      <TaskEditDialog
+        task={createTask({ plannedDate: null })}
+        todayKey="2026-05-19"
+        spheres={[]}
+        uploadedIcons={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Указать дату' }))
+    expect(screen.getByLabelText('План')).toBeVisible()
+    fireEvent.change(screen.getByLabelText('План'), {
+      target: { value: '2026-05-20' },
+    })
+    fireEvent.change(screen.getByLabelText('Старт'), {
+      target: { value: '10:00' },
+    })
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+    )
+
+    await waitFor(() =>
+      expect(onUpdate).toHaveBeenCalledWith(
+        'task-1',
+        expect.objectContaining({
+          plannedDate: '2026-05-20',
+          plannedStartTime: '10:00',
+          reminderOffsets: [15],
+          remindBeforeStart: true,
+        }),
+      ),
+    )
+  })
+
   it('lets the planner request timezone govern reminder edits instead of the device timezone', async () => {
     const onUpdate = vi
       .fn<(taskId: string, input: TaskUpdateInput) => Promise<boolean>>()

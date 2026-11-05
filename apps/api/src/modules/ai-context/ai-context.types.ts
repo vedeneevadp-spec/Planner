@@ -1,6 +1,7 @@
 import type {
   PlannerSearchType,
   TodayContextInclude,
+  WeekContextInclude,
 } from './ai-context.permissions.js'
 
 export type AiLoadLevel = 'critical' | 'high' | 'low' | 'normal'
@@ -14,14 +15,19 @@ export interface AiSourceCoverage {
 }
 
 export interface AiContextSourceCoverage {
+  calendar?: AiSourceCoverage
+  taskCompletions?: AiSourceCoverage & { nextCursor: string | null }
   shopping?: AiSourceCoverage
   tasks?: AiSourceCoverage
 }
 
 export interface AiTaskItem {
   area?: string | null
+  completedAt?: string | null
   dueDate?: string | null
+  plannedDate?: string | null
   importance?: 'important' | 'not_important' | (string & {}) | null
+  isFlexible?: boolean
   obligation?: 'desired' | 'optional' | 'required' | (string & {}) | null
   priority?: 'high' | 'low' | 'normal' | (string & {}) | null
   resource?: number | null
@@ -80,6 +86,7 @@ export interface AiCleaningOverdueZoneGroup {
 export interface AiSelfCareItem {
   category?: string | null
   date?: string | null
+  plannedDate?: string | null
   source: 'selfcare'
   status: 'done' | 'missed' | 'overdue' | 'planned' | (string & {})
   title: string
@@ -148,6 +155,7 @@ export interface GetTodayContextParams {
 }
 
 export interface TodayContext {
+  listCoverage?: Record<string, AiSourceCoverage>
   calendar?: {
     events: AiCalendarEvent[]
     totalCount: number
@@ -167,8 +175,8 @@ export interface TodayContext {
     missed: AiHabitItem[]
     planned: AiHabitItem[]
   }
-  overdue?: AiOverdueSummary
-  overdueItemsByDomain?: AiOverdueItemsByDomain
+  overdue?: Partial<AiOverdueSummary> & Pick<AiOverdueSummary, 'total'>
+  overdueItemsByDomain?: Partial<AiOverdueItemsByDomain>
   selfCare?: {
     completed: AiSelfCareItem[]
     flexibleGoals: AiFlexibleGoalContext[]
@@ -220,6 +228,8 @@ export interface TodayContext {
     activeTodayCount: number
     completedToday: AiTaskItem[]
     completedTodayCount: number
+    flexible: AiTaskItem[]
+    flexibleCount: number
     important: AiTaskItem[]
     importantActiveToday: AiTaskItem[]
     importantOverdue: AiTaskItem[]
@@ -234,83 +244,112 @@ export interface TodayContext {
 
 export interface GetWeekContextParams {
   from?: string | undefined
-  include?: string[] | undefined
+  include?: WeekContextInclude[] | undefined
   timezone?: string | undefined
   to?: string | undefined
   userId: string
 }
 
 export interface WeekContext {
-  bottlenecks: string[]
+  listCoverage?: Record<string, AiSourceCoverage>
+  calendar?: {
+    events: AiCalendarEvent[]
+    totalCount: number
+  }
+  bottlenecks?: string[]
   from: string
   generatedAt: string
   highlights: {
-    completed: AiTaskItem[]
-    overdue: AiTaskItem[]
+    completed?: AiTaskItem[]
+    overdue?: AiTaskItem[]
     repeatedRoutineGroups?: AiTaskGroup[]
-    repeatedOrStuck: AiTaskItem[]
-    upcomingImportant: AiTaskItem[]
+    repeatedOrStuck?: AiTaskItem[]
+    upcomingImportant?: AiTaskItem[]
   }
-  possibleSimplifications: string[]
+  possibleSimplifications?: string[]
   progress: {
-    cleaningCompleted: {
+    cleaningCompleted?: {
       count: number
       items: AiCleaningTask[]
     }
-    selfCareCompleted: {
+    selfCareCompleted?: {
       count: number
       items: AiSelfCareItem[]
     }
-    selfCareFlexibleGoals: AiFlexibleGoalSummary
-    shoppingCompleted: {
+    selfCareFlexibleGoals?: AiFlexibleGoalSummary
+    shoppingCompleted?: {
       count: number
       items: AiShoppingItem[]
     }
-    tasksCompleted: {
+    tasksCompleted?: {
       count: number
       items: AiTaskItem[]
     }
   }
   remaining: {
-    cleaningOverdue: AiCleaningTask[]
-    cleaningOverdueByZone: AiCleaningOverdueZoneGroup[]
-    selfCareFlexibleGoals: AiFlexibleGoalSummary
-    selfCareRemaining: AiSelfCareItem[]
-    shoppingActive: AiShoppingItem[]
-    tasksActive: AiTaskItem[]
+    cleaningOverdue?: AiCleaningTask[]
+    cleaningOverdueByZone?: AiCleaningOverdueZoneGroup[]
+    selfCareFlexibleGoals?: AiFlexibleGoalSummary
+    selfCareRemaining?: AiSelfCareItem[]
+    shoppingActive?: AiShoppingItem[]
+    tasksActive?: AiTaskItem[]
+    tasksFlexible?: AiTaskItem[]
   }
   sourceCoverage: AiContextSourceCoverage
   summary: {
-    cleaningActive: number
-    cleaningOverdueCurrentBacklog: number
-    cleaningScheduledThisPeriod: number
-    cleaningTasks: number
-    cleaningOverdue: number
-    completedTasks: number
-    loadLevel: AiLoadLevel
+    cleaningActive?: number
+    cleaningOverdueCurrentBacklog?: number
+    cleaningScheduledThisPeriod?: number
+    cleaningTasks?: number
+    cleaningOverdue?: number
+    completedTasks?: number
+    loadLevel?: AiLoadLevel
     movedTasks?: number
-    overdueTasks: number
-    plannedTasks: number
-    selfCareRemaining: number
-    selfCareScheduled: number
-    selfCareCompleted: number
-    selfCareFlexibleGoals: AiFlexibleGoalSummary
-    selfCareMissed: number
-    selfCareOverdue: number
-    shoppingActive: number
-    shoppingCompleted: number
-    shoppingItems: number
-    shoppingTotal: number
-    shoppingUrgentActive: number
-    taskGroupsActive: number
-    taskOccurrencesActive: number
-    tasksActive: number
+    overdueTasks?: number
+    plannedTasks?: number
+    selfCareRemaining?: number
+    selfCareScheduled?: number
+    selfCareCompleted?: number
+    selfCareFlexibleGoals?: AiFlexibleGoalSummary
+    selfCareMissed?: number
+    selfCareOverdue?: number
+    shoppingActive?: number
+    shoppingCompleted?: number
+    shoppingItems?: number
+    shoppingTotal?: number
+    shoppingUrgentActive?: number
+    taskGroupsActive?: number
+    taskOccurrencesActive?: number
+    tasksActive?: number
+    tasksFlexible?: number
   }
   timezone: string
   to: string
 }
 
+export type FullWeekContext = Omit<
+  WeekContext,
+  | 'bottlenecks'
+  | 'possibleSimplifications'
+  | 'calendar'
+  | 'highlights'
+  | 'progress'
+  | 'remaining'
+  | 'summary'
+> & {
+  bottlenecks: string[]
+  possibleSimplifications: string[]
+  calendar: NonNullable<WeekContext['calendar']>
+  highlights: Required<WeekContext['highlights']>
+  progress: Required<WeekContext['progress']>
+  remaining: Required<WeekContext['remaining']>
+  summary: Required<Omit<WeekContext['summary'], 'movedTasks'>> &
+    Pick<WeekContext['summary'], 'movedTasks'>
+}
+
 export interface SearchPlannerParams {
+  taskCursor?: string | undefined
+  timezone?: string | undefined
   from?: string | undefined
   limit?: number | undefined
   query: string
@@ -321,6 +360,12 @@ export interface SearchPlannerParams {
 }
 
 export interface PlannerSearchResult {
+  taskPagination?: {
+    nextCursor: string | null
+    hasMore: boolean
+    returnedCount: number
+    totalCount: number
+  }
   items: Array<
     | AiCalendarEvent
     | AiCleaningTask
@@ -343,6 +388,11 @@ export interface GetOverloadContextParams {
 }
 
 export interface OverloadContext {
+  listCoverage?: Record<string, AiSourceCoverage>
+  flexibleTasks: {
+    count: number
+    items: AiTaskItem[]
+  }
   bottlenecks: Array<{
     reason: string
     relatedItemsCount: number
@@ -388,6 +438,7 @@ export interface OverloadContext {
       completedSelfcare: number
       completedShopping: number
       completedTasks: number
+      flexibleTasks: number
     }
     level: AiLoadLevel
     reasons: string[]
@@ -411,6 +462,7 @@ export interface GetSelfCareContextParams {
 }
 
 export interface SelfCareContext {
+  listCoverage?: Record<string, AiSourceCoverage>
   completed: AiSelfCareItem[]
   flexibleGoals: AiFlexibleGoalContext[]
   from: string

@@ -15,6 +15,7 @@ import type {
   SelfCareSettings,
   SelfCareTemplate,
 } from '@planner/contracts'
+import { getDayRangeUtc } from '@planner/contracts'
 import { type Selectable, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -29,7 +30,6 @@ import type {
   StoredSelfCareRitualStepDraftRecord,
 } from './self-care.model.js'
 import {
-  addDays,
   parseJsonArray,
   serializeDate,
   serializeNullableDate,
@@ -505,6 +505,7 @@ export function selectCompletions(
   input: {
     actorUserId: string | null
     completionRange?: SelfCareDateRange | undefined
+    plannerTimeZone?: string | undefined
     itemIds?: string[] | undefined
   },
 ) {
@@ -523,16 +524,19 @@ export function selectCompletions(
   }
 
   if (input.completionRange) {
+    const timeZone = input.plannerTimeZone ?? 'UTC'
     query = query
       .where(
         'completed_at',
         '>=',
-        toStartOfDayTimestamp(input.completionRange.from),
+        getDayRangeUtc({ localDate: input.completionRange.from, timeZone })
+          .startUtc,
       )
       .where(
         'completed_at',
         '<',
-        toStartOfDayTimestamp(addDays(input.completionRange.to, 1)),
+        getDayRangeUtc({ localDate: input.completionRange.to, timeZone })
+          .endUtc,
       )
   }
 
@@ -575,10 +579,6 @@ export async function selectStepCompletions(
   `.execute(executor)
 
   return result.rows
-}
-
-export function toStartOfDayTimestamp(dateKey: string): string {
-  return `${dateKey}T00:00:00.000Z`
 }
 
 export function mapCompletionStatusToOccurrenceStatus(

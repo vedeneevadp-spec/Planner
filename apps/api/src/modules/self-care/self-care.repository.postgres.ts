@@ -739,6 +739,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             ) ?? null
           generated.push(
             ...generateSelfCareOccurrencesForRange({
+              plannerTimeZone: command.context.clientTimeZone,
               completions: state.completions,
               courseDetails: course,
               existingOccurrences: state.occurrences,
@@ -780,6 +781,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     )
     return buildDashboardResponse({
       date: command.date,
+      plannerTimeZone: command.context.clientTimeZone,
       state: await this.readModels.loadDashboardReadModel(
         command.context,
         command.date,
@@ -795,6 +797,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     )
     return buildPlanResponse({
       from: command.from,
+      plannerTimeZone: command.context.clientTimeZone,
       state: await this.readModels.loadPlanReadModel(
         command.context,
         command.from,
@@ -1074,6 +1077,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         })
         const deactivated = await this.deactivateFlexibleGoalIfCompleted(trx, {
           actorUserId: command.context.actorUserId,
+          plannerTimeZone: command.context.clientTimeZone,
           completion: storedCompletion,
           item,
           scheduleRule,
@@ -1961,6 +1965,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await this.generateReadOccurrences(context, from, to)
     return buildHistoryResponse({
       from,
+      plannerTimeZone: context.clientTimeZone,
       state: await this.readModels.loadHistoryReadModel(context, from, to),
       to,
     })
@@ -1970,6 +1975,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await this.generateReadOccurrences(context, from, to)
     return buildAnalyticsResponse({
       from,
+      plannerTimeZone: context.clientTimeZone,
       state: await this.readModels.loadAnalyticsReadModel(context, from, to),
       to,
     })
@@ -2485,6 +2491,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.context.clientTimeZone,
     )
     const result = reconcileSelfCareSchedule({
+      plannerTimeZone: command.context.clientTimeZone,
       completions: completionRows.map(mapCompletionRow),
       courseDetails: courseRow ? mapCourseRow(courseRow) : null,
       from: getDateKeyInTimeZone(
@@ -3049,6 +3056,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     executor: DatabaseExecutor,
     input: {
       actorUserId: string
+      plannerTimeZone?: string | undefined
       completion: SelfCareCompletion
       item: StoredSelfCareItemRecord
       scheduleRule: SelfCareScheduleRule | null
@@ -3065,6 +3073,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     if (
       !shouldDeactivateCompletedFlexibleGoal({
         completion: input.completion,
+        plannerTimeZone: input.plannerTimeZone,
         completions,
         item: input.item,
         scheduleRule: input.scheduleRule,

@@ -6,7 +6,8 @@ import {
   getScopesForSearchTypes,
   HAOTIKA_MCP_READ_SCOPES,
   type HaotikaMcpScope,
-  TODAY_CONTEXT_INCLUDE_KEYS,
+  resolveTodayContextInclude,
+  resolveWeekContextInclude,
 } from '../ai-context/index.js'
 import {
   jsonSchemas,
@@ -71,7 +72,7 @@ const TOOL_DEFINITIONS: Record<
 }
 
 export const MCP_HAOTIKA_SERVER_INSTRUCTIONS =
-  'This MCP server provides read-only access to Haotika planner context. Use tools when the user asks about their day, week, tasks, shopping, cleaning, self-care, habits, overload or planning. Do not claim data that is not returned by tools. Do not modify data. Prefer concise practical summaries.'
+  'This MCP server provides read-only access to Haotika planner context. Use tools when the user asks about their day, week, tasks, shopping, cleaning, self-care, habits, overload or planning. Flexible tasks have no planned date or deadline and are returned separately from scheduled tasks. Treat them as available options, not overdue work or obligations for the selected day or week; they do not contribute to scheduled load. Task plannedDate is the plan, dueDate is the actual deadline, and completedAt is the completion timestamp. Search without date filters to find flexible tasks. Day and week include selects sections; stats alone returns aggregates. sourceCoverage describes database selection and listCoverage describes shortened response lists; never interpret partial data as complete. Task-only search supports taskCursor pagination. To list completed task history, use query: "", types: ["tasks"], status: "done", from, to and timezone; continue with sourceCoverage.taskCompletions.nextCursor or taskPagination.nextCursor using the same filters. Ranges are limited to 31 days. Do not claim data that is not returned by tools. Do not modify data. Prefer concise practical summaries.'
 
 export const MCP_HAOTIKA_TOOLS: McpToolDescriptor[] = Object.entries(
   TOOL_DEFINITIONS,
@@ -108,9 +109,9 @@ export function getRequiredScopesForTool(
 ): HaotikaMcpScope[] {
   if (name === 'get_today_context') {
     const parsed = toolInputSchemas.get_today_context.safeParse(rawInput ?? {})
-    const include = parsed.success
-      ? (parsed.data.include ?? [...TODAY_CONTEXT_INCLUDE_KEYS])
-      : [...TODAY_CONTEXT_INCLUDE_KEYS]
+    const include = resolveTodayContextInclude(
+      parsed.success ? parsed.data.include : undefined,
+    )
 
     return getScopesForInclude(include)
   }
@@ -123,6 +124,15 @@ export function getRequiredScopesForTool(
       types?.length
         ? types
         : ['tasks', 'calendar', 'shopping', 'cleaning', 'selfcare', 'habits'],
+    )
+  }
+
+  if (name === 'get_week_context') {
+    const parsed = toolInputSchemas.get_week_context.safeParse(rawInput ?? {})
+    return getScopesForInclude(
+      resolveWeekContextInclude(
+        parsed.success ? parsed.data.include : undefined,
+      ),
     )
   }
 
