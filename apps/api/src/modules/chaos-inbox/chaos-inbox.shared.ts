@@ -4,6 +4,7 @@ import {
   type NewTaskInput,
 } from '@planner/contracts'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import type { StoredChaosInboxItemRecord } from './chaos-inbox.model.js'
 
 export function createStoredChaosInboxItemRecord(
@@ -30,6 +31,7 @@ export function createStoredChaosInboxItemRecord(
     kind: input.kind ?? 'unknown',
     linkedTaskDeleted: false,
     priority: input.priority ?? null,
+    productUrl: input.productUrl ?? null,
     shoppingCategory: input.shoppingCategory ?? null,
     source: input.source ?? 'manual',
     sphereId: null,
@@ -40,6 +42,31 @@ export function createStoredChaosInboxItemRecord(
     version: 1,
     workspaceId: options.workspaceId,
   }
+}
+
+export function resolveShoppingCreateReplay(
+  existing: StoredChaosInboxItemRecord | undefined,
+  input: NewChaosInboxItemInput,
+  actorUserId: string,
+  workspaceId: string,
+): StoredChaosInboxItemRecord {
+  if (
+    !existing ||
+    existing.deletedAt !== null ||
+    existing.userId !== actorUserId ||
+    existing.workspaceId !== workspaceId ||
+    existing.kind !== 'shopping' ||
+    input.kind !== 'shopping' ||
+    existing.text !== input.text.trim() ||
+    (existing.productUrl ?? null) !== (input.productUrl ?? null)
+  ) {
+    throw new HttpError(
+      409,
+      'chaos_inbox_id_conflict',
+      'Inbox item id is already in use.',
+    )
+  }
+  return existing
 }
 
 export function buildChaosInboxTaskInput(

@@ -14,10 +14,10 @@ import {
 
 import { useSessionAuth } from '@/features/session'
 import { AsyncLoadErrorBoundary } from '@/shared/ui/AsyncLoadErrorBoundary'
+import styles from '@/shared/ui/Snackbar/Snackbar.module.css'
 
 import { PlannerContext } from '../model/planner-context'
 import { usePlannerState } from '../model/usePlannerState'
-import styles from './PlannerProvider.module.css'
 
 function loadTaskActionSnackbar() {
   return import('./PlannerTaskActionSnackbar').then((module) => ({

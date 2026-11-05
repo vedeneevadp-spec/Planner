@@ -408,6 +408,88 @@ describe('useShoppingList hooks', () => {
     })
   })
 
+  it('adds a URL to an existing purchase, keeps different products separate, and queues in the selected workspace', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    const session = createSessionResponse()
+    session.workspaces.push({
+      id: 'family',
+      slug: 'family',
+      name: 'Семья',
+      kind: 'shared',
+      role: 'user',
+      groupRole: 'member',
+    })
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createFeatureReadinessResult({ session }),
+    )
+    const existing = createShoppingItemRecord({
+      id: 'existing',
+      text: 'Чашка',
+      workspaceId: 'family',
+    })
+    await replaceCachedShoppingListItems('family', [existing])
+    const { result } = renderHook(() => useCreateShoppingListItem(), {
+      wrapper: createQueryWrapper(),
+    })
+    await act(async () => {
+      const first = {
+        workspaceId: 'family',
+        text: 'Чашка',
+        productUrl: 'https://shop.example/Red',
+      }
+      expect(await result.current.mutateAsync(first)).toMatchObject({
+        id: existing.id,
+        creationOutcome: 'updated',
+      })
+      expect(
+        await result.current.mutateAsync({ ...first, text: 'Новое имя' }),
+      ).toMatchObject({
+        id: existing.id,
+        text: 'Чашка',
+        creationOutcome: 'duplicate',
+      })
+      const second = {
+        ...first,
+        id: '0196941c-62c1-7d84-9fdb-f5fd1d7540f1',
+        productUrl: 'https://shop.example/Blue',
+      }
+      expect(await result.current.mutateAsync(second)).toMatchObject({
+        id: second.id,
+        creationOutcome: 'created',
+      })
+      expect(await result.current.mutateAsync(second)).toMatchObject({
+        id: second.id,
+        creationOutcome: 'duplicate',
+      })
+      await expect(
+        result.current.mutateAsync({ ...second, workspaceId: 'unknown' }),
+      ).rejects.toThrow('Нет доступа')
+    })
+    const queue = await listRetryableShoppingListOfflineMutations(
+      'family',
+      'user-1',
+    )
+    expect(queue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'shopping.update',
+          patch: { productUrl: 'https://shop.example/Red' },
+        }),
+        expect.objectContaining({
+          type: 'shopping.create',
+          productUrl: 'https://shop.example/Blue',
+        }),
+      ]),
+    )
+    expect(queue).toHaveLength(2)
+    expect(await loadCachedShoppingListItems('workspace-1')).toEqual([])
+    const saved = await loadCachedShoppingListItems('family')
+    expect(saved.map((item) => item.productUrl).sort()).toEqual([
+      'https://shop.example/Blue',
+      'https://shop.example/Red',
+    ])
+  })
+
   it('does not create a duplicate active shopping item', async () => {
     const activeItem = createShoppingItemRecord({
       id: 'item-active',
@@ -441,10 +523,71 @@ describe('useShoppingList hooks', () => {
     await act(async () => {
       await expect(
         result.current.createItem.mutateAsync('молоко'),
-      ).resolves.toEqual(activeItem)
+      ).resolves.toEqual({ ...activeItem, creationOutcome: 'duplicate' })
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('syncs a shared purchase after reopening the planner in another workspace', async () => {
+    const session = createSessionResponse()
+    session.workspaces.push({
+      id: 'family',
+      slug: 'family',
+      name: 'Семья',
+      kind: 'shared',
+      role: 'user',
+      groupRole: 'member',
+    })
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createFeatureReadinessResult({ session }),
+    )
+    const id = '0196941c-62c1-7d84-9fdb-f5fd1d7540f1'
+    const productUrl = 'https://shop.example/Blue'
+    await enqueueShoppingListOfflineMutation({
+      actorUserId: 'user-1',
+      workspaceId: 'family',
+      itemId: id,
+      type: 'shopping.create',
+      text: 'Чашка',
+      productUrl,
+    })
+    fetchMock.mockImplementation((_request, init) => {
+      if (init?.method === 'POST') {
+        expect(new Headers(init.headers).get('x-workspace-id')).toBe('family')
+        expect(
+          parseRequestBody<{ items: Array<{ productUrl: string }> }>(init)
+            .items[0]?.productUrl,
+        ).toBe(productUrl)
+        return Promise.resolve(
+          jsonResponse({
+            items: [
+              createShoppingItemRecord({
+                id,
+                text: 'Чашка',
+                productUrl,
+                workspaceId: 'family',
+              }),
+            ],
+          }),
+        )
+      }
+      return Promise.resolve(
+        jsonResponse({ items: [], total: 0, limit: 200, page: 1 }),
+      )
+    })
+    renderHook(() => useShoppingListSummary(), {
+      wrapper: createQueryWrapper(),
+    })
+    await waitFor(async () => {
+      expect(
+        await countRetryableShoppingListOfflineMutations('family', 'user-1'),
+      ).toBe(0)
+    })
+    expect((await loadCachedShoppingListItems('family'))[0]?.productUrl).toBe(
+      productUrl,
+    )
+    expect(await loadCachedShoppingListItems('workspace-1')).toEqual([])
   })
 
   it('optimistically removes an archived item from the active summary', async () => {

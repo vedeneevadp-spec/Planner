@@ -16,8 +16,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlannerAppSettingsPlugin.class);
         registerPlugin(PlannerAppUpdatesPlugin.class);
         registerPlugin(PlannerCalendarEventsPlugin.class);
+        registerPlugin(PlannerIncomingSharesPlugin.class);
         if (savedInstanceState == null) {
-            PlannerCalendarEventStore.receive(this, getIntent());
+            captureIncomingDraft(getIntent());
         }
         // BridgeActivity.load() calls our onNewIntent with the launch intent again.
         // Capture it once above, and do not re-import it on activity recreation.
@@ -27,7 +28,7 @@ public class MainActivity extends BridgeActivity {
         } finally {
             initializingBridge = false;
         }
-        PlannerWidgetStorage.storePendingRouteFromIntent(this, getIntent());
+        captureWidgetRoute(getIntent());
         try {
             PlannerTaskNotificationScheduler.restore(this);
         } catch (RuntimeException exception) {
@@ -38,10 +39,21 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         if (!initializingBridge) {
-            PlannerCalendarEventStore.receive(this, intent);
+            captureIncomingDraft(intent);
         }
-        PlannerWidgetStorage.storePendingRouteFromIntent(this, intent);
+        captureWidgetRoute(intent);
         super.onNewIntent(intent);
         setIntent(intent);
+    }
+
+    private void captureIncomingDraft(Intent intent) {
+        PlannerCalendarEventStore.receive(this, intent);
+        PlannerIncomingShareStore.receive(this, intent);
+    }
+
+    private void captureWidgetRoute(Intent intent) {
+        if (intent != null && !Intent.ACTION_SEND.equals(intent.getAction())) {
+            PlannerWidgetStorage.storePendingRouteFromIntent(this, intent);
+        }
     }
 }

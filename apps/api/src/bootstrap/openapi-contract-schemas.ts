@@ -521,6 +521,7 @@ export function createPlannerPeripheralContractSchemas(): Record<
       kind: enumSchema(chaosInboxKindSchema.options),
       linkedTaskDeleted: booleanSchema(),
       priority: nullableEnumSchema(chaosInboxPrioritySchema.options),
+      productUrl: { ...nullableStringSchema(), format: 'uri', maxLength: 8192 },
       shoppingCategory: nullableEnumSchema(
         chaosInboxShoppingCategorySchema.options,
       ),
@@ -543,6 +544,11 @@ export function createPlannerPeripheralContractSchemas(): Record<
         isFavorite: booleanSchema(),
         kind: enumSchema(chaosInboxKindSchema.options),
         priority: nullableEnumSchema(chaosInboxPrioritySchema.options),
+        productUrl: {
+          ...nullableStringSchema(),
+          format: 'uri',
+          maxLength: 8192,
+        },
         shoppingCategory: nullableEnumSchema(
           chaosInboxShoppingCategorySchema.options,
         ),
@@ -641,6 +647,11 @@ export function createPlannerPeripheralContractSchemas(): Record<
         priority: {
           ...nullableEnumSchema(chaosInboxPrioritySchema.options),
           default: null,
+        },
+        productUrl: {
+          ...nullableStringSchema(),
+          format: 'uri',
+          maxLength: 8192,
         },
         shoppingCategory: {
           ...nullableEnumSchema(chaosInboxShoppingCategorySchema.options),

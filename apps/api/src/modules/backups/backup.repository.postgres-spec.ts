@@ -468,7 +468,7 @@ for (const legacy of [false, true]) {
         [randomUUID(), userId, workspaceId],
       )
       await connection.pool.query(
-        `insert into app.chaos_inbox_items (id,workspace_id,user_id,text,source,kind,created_by,updated_by) values ($1,$2,$3,'Покупка Алисы','voice','shopping',$3,$3)`,
+        `insert into app.chaos_inbox_items (id,workspace_id,user_id,text,source,kind,product_url,created_by,updated_by) values ($1,$2,$3,'Покупка Алисы','voice','shopping','https://shop.example/SKU',$3,$3)`,
         [purchaseId, workspaceId, userId],
       )
       await connection.pool.query(
@@ -550,6 +550,10 @@ for (const legacy of [false, true]) {
       }
       assert.equal(restored.tables.chaos_inbox_items![0]!.source, 'voice')
       assert.equal(restored.tables.chaos_inbox_items![0]!.text, 'Покупка Алисы')
+      assert.equal(
+        restored.tables.chaos_inbox_items![0]!.product_url,
+        'https://shop.example/SKU',
+      )
       assert.equal(restored.tables.tasks![0]!.title, 'Существующая задача')
       assert.deepEqual(
         userBackupArchiveSchema.parse(JSON.parse(JSON.stringify(restored))),

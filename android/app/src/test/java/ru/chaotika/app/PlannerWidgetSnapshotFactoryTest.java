@@ -121,7 +121,7 @@ public class PlannerWidgetSnapshotFactoryTest {
 
     @Test
     public void generatedRefreshRotationId_isUuidV7() {
-        String requestId = PlannerWidgetUuidV7.generate();
+        String requestId = PlannerUuidV7.generate();
 
         assertTrue(
             requestId.matches(

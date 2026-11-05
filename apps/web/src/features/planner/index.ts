@@ -4,6 +4,7 @@ export {
   PLANNER_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
 } from './lib/offline-planner-store'
 export {
+  createPlannerApiClient,
   isUnauthorizedPlannerApiError,
   PlannerApiError,
 } from './lib/planner-api'

@@ -2,9 +2,9 @@ import { lazy, type PointerEvent, Suspense, useRef, useState } from 'react'
 
 import { usePlannerTimeZone } from '@/features/session'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
+import styles from '@/shared/ui/Snackbar/Snackbar.module.css'
 
 import type { PlannerState } from '../model/planner.types'
-import styles from './PlannerProvider.module.css'
 
 const SNACKBAR_SWIPE_DISMISS_THRESHOLD = 80
 const TaskNextStageDialog = lazy(() =>

@@ -45,6 +45,7 @@ export type ShoppingListOfflineMutationRecord =
   | (ShoppingListOfflineMutationBase & {
       isFavorite?: boolean
       priority?: ChaosInboxPriority | null
+      productUrl?: string | null
       shoppingCategory?: ChaosInboxShoppingCategory | null
       text: string
       type: 'shopping.create'
@@ -63,6 +64,7 @@ export type ShoppingListOfflineMutationInput =
       isFavorite?: boolean
       itemId: string
       priority?: ChaosInboxPriority | null
+      productUrl?: string | null
       shoppingCategory?: ChaosInboxShoppingCategory | null
       text: string
       type: 'shopping.create'

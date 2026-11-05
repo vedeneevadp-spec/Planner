@@ -1,3 +1,4 @@
+import { shoppingProductUrlSchema } from '@planner/contracts'
 import {
   type FormEvent,
   type ReactNode,
@@ -25,7 +26,7 @@ import {
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
 import { useBrowserOffline } from '@/shared/lib/offline-sync'
-import { CheckIcon, CloseIcon, TrashIcon } from '@/shared/ui/Icon'
+import { CheckIcon, CloseIcon, GlobeIcon, TrashIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
@@ -334,6 +335,8 @@ export function ShoppingPage() {
 
   function renderItemRow(item: ShoppingListItem, isCompleted: boolean) {
     const category = getShoppingCategoryOption(item.shoppingCategory)
+    const productUrl =
+      item.productUrl && shoppingProductUrlSchema.safeParse(item.productUrl)
     const checkboxId = `shopping-item-${item.id}`
     const isFavorite = item.isFavorite === true
     const isItemPending = pendingItemIds.has(item.id)
@@ -387,6 +390,18 @@ export function ShoppingPage() {
           </label>
         </div>
         <div className={styles.itemActions}>
+          {productUrl && productUrl.success ? (
+            <a
+              className={styles.iconButton}
+              href={productUrl.data}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Открыть товар: ${item.text}`}
+              title="Открыть страницу товара"
+            >
+              <GlobeIcon size={18} />
+            </a>
+          ) : null}
           <button
             className={cx(
               styles.markButton,

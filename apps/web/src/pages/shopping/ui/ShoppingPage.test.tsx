@@ -340,6 +340,34 @@ describe('ShoppingPage', () => {
     expect(screen.queryByText('Губки')).not.toBeInTheDocument()
   })
 
+  it('opens a shared product link independently from marking the purchase complete', () => {
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({
+        activeItems: [
+          createShoppingItem({
+            id: 'safe',
+            text: 'Термокружка',
+            productUrl: 'https://shop.example/SKU',
+          }),
+          createShoppingItem({
+            id: 'invalid',
+            text: 'Старая запись',
+            productUrl: 'javascript:alert(1)',
+          }),
+        ],
+      }),
+    )
+    renderShoppingPage('/shopping')
+    const link = screen.getByRole('link', {
+      name: 'Открыть товар: Термокружка',
+    })
+    expect(link).toHaveAttribute('href', 'https://shop.example/SKU')
+    expect(link.closest('label')).toBeNull()
+    expect(
+      screen.queryByRole('link', { name: 'Открыть товар: Старая запись' }),
+    ).toBeNull()
+  })
+
   it('shows offline queue health when shopping mutations are pending or conflicted', () => {
     mocks.useShoppingListSyncStatus.mockReturnValue({
       conflictedMutationCount: 1,

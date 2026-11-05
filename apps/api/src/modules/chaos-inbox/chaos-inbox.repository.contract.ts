@@ -24,6 +24,53 @@ export function defineChaosInboxRepositoryContractSuite(input: {
   name: string
 }): void {
   void describe(input.name, () => {
+    void test('preserves the product URL and resolves a retried shopping share in the same workspace', async () => {
+      const harness = await input.createHarness()
+      try {
+        const id = generateUuidV7()
+        const productUrl = 'https://shop.example/catalog/SKU?color=red'
+        const request = createChaosInboxItemsInputSchema.parse({
+          items: [{ id, kind: 'shopping', text: 'Термокружка', productUrl }],
+        })
+        const command = { context: harness.context, input: request }
+        const [[created], [replayed]] = await Promise.all([
+          harness.repository.create(command),
+          harness.repository.create(command),
+        ])
+        assert.deepEqual(replayed, created)
+        assert.equal(created?.productUrl, productUrl)
+        assert.equal(
+          (await harness.repository.getById(harness.context, id)).productUrl,
+          productUrl,
+        )
+        await assert.rejects(
+          async () =>
+            harness.repository.create({
+              ...command,
+              context: harness.otherContext,
+            }),
+          (error: unknown) =>
+            hasHttpErrorCode(error, 'chaos_inbox_id_conflict'),
+        )
+        const patch = chaosInboxItemUpdateInputSchema.parse({
+          productUrl: 'https://shop.example/updated',
+        })
+        const updated = await harness.repository.update({
+          id,
+          input: patch,
+          context: harness.context,
+        })
+        assert.equal(updated.productUrl, patch.productUrl)
+        assert.equal(
+          chaosInboxItemUpdateInputSchema.safeParse({
+            productUrl: 'javascript:alert(1)',
+          }).success,
+          false,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
     void test('searches shopping before pagination, treats wildcards literally and can include purchases', async () => {
       const harness = await input.createHarness()
       const { repository, context } = harness

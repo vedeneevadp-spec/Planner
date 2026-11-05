@@ -9,17 +9,20 @@ import {
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { CalendarEventDraft } from '../lib/native-calendar-events'
+import type { CalendarEventDraft } from '@/features/calendar-event-import'
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(),
   ack: vi.fn(),
+  readShare: vi.fn(),
+  ackShare: vi.fn(),
   pendingListener: undefined as (() => void) | undefined,
   resumeListener: undefined as
     ((state: { isActive: boolean }) => void) | undefined,
   loading: false,
 }))
-vi.mock('../lib/native-calendar-events', () => ({
+vi.mock(import('@/features/calendar-event-import'), async (importOriginal) => ({
+  ...(await importOriginal()),
   nativeCalendarEvents: {
     readPendingEvent: mocks.read,
     acknowledgeEvent: mocks.ack,
@@ -28,6 +31,27 @@ vi.mock('../lib/native-calendar-events', () => ({
       return Promise.resolve({ remove: vi.fn() })
     }),
   },
+}))
+vi.mock('@/features/android-share/native-incoming-shares', () => ({
+  nativeIncomingShares: {
+    readPendingShare: mocks.readShare,
+    acknowledgeShare: mocks.ackShare,
+    addListener: () => Promise.resolve({ remove: vi.fn() }),
+  },
+}))
+vi.mock('@/features/android-share/SharedDraft', () => ({
+  SharedDraft: ({
+    share,
+    onClose,
+  }: {
+    share: { text: string }
+    onClose: (message?: string) => void
+  }) => (
+    <div role="dialog" aria-label="Поделиться">
+      {share.text}
+      <button onClick={() => onClose('Покупка добавлена')}>Сохранить</button>
+    </div>
+  ),
 }))
 vi.mock('@capacitor/app', () => ({
   App: {
@@ -60,7 +84,7 @@ vi.mock('@/features/task-create', () => ({
   ),
 }))
 
-import { NativeCalendarEventImport } from './NativeCalendarEventImport'
+import { NativeAndroidImports } from './NativeAndroidImports'
 
 const event: CalendarEventDraft = {
   requestId: 'first',
@@ -75,6 +99,8 @@ let queue: CalendarEventDraft[]
 
 describe('native calendar event import', () => {
   beforeEach(() => {
+    mocks.readShare.mockReset().mockResolvedValue({ share: null })
+    mocks.ackShare.mockReset().mockResolvedValue(undefined)
     queue = [event]
     mocks.loading = false
     mocks.read
@@ -89,10 +115,50 @@ describe('native calendar event import', () => {
   })
   afterEach(cleanup)
 
+  it('queues a share behind the calendar draft and acknowledges it only after confirmation', async () => {
+    mocks.readShare.mockResolvedValue({
+      share: { requestId: 'share', text: 'Кружка', subject: '' },
+    })
+    mocks.ackShare.mockImplementation(() => {
+      mocks.readShare.mockResolvedValue({ share: null })
+      return Promise.resolve()
+    })
+    render(<NativeAndroidImports />)
+    await screen.findByRole('dialog', { name: 'Новая задача' })
+    expect(screen.queryByRole('dialog', { name: 'Поделиться' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
+    await screen.findByRole('dialog', { name: 'Поделиться' })
+    expect(mocks.ackShare).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() =>
+      expect(mocks.ackShare).toHaveBeenCalledWith({ requestId: 'share' }),
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('Покупка добавлена')
+  })
+
+  it('preserves a browser dialog and reads shares when the calendar plugin fails', async () => {
+    mocks.read.mockRejectedValue(new Error('Unavailable'))
+    mocks.readShare.mockResolvedValue({
+      share: { requestId: 'share', text: 'Посылка', subject: '' },
+    })
+    const other = document.createElement('dialog')
+    other.open = true
+    document.body.append(other)
+    render(<NativeAndroidImports />)
+    expect(mocks.readShare).not.toHaveBeenCalled()
+    act(() => {
+      other.open = false
+    })
+    expect(
+      await screen.findByRole('dialog', { name: 'Поделиться' }),
+    ).toHaveTextContent('Посылка')
+    other.remove()
+  })
+
   it('retains the draft through StrictMode setup and acknowledges only after closing', async () => {
     render(
       <StrictMode>
-        <NativeCalendarEventImport />
+        <NativeAndroidImports />
       </StrictMode>,
     )
     expect(await screen.findByRole('dialog')).toBeVisible()
@@ -113,14 +179,14 @@ describe('native calendar event import', () => {
     const other = document.createElement('div')
     other.setAttribute('role', 'dialog')
     document.body.append(other)
-    render(<NativeCalendarEventImport />)
+    render(<NativeAndroidImports />)
     expect(mocks.read).not.toHaveBeenCalled()
     act(() => other.remove())
     expect(await screen.findByLabelText('Задача')).toHaveValue('Встреча')
   })
 
   it('does not overwrite edited text when another event arrives', async () => {
-    render(<NativeCalendarEventImport />)
+    render(<NativeAndroidImports />)
     fireEvent.change(await screen.findByLabelText('Задача'), {
       target: { value: 'Моя правка' },
     })
@@ -138,11 +204,11 @@ describe('native calendar event import', () => {
 
   it('waits until the planner has loaded and retries a failed native read on resume', async () => {
     mocks.loading = true
-    const view = render(<NativeCalendarEventImport />)
+    const view = render(<NativeAndroidImports />)
     expect(mocks.read).not.toHaveBeenCalled()
     mocks.loading = false
     mocks.read.mockRejectedValueOnce(new Error('bridge unavailable'))
-    view.rerender(<NativeCalendarEventImport />)
+    view.rerender(<NativeAndroidImports />)
     await waitFor(() => expect(mocks.read).toHaveBeenCalledTimes(1))
     await act(async () => {
       mocks.resumeListener?.({ isActive: true })
