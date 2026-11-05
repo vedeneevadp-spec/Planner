@@ -7,6 +7,7 @@ import {
   isAllowedEslintToolingVulnerability,
   isAllowedLegacyMinimatchToolingVulnerability,
 } from './audit-dev-tooling-policy.mjs'
+import { assertValidNpmAuditResult } from './audit-prod-policy.mjs'
 
 const allowedVulnerabilityNames = new Set([
   '@capacitor/assets',
@@ -79,13 +80,24 @@ console.log(
 
 async function runNpmAudit() {
   const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const { stdout } = await collect(npmBin, ['audit', '--json'])
+  const { code, stdout } = await collect(npmBin, ['audit', '--json'])
+  let audit
 
   try {
-    return JSON.parse(stdout)
+    audit = JSON.parse(stdout)
   } catch (error) {
     throw new Error(`Failed to parse npm audit JSON: ${formatError(error)}`)
   }
+
+  assertValidNpmAuditResult(audit)
+  // npm exits with 1 for reported vulnerabilities, including reviewed exceptions.
+  if (
+    code !== 0 &&
+    (code !== 1 || Object.keys(audit.vulnerabilities).length === 0)
+  ) {
+    throw new Error(`npm audit failed with exit code ${code ?? 'unknown'}.`)
+  }
+  return audit
 }
 
 function assertCapacitorAssetsIsDevOnly() {
@@ -147,7 +159,7 @@ async function collect(command, args) {
       stderr += chunk
     })
     child.once('error', reject)
-    child.once('exit', (code) => {
+    child.once('close', (code) => {
       if (stdout.trim()) {
         resolve({ code, stderr, stdout })
         return

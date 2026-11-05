@@ -118,10 +118,56 @@ for (const testCase of [
   })
 }
 
+void test('processDueReminders releases the owned claim when push throws', async () => {
+  const reminder = createReminder()
+  const repository = createRepository([reminder])
+  const push = createPushService([])
+  push.sendNotification = () => Promise.reject(new Error('Push timed out'))
+  const result = await new SelfCareRemindersService(
+    repository,
+    push,
+  ).processDueReminders(10)
+  assert.deepEqual(repository.releasedIds, [reminder.id])
+  assert.equal(result.releasedCount, 1)
+  assert.equal(result.deliveredCount, 0)
+})
+
+for (const outcome of [
+  'delivered',
+  'retryable',
+  'no_recipient',
+  'throws',
+] as const) {
+  void test(`processDueReminders does not count a stale ${outcome} acknowledgement`, async () => {
+    const repository = createRepository([createReminder()])
+    repository.markDelivered = () => Promise.resolve(false)
+    repository.markUndeliverable = () => Promise.resolve(false)
+    repository.releaseClaim = () => Promise.resolve(false)
+    const push = createPushService([], {
+      deliveredCount: outcome === 'delivered' ? 1 : 0,
+      failedCount: outcome === 'retryable' ? 1 : 0,
+      invalidTokenCount: 0,
+    })
+    if (outcome === 'throws')
+      push.sendNotification = () => Promise.reject(new Error('Timeout'))
+    const result = await new SelfCareRemindersService(
+      repository,
+      push,
+    ).processDueReminders(10)
+    assert.deepEqual(result, {
+      claimedCount: 1,
+      deliveredCount: 0,
+      releasedCount: 0,
+      undeliverableCount: 0,
+    })
+  })
+}
+
 function createReminder(
   overrides: Partial<DueSelfCareReminder> = {},
 ): DueSelfCareReminder {
   return {
+    claimedAt: '2026-11-05 00:00:00.123456+00',
     id: 'reminder-1',
     itemId: 'item-1',
     itemTitle: 'Стоматолог',
@@ -148,17 +194,29 @@ function createRepository(reminders: DueSelfCareReminder[]) {
     claimDueReminders() {
       return Promise.resolve(claimed)
     },
-    markDelivered(reminderId) {
-      this.deliveredIds.push(reminderId)
-      return Promise.resolve()
+    markDelivered(claim) {
+      assert.equal(
+        claim.claimedAt,
+        reminders.find((entry) => entry.id === claim.id)?.claimedAt,
+      )
+      this.deliveredIds.push(claim.id)
+      return Promise.resolve(true)
     },
-    markUndeliverable(reminderId, reason) {
-      this.undeliverable.push({ id: reminderId, reason })
-      return Promise.resolve()
+    markUndeliverable(claim, reason) {
+      assert.equal(
+        claim.claimedAt,
+        reminders.find((entry) => entry.id === claim.id)?.claimedAt,
+      )
+      this.undeliverable.push({ id: claim.id, reason })
+      return Promise.resolve(true)
     },
-    releaseClaim(reminderId) {
-      this.releasedIds.push(reminderId)
-      return Promise.resolve()
+    releaseClaim(claim) {
+      assert.equal(
+        claim.claimedAt,
+        reminders.find((entry) => entry.id === claim.id)?.claimedAt,
+      )
+      this.releasedIds.push(claim.id)
+      return Promise.resolve(true)
     },
   }
 

@@ -1,4 +1,6 @@
 export interface DueSelfCareReminder {
+  /** Exact PostgreSQL timestamp text; retain its precision when confirming the claim. */
+  claimedAt: string
   id: string
   itemId: string
   itemTitle: string
@@ -10,11 +12,22 @@ export interface DueSelfCareReminder {
   workspaceId: string
 }
 
+export type SelfCareReminderClaim = Pick<
+  DueSelfCareReminder,
+  'id' | 'claimedAt'
+>
+
 export interface SelfCareReminderRepository {
   claimDueReminders: (limit: number) => Promise<DueSelfCareReminder[]>
-  markDelivered: (reminderId: string) => Promise<void>
-  markUndeliverable: (reminderId: string, reason: string) => Promise<void>
-  releaseClaim: (reminderId: string, error: string) => Promise<void>
+  markDelivered: (claim: SelfCareReminderClaim) => Promise<boolean>
+  markUndeliverable: (
+    claim: SelfCareReminderClaim,
+    reason: string,
+  ) => Promise<boolean>
+  releaseClaim: (
+    claim: SelfCareReminderClaim,
+    error: string,
+  ) => Promise<boolean>
 }
 
 export interface SelfCareReminderProcessResult {
