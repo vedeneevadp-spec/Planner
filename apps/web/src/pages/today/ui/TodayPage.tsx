@@ -8,10 +8,12 @@ import {
   usePlannerTimeZone,
   useSessionAuth,
 } from '@/features/session'
+import { TaskComposer } from '@/features/task-create'
 import { useBrowserOffline } from '@/shared/lib/offline-sync'
 import { getTodayDate } from '@/shared/time/time.service'
 import { PageStateView } from '@/shared/ui/PageState'
 
+import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { PersonalTodayPage } from './PersonalTodayPage'
 import { SharedTodayPage } from './SharedTodayPage'
 import { TodayPageStateLayout } from './TodayPageLayout'
@@ -20,6 +22,25 @@ import { TodayStatusNotice } from './TodayStatusNotice'
 type TodayBlockingState = 'error' | 'loading' | 'offline' | null
 
 export function TodayPage() {
+  const { hasTaskRecords } = usePlanner()
+  const sessionQuery = usePlannerSession()
+  const openDraft = useWidgetTaskComposerDraft(hasTaskRecords)
+
+  return (
+    <>
+      <TaskComposer
+        key={sessionQuery.data?.workspace.id}
+        desktopOpenButtonHidden
+        hideOpenButton={!hasTaskRecords}
+        initialPlannedDate={null}
+        openDraft={openDraft}
+      />
+      <TodayPageContent />
+    </>
+  )
+}
+
+function TodayPageContent() {
   const [isRetrying, setIsRetrying] = useState(false)
   const [searchParams] = useSearchParams()
   const sessionQuery = usePlannerSession()

@@ -98,6 +98,7 @@ const forbiddenInitialPreloadPatterns = [
   /\/assets\/confetti\.module-[^/]+\.js$/,
   /\/assets\/NativePushRegistration-[^/]+\.js$/,
   /\/assets\/NativeAppUpdates-[^/]+\.js$/,
+  /\/assets\/NativeCalendarEventImport-[^/]+\.js$/,
   /\/assets\/NativePlannerWidgetSync-[^/]+\.js$/,
   /\/assets\/lottie_light_canvas-[^/]+\.js$/,
   /\/assets\/native-push-notifications-[^/]+\.js$/,

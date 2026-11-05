@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { AppUpdatesProvider } from '@/features/app-update/provider'
+import { CalendarEventImport } from '@/features/calendar-event-import'
 import {
   NativePlannerWidgetSync,
   PlannerProvider,
@@ -30,6 +31,7 @@ function App() {
             <TimeZoneChangeBanner />
             <PlannerProvider>
               <NativePlannerWidgetSync />
+              <CalendarEventImport />
               <div
                 className={cx(
                   styles.shell,

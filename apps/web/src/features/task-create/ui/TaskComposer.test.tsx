@@ -161,6 +161,64 @@ describe('TaskComposer', () => {
     expect(screen.getByLabelText('План')).not.toBeVisible()
   })
 
+  it('previews an imported event and saves its exact interval only after confirmation', async () => {
+    mocks.addTask.mockResolvedValue(true)
+    const onClose = vi.fn()
+    render(
+      <TaskComposer
+        hideOpenButton
+        initialPlannedDate={null}
+        onClose={onClose}
+        openDraft={{
+          requestId: 'external-event',
+          title: 'Встреча',
+          note: 'Место: Переговорная',
+          plannedDate: '2026-11-05',
+          plannedStartTime: '18:40',
+          plannedEndTime: '19:30',
+          preservePlannedDate: true,
+        }}
+      />,
+    )
+    expect(screen.getByLabelText('План')).toHaveValue('2026-11-05')
+    expect(screen.getByLabelText('Старт')).toHaveValue('18:40')
+    for (const field of screen.getAllByLabelText('Финиш')) {
+      expect(field).toHaveValue('19:30')
+    }
+    expect(mocks.addTask).not.toHaveBeenCalled()
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Добавить задачу' }).at(-1)!,
+    )
+    await waitFor(() =>
+      expect(mocks.addTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Встреча',
+          note: 'Место: Переговорная',
+          plannedDate: '2026-11-05',
+          plannedStartTime: '18:40',
+          plannedEndTime: '19:30',
+        }),
+      ),
+    )
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('dismisses an imported draft with Escape without creating a task', () => {
+    const onClose = vi.fn()
+    render(
+      <TaskComposer
+        hideOpenButton
+        initialPlannedDate={null}
+        onClose={onClose}
+        openDraft={{ requestId: 'external-cancel', title: 'Встреча' }}
+      />,
+    )
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(mocks.addTask).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('prefills a calendar draft and preserves its date even when the selected hour has passed', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-08T08:00:00Z'))

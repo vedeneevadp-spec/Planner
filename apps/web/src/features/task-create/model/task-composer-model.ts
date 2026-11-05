@@ -27,6 +27,7 @@ export interface TaskComposerDraft {
   note?: string | undefined
   plannedDate?: string | null | undefined
   plannedStartTime?: string | null | undefined
+  plannedEndTime?: string | null | undefined
   preservePlannedDate?: boolean | undefined
   projectId?: string | null | undefined
   necessity?: TaskNecessity | undefined
