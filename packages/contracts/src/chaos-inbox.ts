@@ -35,6 +35,12 @@ export const chaosInboxShoppingCategorySchema = z.enum([
   'other',
 ])
 
+// Share targets may supply arbitrary text. Only navigable HTTP(S) links belong on a purchase.
+export const shoppingProductUrlSchema = z
+  .url({ protocol: /^https?$/ })
+  .max(8192)
+  .regex(/^https?:\/\/[^\s\\]+$/iu)
+
 export const chaosInboxItemSchema = z.object({
   id: z.string(),
   userId: z.string(),
@@ -45,6 +51,7 @@ export const chaosInboxItemSchema = z.object({
   sphereId: nullableStringWithDefault,
   priority: chaosInboxPrioritySchema.nullable().optional().default(null),
   isFavorite: z.boolean().optional().default(false),
+  productUrl: shoppingProductUrlSchema.nullable().optional(),
   shoppingCategory: chaosInboxShoppingCategorySchema
     .nullable()
     .optional()
@@ -66,6 +73,7 @@ export const newChaosInboxItemInputSchema = z.object({
   source: chaosInboxSourceSchema.optional().default('manual'),
   priority: chaosInboxPrioritySchema.nullable().optional().default(null),
   isFavorite: z.boolean().optional().default(false),
+  productUrl: shoppingProductUrlSchema.nullable().optional(),
   shoppingCategory: chaosInboxShoppingCategorySchema
     .nullable()
     .optional()
@@ -82,6 +90,7 @@ export const chaosInboxItemUpdateInputSchema = z
     sphereId: z.string().nullable().optional(),
     priority: chaosInboxPrioritySchema.nullable().optional(),
     isFavorite: z.boolean().optional(),
+    productUrl: shoppingProductUrlSchema.nullable().optional(),
     shoppingCategory: chaosInboxShoppingCategorySchema.nullable().optional(),
     dueDate: z.string().nullable().optional(),
     status: chaosInboxStatusSchema.optional(),
@@ -92,6 +101,7 @@ export const chaosInboxItemUpdateInputSchema = z
       value.sphereId !== undefined ||
       value.priority !== undefined ||
       value.isFavorite !== undefined ||
+      value.productUrl !== undefined ||
       value.shoppingCategory !== undefined ||
       value.dueDate !== undefined ||
       value.status !== undefined,
@@ -126,6 +136,35 @@ export const chaosInboxConvertToTaskResponseSchema = z.object({
   inboxItem: chaosInboxItemSchema,
   taskId: z.string(),
 })
+
+export const chaosInboxItemRecordSchema = chaosInboxItemSchema.extend({
+  workspaceId: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+export const chaosInboxListRecordResponseSchema =
+  chaosInboxListResponseSchema.extend({
+    items: z.array(chaosInboxItemRecordSchema),
+  })
+export const chaosInboxCreatedRecordResponseSchema =
+  chaosInboxCreatedResponseSchema.extend({
+    items: z.array(chaosInboxItemRecordSchema),
+  })
+export const chaosInboxConvertToTaskRecordResponseSchema =
+  chaosInboxConvertToTaskResponseSchema.extend({
+    inboxItem: chaosInboxItemRecordSchema,
+  })
+
+export type ChaosInboxItemRecord = z.infer<typeof chaosInboxItemRecordSchema>
+export type ChaosInboxListRecordResponse = z.infer<
+  typeof chaosInboxListRecordResponseSchema
+>
+export type ChaosInboxCreatedRecordResponse = z.infer<
+  typeof chaosInboxCreatedRecordResponseSchema
+>
+export type ChaosInboxConvertToTaskRecordResponse = z.infer<
+  typeof chaosInboxConvertToTaskRecordResponseSchema
+>
 
 export type ChaosInboxSource = z.infer<typeof chaosInboxSourceSchema>
 export type ChaosInboxStatus = z.infer<typeof chaosInboxStatusSchema>

@@ -57,6 +57,7 @@ export interface ShoppingListItemCreateInput {
   id?: string
   isFavorite?: boolean
   priority?: ChaosInboxPriority | null
+  productUrl?: string | null
   shoppingCategory?: ChaosInboxShoppingCategory | null
   text: string
 }
@@ -93,6 +94,9 @@ export function createShoppingListApiClient(
             isFavorite: itemInput.isFavorite ?? false,
             kind: 'shopping',
             priority: itemInput.priority ?? null,
+            ...(itemInput.productUrl
+              ? { productUrl: itemInput.productUrl }
+              : {}),
             shoppingCategory: itemInput.shoppingCategory ?? null,
             source: 'manual',
             text: itemInput.text,

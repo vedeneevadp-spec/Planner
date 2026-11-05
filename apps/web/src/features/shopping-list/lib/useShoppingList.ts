@@ -1,6 +1,7 @@
 import {
   type ChaosInboxItemUpdateInput,
   generateUuidV7,
+  shoppingProductUrlSchema,
 } from '@planner/contracts'
 import {
   type QueryClient,
@@ -19,6 +20,7 @@ import {
 
 import {
   countConflictedShoppingListOfflineMutations,
+  countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
   isShoppingListOfflineStorageAvailable,
   listRetryableShoppingListOfflineMutations,
@@ -67,7 +69,9 @@ function shoppingListOfflineStatusQueryKey(
   ] as const
 }
 
-export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
+export interface ShoppingListItemDraft extends ShoppingListItemCreateInput {
+  workspaceId?: string
+}
 export interface ShoppingListOfflineStatus {
   conflictedMutationCount: number
   hasNetworkError: boolean
@@ -118,7 +122,7 @@ const shoppingListCompletedDrainRevisions = new Map<string, number>()
 
 export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   const shoppingListApi = useShoppingListApi(options)
-  const { api, session, workspaceId } = shoppingListApi
+  const { api, apiConfig, session, workspaceId } = shoppingListApi
   const queryClient = useQueryClient()
   const queryKey = useMemo(
     () => shoppingListQueryKey(workspaceId),
@@ -158,6 +162,34 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
       workspaceId: session.workspaceId,
     })
   }, [api, queryClient, session])
+
+  // A shared purchase may have been queued for a workspace that is not open.
+  const drainOtherWorkspaces = useCallback(async () => {
+    if (!session || !apiConfig || isBrowserOfflineNow()) return
+    for (const workspace of session.workspaces) {
+      if (workspace.id === session.workspaceId) continue
+      if (
+        await countRetryableShoppingListOfflineMutations(
+          workspace.id,
+          session.actorUserId,
+        )
+      ) {
+        requestQueuedShoppingListMutationDrain({
+          actorUserId: session.actorUserId,
+          api: createShoppingListApiClient({
+            ...apiConfig,
+            workspaceId: workspace.id,
+          }),
+          queryClient,
+          workspaceId: workspace.id,
+        })
+      }
+    }
+  }, [apiConfig, queryClient, session])
+  useOfflineQueueDrain({
+    drain: drainOtherWorkspaces,
+    enabled: Boolean(apiConfig && session),
+  })
 
   useEffect(() => {
     if (options.enabled === false || !session) {
@@ -340,12 +372,8 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
 }
 
 export function useCreateShoppingListItem() {
-  const { api, session, workspaceId } = useShoppingListApi()
+  const { apiConfig, session } = useSessionFeatureReadiness()
   const queryClient = useQueryClient()
-  const queryKey = useMemo(
-    () => shoppingListQueryKey(workspaceId),
-    [workspaceId],
-  )
 
   return useMutation({
     networkMode: 'always',
@@ -356,24 +384,61 @@ export function useCreateShoppingListItem() {
         )
       }
 
+      const itemInput = normalizeShoppingListItemDraft(input)
+      const workspaceId = itemInput.workspaceId ?? session.workspaceId
+      if (workspaceId !== session.workspaceId) {
+        const membership = session.workspaces.find(
+          (item) => item.id === workspaceId,
+        )
+        if (
+          !membership ||
+          (membership.kind === 'shared'
+            ? membership.role !== 'owner' && !membership.groupRole
+            : membership.role === 'guest')
+        ) {
+          throw new Error(
+            'Нет доступа для добавления покупки в это пространство.',
+          )
+        }
+      }
+      const queryKey = shoppingListQueryKey(workspaceId)
+      const api = apiConfig
+        ? createShoppingListApiClient({ ...apiConfig, workspaceId })
+        : null
       return runShoppingListMutationSerially(
-        `${session.actorUserId}:${session.workspaceId}`,
+        `${session.actorUserId}:${workspaceId}`,
         async () => {
-          const itemInput = normalizeShoppingListItemDraft(input)
           const previousItems =
             queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
-            (await loadCachedShoppingListItems(session.workspaceId))
-          const existingItem = findShoppingListItemByText(
-            previousItems,
-            itemInput.text,
-          )
+            (await loadCachedShoppingListItems(workspaceId))
+          const replay =
+            itemInput.id &&
+            previousItems.find((item) => item.id === itemInput.id)
+          if (replay)
+            return { ...replay, creationOutcome: 'duplicate' as const }
+          const existingItem = itemInput.productUrl
+            ? (previousItems.find(
+                (item) => item.productUrl === itemInput.productUrl,
+              ) ??
+              findShoppingListItemByText(
+                previousItems.filter((item) => !item.productUrl),
+                itemInput.text,
+              ))
+            : findShoppingListItemByText(previousItems, itemInput.text)
 
           if (existingItem) {
-            if (isActiveShoppingListTextItem(existingItem)) {
-              return existingItem
-            }
-
-            const patch = { status: 'new' as const }
+            const patch: ChaosInboxItemUpdateInput = {}
+            const restored = !isActiveShoppingListTextItem(existingItem)
+            if (restored) patch.status = 'new'
+            if (itemInput.productUrl && !existingItem.productUrl)
+              patch.productUrl = itemInput.productUrl
+            if (Object.keys(patch).length === 0)
+              return { ...existingItem, creationOutcome: 'duplicate' as const }
+            const creationOutcome = restored
+              ? ('restored' as const)
+              : ('updated' as const)
+            if (itemInput.shoppingCategory != null)
+              patch.shoppingCategory = itemInput.shoppingCategory
             const optimisticItem = applyShoppingListItemPatch(
               existingItem,
               patch,
@@ -386,7 +451,7 @@ export function useCreateShoppingListItem() {
                 itemId: existingItem.id,
                 patch,
                 type: 'shopping.update',
-                workspaceId: session.workspaceId,
+                workspaceId,
               },
               optimisticItem,
               queryClient,
@@ -394,7 +459,7 @@ export function useCreateShoppingListItem() {
             })
 
             if (queued) {
-              return optimisticItem
+              return { ...optimisticItem, creationOutcome }
             }
 
             assertShoppingListNetworkFallbackAvailable()
@@ -403,10 +468,7 @@ export function useCreateShoppingListItem() {
               (current = previousItems) =>
                 replaceShoppingListItemRecord(current, optimisticItem),
             )
-            await upsertCachedShoppingListItem(
-              session.workspaceId,
-              optimisticItem,
-            )
+            await upsertCachedShoppingListItem(workspaceId, optimisticItem)
 
             try {
               const updatedItem = await requireShoppingListApi(api).updateItem(
@@ -419,12 +481,9 @@ export function useCreateShoppingListItem() {
                 (current = []) =>
                   replaceShoppingListItemRecord(current, updatedItem),
               )
-              await upsertCachedShoppingListItem(
-                session.workspaceId,
-                updatedItem,
-              )
+              await upsertCachedShoppingListItem(workspaceId, updatedItem)
 
-              return updatedItem
+              return { ...updatedItem, creationOutcome }
             } catch (error) {
               await restoreShoppingListItem({
                 index: previousItems.findIndex(
@@ -433,22 +492,22 @@ export function useCreateShoppingListItem() {
                 item: existingItem,
                 queryClient,
                 queryKey,
-                workspaceId: session.workspaceId,
+                workspaceId,
               })
 
               throw error
             }
           }
 
-          const itemId = generateUuidV7()
+          const itemId = itemInput.id ?? generateUuidV7()
           const optimisticItem = createOptimisticShoppingListItem(
             {
-              id: itemId,
               ...itemInput,
+              id: itemId,
             },
             {
               actorUserId: session.actorUserId,
-              workspaceId: session.workspaceId,
+              workspaceId,
             },
           )
           const queued = await persistQueuedShoppingListMutation({
@@ -459,10 +518,13 @@ export function useCreateShoppingListItem() {
               isFavorite: optimisticItem.isFavorite,
               itemId,
               priority: optimisticItem.priority,
+              ...(optimisticItem.productUrl
+                ? { productUrl: optimisticItem.productUrl }
+                : {}),
               shoppingCategory: optimisticItem.shoppingCategory,
               text: optimisticItem.text,
               type: 'shopping.create',
-              workspaceId: session.workspaceId,
+              workspaceId,
             },
             optimisticItem,
             queryClient,
@@ -470,7 +532,7 @@ export function useCreateShoppingListItem() {
           })
 
           if (queued) {
-            return optimisticItem
+            return { ...optimisticItem, creationOutcome: 'created' as const }
           }
 
           assertShoppingListNetworkFallbackAvailable()
@@ -480,15 +542,12 @@ export function useCreateShoppingListItem() {
               optimisticItem,
             ),
           )
-          await upsertCachedShoppingListItem(
-            session.workspaceId,
-            optimisticItem,
-          )
+          await upsertCachedShoppingListItem(workspaceId, optimisticItem)
 
           try {
             const createdItem = await requireShoppingListApi(api).createItem({
-              id: itemId,
               ...itemInput,
+              id: itemId,
             })
 
             queryClient.setQueryData<ShoppingListItem[]>(
@@ -496,15 +555,15 @@ export function useCreateShoppingListItem() {
               (current = []) =>
                 replaceShoppingListItemRecord(current, createdItem),
             )
-            await upsertCachedShoppingListItem(session.workspaceId, createdItem)
+            await upsertCachedShoppingListItem(workspaceId, createdItem)
 
-            return createdItem
+            return { ...createdItem, creationOutcome: 'created' as const }
           } catch (error) {
             await removeOptimisticShoppingListItem({
               itemId,
               queryClient,
               queryKey,
-              workspaceId: session.workspaceId,
+              workspaceId,
             })
 
             throw error
@@ -746,6 +805,9 @@ function normalizeShoppingListItemDraft(
 
   return {
     ...input,
+    ...(input.productUrl != null
+      ? { productUrl: shoppingProductUrlSchema.parse(input.productUrl) }
+      : {}),
     text: formatShoppingListText(input.text),
   }
 }
@@ -772,6 +834,7 @@ function createOptimisticShoppingListItem(
     kind: 'shopping',
     linkedTaskDeleted: false,
     priority: input.priority ?? null,
+    productUrl: input.productUrl ?? null,
     shoppingCategory: input.shoppingCategory ?? null,
     source: 'manual',
     sphereId: null,
@@ -794,6 +857,7 @@ function applyShoppingListItemPatch(
     ...(patch.isFavorite !== undefined ? { isFavorite: patch.isFavorite } : {}),
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+    ...(patch.productUrl !== undefined ? { productUrl: patch.productUrl } : {}),
     ...(patch.shoppingCategory !== undefined
       ? { shoppingCategory: patch.shoppingCategory }
       : {}),

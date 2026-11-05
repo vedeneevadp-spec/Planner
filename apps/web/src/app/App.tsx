@@ -1,7 +1,6 @@
 import { useState } from 'react'
 
 import { AppUpdatesProvider } from '@/features/app-update/provider'
-import { CalendarEventImport } from '@/features/calendar-event-import'
 import {
   NativePlannerWidgetSync,
   PlannerProvider,
@@ -16,6 +15,7 @@ import {
 import { cx } from '@/shared/lib/classnames'
 import { PlannerMobileHeader, PlannerTopTabs, Sidebar } from '@/widgets/sidebar'
 
+import { AndroidImports } from './android-import/AndroidImports'
 import styles from './App.module.css'
 import { AppRouter } from './router'
 
@@ -31,7 +31,7 @@ function App() {
             <TimeZoneChangeBanner />
             <PlannerProvider>
               <NativePlannerWidgetSync />
-              <CalendarEventImport />
+              <AndroidImports />
               <div
                 className={cx(
                   styles.shell,

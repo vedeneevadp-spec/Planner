@@ -32,7 +32,10 @@ import type {
   UpdateChaosInboxItemCommand,
 } from './chaos-inbox.model.js'
 import type { ChaosInboxRepository } from './chaos-inbox.repository.js'
-import { buildChaosInboxTaskInput } from './chaos-inbox.shared.js'
+import {
+  buildChaosInboxTaskInput,
+  resolveShoppingCreateReplay,
+} from './chaos-inbox.shared.js'
 
 type ChaosInboxRow = Selectable<DatabaseSchema['app.chaos_inbox_items']>
 type TaskRow = Pick<
@@ -116,11 +119,13 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
   async create(
     command: CreateChaosInboxItemsCommand,
   ): Promise<StoredChaosInboxItemRecord[]> {
-    const rows = await withWriteTransaction(
+    const single =
+      command.input.items.length === 1 ? command.input.items[0] : undefined
+    return withWriteTransaction(
       this.db,
       command.context.auth,
-      async (trx) =>
-        trx
+      async (trx) => {
+        const query = trx
           .insertInto('app.chaos_inbox_items')
           .values(
             command.input.items.map((item) => ({
@@ -132,6 +137,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
               is_favorite: item.isFavorite ?? false,
               kind: item.kind,
               priority: item.priority ?? null,
+              product_url: item.productUrl ?? null,
               shopping_category: item.shoppingCategory ?? null,
               source: item.source,
               status: 'new' as const,
@@ -142,11 +148,30 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
             })),
           )
           .returningAll()
-          .execute(),
+        if (single?.id && single.kind === 'shopping') {
+          const inserted = await query
+            .onConflict((conflict) => conflict.column('id').doNothing())
+            .executeTakeFirst()
+          if (inserted) return [this.mapItemRecord(inserted, new Set())]
+          const existing = await this.loadItemRow(
+            trx,
+            command.context,
+            single.id,
+          )
+          return [
+            resolveShoppingCreateReplay(
+              existing && this.mapItemRecord(existing, new Set()),
+              single,
+              command.context.actorUserId,
+              command.context.workspaceId,
+            ),
+          ]
+        }
+        const rows = await query.execute()
+        return rows.map((row) => this.mapItemRecord(row, new Set()))
+      },
       command.context.actorUserId,
     )
-
-    return rows.map((row) => this.mapItemRecord(row, new Set()))
   }
 
   async update(
@@ -477,6 +502,9 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
         ...(patch.isFavorite !== undefined
           ? { is_favorite: patch.isFavorite }
           : {}),
+        ...(patch.productUrl !== undefined
+          ? { product_url: patch.productUrl }
+          : {}),
         ...(patch.shoppingCategory !== undefined
           ? { shopping_category: patch.shoppingCategory }
           : {}),
@@ -586,6 +614,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
         row.converted_task_id !== null &&
         deletedTaskIds.has(row.converted_task_id),
       priority: row.priority,
+      productUrl: row.product_url,
       shoppingCategory: row.shopping_category,
       source: row.source,
       sphereId: row.sphere_id,

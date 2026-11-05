@@ -83,6 +83,7 @@ describe('shoppingListApi', () => {
       id: '0196941c-62c1-7d84-9fdb-f5fd1d7540f1',
       isFavorite: true,
       priority: 'high',
+      productUrl: 'https://shop.example/Milk',
       shoppingCategory: 'groceries',
       text: 'Milk',
     })
@@ -94,6 +95,7 @@ describe('shoppingListApi', () => {
         isFavorite: boolean
         kind: string
         priority: string
+        productUrl: string
         shoppingCategory: string
         text: string
       }>
@@ -103,6 +105,7 @@ describe('shoppingListApi', () => {
     expect(body.items[0]?.id).toBe('0196941c-62c1-7d84-9fdb-f5fd1d7540f1')
     expect(body.items[0]?.isFavorite).toBe(true)
     expect(body.items[0]?.kind).toBe('shopping')
+    expect(body.items[0]?.productUrl).toBe('https://shop.example/Milk')
     expect(body.items[0]?.priority).toBe('high')
     expect(body.items[0]?.shoppingCategory).toBe('groceries')
     expect(body.items[0]?.text).toBe('Milk')

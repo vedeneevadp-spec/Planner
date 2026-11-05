@@ -17,6 +17,7 @@ import type { ChaosInboxRepository } from './chaos-inbox.repository.js'
 import {
   buildChaosInboxTaskInput,
   createStoredChaosInboxItemRecord,
+  resolveShoppingCreateReplay,
 } from './chaos-inbox.shared.js'
 
 export class MemoryChaosInboxRepository implements ChaosInboxRepository {
@@ -83,6 +84,28 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
       }),
     )
 
+    const single =
+      command.input.items.length === 1 ? command.input.items[0] : undefined
+    if (single?.id && this.items.has(single.id)) {
+      return Promise.resolve([
+        resolveShoppingCreateReplay(
+          this.items.get(single.id),
+          single,
+          command.context.actorUserId,
+          command.context.workspaceId,
+        ),
+      ])
+    }
+    if (
+      items.some((item) => this.items.has(item.id)) ||
+      new Set(items.map((item) => item.id)).size !== items.length
+    ) {
+      throw new HttpError(
+        409,
+        'chaos_inbox_id_conflict',
+        'Inbox item id is already in use.',
+      )
+    }
     for (const item of items) {
       this.items.set(item.id, item)
     }
@@ -229,6 +252,7 @@ function applyUpdate(
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
     ...(patch.isFavorite !== undefined ? { isFavorite: patch.isFavorite } : {}),
+    ...(patch.productUrl !== undefined ? { productUrl: patch.productUrl } : {}),
     ...(patch.shoppingCategory !== undefined
       ? { shoppingCategory: patch.shoppingCategory }
       : {}),

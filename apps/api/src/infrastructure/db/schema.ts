@@ -78,6 +78,7 @@ export interface AppChaosInboxItemsTable {
   is_favorite: boolean
   kind: 'unknown' | 'task' | 'note' | 'shopping' | 'event' | 'idea'
   priority: 'low' | 'medium' | 'high' | null
+  product_url: string | null
   shopping_category: 'groceries' | 'household' | 'other' | null
   source: 'manual' | 'quick_add' | 'widget' | 'voice'
   sphere_id: string | null

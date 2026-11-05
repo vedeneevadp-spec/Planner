@@ -154,6 +154,7 @@ async function createShoppingListItemIdempotently(
       id: mutation.itemId,
       isFavorite: mutation.isFavorite ?? false,
       priority: mutation.priority ?? null,
+      ...(mutation.productUrl ? { productUrl: mutation.productUrl } : {}),
       shoppingCategory: mutation.shoppingCategory ?? null,
       text: mutation.text,
     })
@@ -172,7 +173,9 @@ async function createShoppingListItemIdempotently(
     if (
       !existingItem ||
       existingItem.kind !== 'shopping' ||
+      existingItem.userId !== mutation.actorUserId ||
       existingItem.workspaceId !== mutation.workspaceId ||
+      (existingItem.productUrl ?? null) !== (mutation.productUrl ?? null) ||
       existingItem.text !== mutation.text
     ) {
       throw error

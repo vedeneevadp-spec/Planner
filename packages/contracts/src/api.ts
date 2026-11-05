@@ -1,12 +1,6 @@
 import { z } from 'zod'
 
 import {
-  chaosInboxConvertToTaskResponseSchema,
-  chaosInboxCreatedResponseSchema,
-  chaosInboxItemSchema,
-  chaosInboxListResponseSchema,
-} from './chaos-inbox.js'
-import {
   cleaningTaskHistoryItemSchema,
   cleaningTaskSchema,
   cleaningTaskStateSchema,
@@ -503,23 +497,6 @@ export const taskReadModelResponseSchema = z.object({
   totalCount: z.number().int().nonnegative(),
   truncated: z.boolean(),
 })
-export const chaosInboxItemRecordSchema = chaosInboxItemSchema.extend({
-  workspaceId: z.string(),
-  deletedAt: z.string().nullable(),
-  version: z.number().int().positive(),
-})
-export const chaosInboxListRecordResponseSchema =
-  chaosInboxListResponseSchema.extend({
-    items: z.array(chaosInboxItemRecordSchema),
-  })
-export const chaosInboxCreatedRecordResponseSchema =
-  chaosInboxCreatedResponseSchema.extend({
-    items: z.array(chaosInboxItemRecordSchema),
-  })
-export const chaosInboxConvertToTaskRecordResponseSchema =
-  chaosInboxConvertToTaskResponseSchema.extend({
-    inboxItem: chaosInboxItemRecordSchema,
-  })
 export const dailyPlanRecordSchema = dailyPlanSchema.extend({
   workspaceId: z.string(),
   deletedAt: z.string().nullable(),
@@ -707,16 +684,6 @@ export type AssignableWorkspaceGroupRole = z.infer<
 
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
-export type ChaosInboxItemRecord = z.infer<typeof chaosInboxItemRecordSchema>
-export type ChaosInboxListRecordResponse = z.infer<
-  typeof chaosInboxListRecordResponseSchema
->
-export type ChaosInboxCreatedRecordResponse = z.infer<
-  typeof chaosInboxCreatedRecordResponseSchema
->
-export type ChaosInboxConvertToTaskRecordResponse = z.infer<
-  typeof chaosInboxConvertToTaskRecordResponseSchema
->
 export type CleaningListResponse = z.infer<typeof cleaningListResponseSchema>
 export type CleaningSummary = z.infer<typeof cleaningSummarySchema>
 export type CleaningTaskActionResponse = z.infer<

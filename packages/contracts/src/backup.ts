@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { shoppingProductUrlSchema } from './chaos-inbox.js'
+
 export const USER_BACKUP_FORMAT = 'planner.user-backup'
 export const USER_BACKUP_FORMAT_VERSION = 1
 export const USER_BACKUP_MAX_ASSET_BYTES = 2 * 1024 * 1024
@@ -84,7 +86,7 @@ const USER_BACKUP_V1_COLUMNS = {
   emoji_assets:
     'id,workspace_id,emoji_set_id,shortcode,label,kind,value,keywords,sort_order,metadata,created_by,updated_by,created_at,updated_at,deleted_at,version',
   chaos_inbox_items:
-    'id,workspace_id,user_id,text,source,kind,status,priority,shopping_category,is_favorite,due_on,sphere_id,converted_task_id,converted_note_id,activated_at,completed_at,created_by,updated_by,created_at,updated_at,deleted_at,version',
+    'id,workspace_id,user_id,text,source,kind,status,priority,shopping_category,product_url,is_favorite,due_on,sphere_id,converted_task_id,converted_note_id,activated_at,completed_at,created_by,updated_by,created_at,updated_at,deleted_at,version',
   cleaning_zones:
     'id,workspace_id,user_id,title,description,day_of_week,sort_order,is_active,created_by,updated_by,created_at,updated_at,deleted_at,version',
   cleaning_tasks:
@@ -170,7 +172,7 @@ function createUserBackupV1RowSchema(
   tableName: string,
   columns: string[],
 ): z.ZodType<UserBackupRow> {
-  const shape = Object.fromEntries(
+  const shape: Record<string, z.ZodType> = Object.fromEntries(
     columns.map((column) => [
       column,
       (USER_BACKUP_STRUCTURED_COLUMNS.has(column)
@@ -179,6 +181,10 @@ function createUserBackupV1RowSchema(
       ).optional(),
     ]),
   )
+
+  if (tableName === 'chaos_inbox_items') {
+    shape.product_url = shoppingProductUrlSchema.nullable().optional()
+  }
 
   // V1 archives may contain these retired settings. Validate only the known
   // boolean fields, then discard them before any restore SQL is constructed.

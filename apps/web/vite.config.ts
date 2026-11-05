@@ -12,6 +12,7 @@ const contractsPath = fileURLToPath(
   new URL('../../packages/contracts/src', import.meta.url),
 )
 const shouldAnalyzeBundle = process.env.ANALYZE_BUNDLE === '1'
+const shoppingContractsPath = path.join(contractsPath, 'chaos-inbox.ts')
 
 export default defineConfig({
   root: appRoot,
@@ -34,9 +35,21 @@ export default defineConfig({
         dependencies.filter((dependency) => dependency !== filename),
     },
     rollupOptions: {
+      treeshake: {
+        // The barrel re-exports shopping schemas. They only need to be
+        // initialized when a consumer such as shopping or backup is loaded.
+        moduleSideEffects: (id) =>
+          id === shoppingContractsPath ? false : undefined,
+      },
       output: {
         codeSplitting: {
           groups: [
+            {
+              includeDependenciesRecursively: false,
+              name: 'shopping-contracts',
+              priority: 100,
+              test: (id) => id === shoppingContractsPath,
+            },
             {
               includeDependenciesRecursively: false,
               name: 'backup-contracts',
@@ -47,7 +60,7 @@ export default defineConfig({
               includeDependenciesRecursively: false,
               name: 'vendor-query',
               priority: 90,
-              test: /node_modules[\/]@tanstack[\/]react-query[\/]/,
+              test: /node_modules[\/]@tanstack[\/](?:react-query|query-core)[\/]/,
             },
             {
               includeDependenciesRecursively: false,

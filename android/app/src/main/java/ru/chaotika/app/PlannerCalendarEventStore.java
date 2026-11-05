@@ -6,7 +6,6 @@ import android.os.Bundle;
 import android.provider.CalendarContract;
 import com.getcapacitor.JSObject;
 import java.util.UUID;
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 final class PlannerCalendarEventStore {
@@ -14,7 +13,7 @@ final class PlannerCalendarEventStore {
     private static final String LEGACY_PREFERENCES = "planner_calendar_events";
     private static final String EVENT_DIRECTORY_MIME_TYPE = "vnd.android.cursor.dir/event";
     private static final String EVENT_ITEM_MIME_TYPE = "vnd.android.cursor.item/event";
-    private static final int MAX_PENDING = 20;
+    private static final PlannerIncomingDraftQueue QUEUE = new PlannerIncomingDraftQueue(KEY, LEGACY_PREFERENCES);
 
     private PlannerCalendarEventStore() {}
 
@@ -48,46 +47,17 @@ final class PlannerCalendarEventStore {
         }
     }
 
-    static synchronized void receive(Context context, Intent intent) {
+    static void receive(Context context, Intent intent) {
         JSObject event = parse(intent);
-        if (event == null) return;
-        try {
-            JSONArray previous = read(context);
-            JSONArray next = new JSONArray();
-            for (int index = Math.max(0, previous.length() - MAX_PENDING + 1); index < previous.length(); index++) {
-                next.put(previous.getJSONObject(index));
-            }
-            next.put(event);
-            if (!PlannerSecureStorage.putString(context, KEY, next.toString(), LEGACY_PREFERENCES)) {
-                throw new IllegalStateException("Could not store calendar draft");
-            }
-        } catch (Exception exception) {
-            android.util.Log.e("PlannerCalendar", "Could not retain incoming calendar draft.");
-        }
+        if (event != null) QUEUE.add(context, event);
     }
 
-    static synchronized JSObject peek(Context context) throws Exception {
-        JSONArray pending = read(context);
-        if (pending.length() == 0) return null;
-        return new JSObject(pending.getJSONObject(0).toString());
+    static JSObject peek(Context context) throws Exception {
+        return QUEUE.peek(context);
     }
 
-    static synchronized void acknowledge(Context context, String requestId) throws Exception {
-        JSONArray pending = read(context);
-        JSONArray remaining = new JSONArray();
-        for (int index = 0; index < pending.length(); index++) {
-            JSONObject event = pending.getJSONObject(index);
-            if (!requestId.equals(event.optString("requestId"))) remaining.put(event);
-        }
-        boolean stored = remaining.length() == 0
-            ? PlannerSecureStorage.remove(context, KEY, LEGACY_PREFERENCES)
-            : PlannerSecureStorage.putString(context, KEY, remaining.toString(), LEGACY_PREFERENCES);
-        if (!stored) throw new IllegalStateException("Could not consume calendar draft");
-    }
-
-    private static JSONArray read(Context context) throws Exception {
-        String value = PlannerSecureStorage.getString(context, KEY, LEGACY_PREFERENCES);
-        return value == null ? new JSONArray() : new JSONArray(value);
+    static void acknowledge(Context context, String requestId) throws Exception {
+        QUEUE.acknowledge(context, requestId);
     }
 
     private static String text(Bundle extras, String key, int maxLength) {
