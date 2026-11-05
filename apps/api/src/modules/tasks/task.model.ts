@@ -56,6 +56,7 @@ export interface TaskCursorAnchor {
 
 export interface TaskCursorPageQuery {
   anchor?: TaskCursorAnchor | undefined
+  contextFilter?: TaskContextFilter | undefined
   dailyLoad?: { date: string; startUtc: string; endUtc: string } | undefined
   dateFrom?: string | undefined
   dateMode: TaskCursorDateMode
@@ -78,7 +79,26 @@ export interface TaskCursorListResult extends TaskCursorPageResult {
   truncated: boolean
 }
 
-export type TaskCursorFilters = TaskCursorListFilters
+export type TaskCursorFilters = TaskCursorListFilters & {
+  contextFilter?: TaskContextFilter | undefined
+}
+
+export interface TaskContextFilter {
+  asOfDate: string
+  calendarOnly?: boolean | undefined
+  from?: string | undefined
+  highPriorityOnly?: boolean | undefined
+  search?: string | undefined
+  status: 'active' | 'any' | 'done' | 'overdue' | 'todo'
+  timezone: string
+  to?: string | undefined
+  userId: string
+}
+
+export interface TaskContextPageFilters extends TaskContextFilter {
+  cursor?: string | undefined
+  limit: number
+}
 
 export interface TaskReadModelSourceResult {
   returnedCount: number

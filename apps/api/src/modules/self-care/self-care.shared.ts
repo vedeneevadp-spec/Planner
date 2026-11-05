@@ -656,6 +656,7 @@ export function updateOccurrenceStatus(
 
 export function generateSelfCareOccurrencesForRange(input: {
   completions: SelfCareCompletion[]
+  plannerTimeZone?: string | undefined
   courseDetails?: SelfCareCourseDetails | null | undefined
   existingOccurrences: SelfCareOccurrence[]
   from: string
@@ -704,6 +705,7 @@ export function generateSelfCareOccurrencesForRange(input: {
       .map((occurrence) => occurrence.scheduledFor),
   )
   const dates = generateSelfCareOccurrenceDates({
+    plannerTimeZone: input.plannerTimeZone,
     completions: input.completions.filter(
       (completion) => completion.itemId === item.id,
     ),
@@ -738,9 +740,10 @@ export function generateSelfCareOccurrencesForRange(input: {
 
 export function buildDashboardResponse(input: {
   date: string
+  plannerTimeZone?: string | undefined
   state: SelfCareDashboardReadModel
 }): SelfCareDashboardResponse {
-  const { date, state } = input
+  const { date, state, plannerTimeZone } = input
   const itemById = new Map(state.items.map((item) => [item.id, item]))
   const todayOccurrences = state.occurrences.filter(
     (occurrence) => occurrence.scheduledFor === date,
@@ -754,7 +757,7 @@ export function buildDashboardResponse(input: {
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
       return item && isVisibleSelfCareItem(item)
-        ? [buildTodayItem({ date, item, occurrence, state })]
+        ? [buildTodayItem({ date, item, occurrence, state, plannerTimeZone })]
         : []
     })
     .filter((entry) => shouldShowInDashboard(entry, state.settings, date))
@@ -771,15 +774,26 @@ export function buildDashboardResponse(input: {
     .flatMap((rule) => {
       const item = itemById.get(rule.itemId)
       return item && item.isActive && !item.isArchived
-        ? [buildTodayItem({ date, item, occurrence: null, state })]
+        ? [
+            buildTodayItem({
+              date,
+              item,
+              occurrence: null,
+              state,
+              plannerTimeZone,
+            }),
+          ]
         : []
     })
     .filter((entry) => shouldShowInDashboard(entry, state.settings, date))
-  const overdueItems = buildOverdueItems(date, state, itemById).filter(
-    (entry) => shouldShowInDashboard(entry, state.settings, date),
-  )
-  const planningHints = buildPlanningHints(date, state)
-  const upcomingImportant = buildUpcomingImportant(date, state)
+  const overdueItems = buildOverdueItems(
+    date,
+    state,
+    itemById,
+    plannerTimeZone,
+  ).filter((entry) => shouldShowInDashboard(entry, state.settings, date))
+  const planningHints = buildPlanningHints(date, state, plannerTimeZone)
+  const upcomingImportant = buildUpcomingImportant(date, state, plannerTimeZone)
 
   return {
     dailyState:
@@ -804,10 +818,11 @@ function isFlexibleGoalBlockedByTodayOccurrence(
 
 export function buildPlanResponse(input: {
   from: string
+  plannerTimeZone?: string | undefined
   state: SelfCarePlanReadModel
   to: string
 }): SelfCarePlanResponse {
-  const { from, state, to } = input
+  const { from, state, to, plannerTimeZone } = input
   const itemById = new Map(state.items.map((item) => [item.id, item]))
   const occurrences = state.occurrences
     .filter(
@@ -826,6 +841,7 @@ export function buildPlanResponse(input: {
         ? [
             buildTodayItem({
               date: occurrence.scheduledFor,
+              plannerTimeZone,
               item,
               occurrence,
               state,
@@ -837,7 +853,15 @@ export function buildPlanResponse(input: {
   const courses = state.courseDetails.flatMap((course) => {
     const item = itemById.get(course.itemId)
     return item && isVisibleSelfCareItem(item) && !course.isCompleted
-      ? [buildTodayItem({ date: from, item, occurrence: null, state })]
+      ? [
+          buildTodayItem({
+            date: from,
+            item,
+            occurrence: null,
+            state,
+            plannerTimeZone,
+          }),
+        ]
       : []
   })
   const medical = occurrences.filter((entry) => entry.item.type === 'medical')
@@ -847,13 +871,14 @@ export function buildPlanResponse(input: {
     from,
     medical,
     occurrences,
-    planningHints: buildPlanningHints(from, state),
+    planningHints: buildPlanningHints(from, state, plannerTimeZone),
     to,
   }
 }
 
 export function buildHistoryResponse(input: {
   from: string
+  plannerTimeZone?: string | undefined
   state: SelfCareHistoryReadModel
   to: string
 }): SelfCareHistoryResponse {
@@ -873,6 +898,7 @@ export function buildHistoryResponse(input: {
 
 export function buildAnalyticsResponse(input: {
   from: string
+  plannerTimeZone?: string | undefined
   state: SelfCareAnalyticsReadModel
   to: string
 }): SelfCareAnalyticsResponse {
@@ -933,7 +959,10 @@ export function buildAnalyticsResponse(input: {
       minimumCompletionCount += 1
     }
 
-    const dateKey = completion.completedAt.slice(0, 10)
+    const dateKey = getDateKeyInTimeZone(
+      completion.completedAt,
+      input.plannerTimeZone ?? 'UTC',
+    )
     completionsByDay[dateKey] = (completionsByDay[dateKey] ?? 0) + 1
 
     const price =
@@ -1026,6 +1055,7 @@ export function buildAnalyticsResponse(input: {
         ? [
             buildTodayItem({
               date: input.to,
+              plannerTimeZone: input.plannerTimeZone,
               item,
               occurrence: null,
               state: input.state,
@@ -1051,15 +1081,18 @@ export function buildAnalyticsResponse(input: {
         return [
           buildTodayItem({
             date: input.to,
+            plannerTimeZone: input.plannerTimeZone,
             item,
             occurrence: null,
             state: input.state,
           }),
         ]
       }),
-    medicalUpcoming: buildUpcomingImportant(input.to, input.state).filter(
-      (entry) => entry.item.type === 'medical',
-    ),
+    medicalUpcoming: buildUpcomingImportant(
+      input.to,
+      input.state,
+      input.plannerTimeZone,
+    ).filter((entry) => entry.item.type === 'medical'),
     measurementTrends,
     minimumCompletionCount,
     moodEnergyTrend: input.state.dailyStates.filter(
@@ -1074,15 +1107,18 @@ export function buildAnalyticsResponse(input: {
 
 function selectHistoryCompletions(input: {
   from: string
+  plannerTimeZone?: string | undefined
   state: Pick<SelfCareStateSnapshot, 'completions'>
   to: string
 }): SelfCareCompletion[] {
   return input.state.completions
-    .filter(
-      (completion) =>
-        completion.completedAt.slice(0, 10) >= input.from &&
-        completion.completedAt.slice(0, 10) <= input.to,
-    )
+    .filter((completion) => {
+      const date = getDateKeyInTimeZone(
+        completion.completedAt,
+        input.plannerTimeZone ?? 'UTC',
+      )
+      return date >= input.from && date <= input.to
+    })
     .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
 }
 
@@ -1109,6 +1145,7 @@ function buildAnalyticsTrendPointBase(
 
 export function buildTodayItem(input: {
   date: string
+  plannerTimeZone?: string | undefined
   item: SelfCareItem
   occurrence: SelfCareOccurrence | null
   state: SelfCareTodayItemReadModel
@@ -1125,6 +1162,7 @@ export function buildTodayItem(input: {
           input.date,
           scheduleRule,
           input.state.completions,
+          input.plannerTimeZone ?? scheduleRule.timezone ?? 'UTC',
         )
       : null
 
@@ -1642,6 +1680,7 @@ function buildFlexibleProgressForRule(
   date: string,
   rule: SelfCareScheduleRule,
   completions: SelfCareCompletion[],
+  plannerTimeZone: string,
 ): SelfCareFlexibleGoalProgress | null {
   if (!rule.flexibleTargetCount || !rule.flexiblePeriod) {
     return null
@@ -1650,6 +1689,7 @@ function buildFlexibleProgressForRule(
   const period = getFlexibleGoalPeriod(date, rule.flexiblePeriod)
 
   return getFlexibleGoalProgress({
+    plannerTimeZone,
     completions,
     itemId: rule.itemId,
     periodEnd: period.periodEnd,
@@ -1760,6 +1800,7 @@ function buildPlanningHints(
   date: string,
   state: SelfCareTodayItemReadModel &
     Pick<SelfCareStateSnapshot, 'items' | 'occurrences'>,
+  plannerTimeZone?: string,
 ) {
   return state.items
     .filter(
@@ -1785,17 +1826,36 @@ function buildPlanningHints(
 
       const lastCompletion = findLastCompletion(state.completions, item.id)
       if (!lastCompletion) {
-        return [buildTodayItem({ date, item, occurrence: null, state })]
+        return [
+          buildTodayItem({
+            date,
+            item,
+            occurrence: null,
+            state,
+            plannerTimeZone,
+          }),
+        ]
       }
 
       const nextDate = addInterval(
-        lastCompletion.completedAt.slice(0, 10),
+        getDateKeyInTimeZone(
+          lastCompletion.completedAt,
+          plannerTimeZone ?? rule.timezone ?? 'UTC',
+        ),
         rule.intervalValue ?? 1,
         rule.intervalUnit ?? 'month',
       )
 
       return nextDate <= addDays(date, 14)
-        ? [buildTodayItem({ date: nextDate, item, occurrence: null, state })]
+        ? [
+            buildTodayItem({
+              date: nextDate,
+              item,
+              occurrence: null,
+              state,
+              plannerTimeZone,
+            }),
+          ]
         : []
     })
 }
@@ -1804,6 +1864,7 @@ function buildOverdueItems(
   date: string,
   state: SelfCareDashboardReadModel,
   itemById: Map<string, SelfCareItem>,
+  plannerTimeZone?: string,
 ) {
   return state.occurrences
     .filter(
@@ -1820,6 +1881,7 @@ function buildOverdueItems(
       return [
         buildTodayItem({
           date: occurrence.scheduledFor,
+          plannerTimeZone,
           item,
           occurrence,
           state,
@@ -1833,6 +1895,7 @@ function buildUpcomingImportant(
   date: string,
   state: SelfCareTodayItemReadModel &
     Pick<SelfCareStateSnapshot, 'items' | 'occurrences'>,
+  plannerTimeZone?: string,
 ) {
   const itemById = new Map(state.items.map((item) => [item.id, item]))
 
@@ -1850,6 +1913,7 @@ function buildUpcomingImportant(
         ? [
             buildTodayItem({
               date: occurrence.scheduledFor,
+              plannerTimeZone,
               item,
               occurrence,
               state,
@@ -1957,6 +2021,7 @@ export function shouldDeduplicateSelfCareItemCompletion(input: {
 
 export function shouldDeactivateCompletedFlexibleGoal(input: {
   completion: SelfCareCompletion
+  plannerTimeZone?: string | undefined
   completions: SelfCareCompletion[]
   item: SelfCareItem
   scheduleRule: SelfCareScheduleRule | null
@@ -1973,7 +2038,12 @@ export function shouldDeactivateCompletedFlexibleGoal(input: {
   }
 
   const startDate = scheduleRule.startDate ?? item.createdAt.slice(0, 10)
-  const completionDate = completion.completedAt.slice(0, 10)
+  const plannerTimeZone =
+    input.plannerTimeZone ?? scheduleRule.timezone ?? 'UTC'
+  const completionDate = getDateKeyInTimeZone(
+    completion.completedAt,
+    plannerTimeZone,
+  )
   const period = getFlexibleGoalPeriod(startDate, scheduleRule.flexiblePeriod)
 
   if (
@@ -1984,6 +2054,7 @@ export function shouldDeactivateCompletedFlexibleGoal(input: {
   }
 
   const progress = getFlexibleGoalProgress({
+    plannerTimeZone,
     completions,
     itemId: item.id,
     periodEnd: period.periodEnd,

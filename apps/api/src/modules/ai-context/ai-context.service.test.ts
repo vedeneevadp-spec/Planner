@@ -15,6 +15,7 @@ import {
   type Task,
 } from '@planner/contracts'
 
+import { matchesTaskContextFilter } from '../tasks/task.context-filter.js'
 import {
   AiContextService,
   type AiContextServiceDependencies,
@@ -25,6 +26,104 @@ const OTHER_USER_ID = '99999999-9999-4999-8999-999999999999'
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 
 void describe('AiContextService', () => {
+  void it('reports exact calendar coverage without reading unrelated task snapshots', async () => {
+    const taskReadModelCalls: unknown[] = []
+    const service = createService(
+      [
+        ...Array.from({ length: 55 }, (_, index) =>
+          createTask({
+            title: `Calendar ${index}`,
+            plannedDate: '2026-06-21',
+            plannedStartTime: '10:00',
+          }),
+        ),
+        createTask({ title: 'Unrelated private task' }),
+      ],
+      [],
+      { taskReadModelCalls },
+    )
+    const today = await service.getTodayContext({
+      date: '2026-06-21',
+      timezone: 'UTC',
+      userId: USER_ID,
+      include: ['calendar'],
+    })
+    const week = await service.getWeekContext({
+      from: '2026-06-21',
+      to: '2026-06-21',
+      timezone: 'UTC',
+      userId: USER_ID,
+      include: ['calendar'],
+    })
+    for (const result of [today, week]) {
+      assert.equal(result.calendar?.totalCount, 55)
+      assert.equal(result.calendar?.events.length, 50)
+      assert.deepEqual(result.sourceCoverage.calendar, {
+        returnedCount: 50,
+        totalCount: 55,
+        truncated: true,
+      })
+      assert.equal(result.sourceCoverage.tasks, undefined)
+      assert.equal(
+        JSON.stringify(result).includes('Unrelated private task'),
+        false,
+      )
+    }
+    assert.equal(taskReadModelCalls.length, 0)
+  })
+  void it('keeps task plan, deadline and completion distinct and counts timed tasks once', async () => {
+    mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2026-06-21T09:00:00Z'),
+    })
+    const service = createService([
+      createTask({
+        title: 'Timed task',
+        plannedDate: '2026-06-21',
+        plannedStartTime: '10:00',
+      }),
+      createTask({
+        title: 'Deadline task',
+        plannedDate: '2026-06-21',
+        dueDate: '2026-06-23',
+      }),
+      createTask({
+        title: 'Finished task',
+        status: 'done',
+        plannedDate: '2026-06-20',
+        completedAt: '2026-06-21T08:00:00.000Z',
+      }),
+    ])
+    const context = await service.getTodayContext({
+      date: '2026-06-21',
+      timezone: 'UTC',
+      userId: USER_ID,
+    })
+    const timed = context.tasks?.activeToday.find(
+      (task) => task.title === 'Timed task',
+    )
+    assert.equal(timed?.plannedDate, '2026-06-21')
+    assert.equal(timed?.dueDate, null)
+    assert.equal(
+      context.tasks?.completedToday[0]?.completedAt,
+      '2026-06-21T08:00:00.000Z',
+    )
+    assert.equal(context.tasks?.completedToday[0]?.plannedDate, '2026-06-20')
+    assert.equal(context.stats?.activeCounts.calendar, 1)
+    assert.equal(context.stats?.activeCounts.tasks, 2)
+    assert.equal(context.stats?.activeCounts.total, 2)
+    assert.equal(context.stats?.totalPlannedItems, 2)
+    const overload = await service.getOverloadContext({
+      from: '2026-06-21',
+      to: '2026-06-21',
+      timezone: 'UTC',
+      userId: USER_ID,
+    })
+    assert.equal(overload.counts.activeItemsTotal, 2)
+    assert.equal(overload.load.activeScore, 6)
+    assert.equal(overload.load.score, 6)
+  })
+
   afterEach(() => {
     mock.timers.reset()
   })
@@ -100,6 +199,159 @@ void describe('AiContextService', () => {
     assert.equal(context.calendar?.totalCount, 0)
     assert.equal(context.shopping?.totalCount, 0)
     assert.equal(context.stats?.loadLevel, 'low')
+  })
+
+  void it('returns active flexible tasks separately without increasing day, week or overload metrics', async () => {
+    const datedTasks = [
+      createTask({ plannedDate: '2026-06-21', title: 'Scheduled task' }),
+      createTask({ dueDate: '2026-06-21', title: 'Deadline only' }),
+    ]
+    const service = createService([
+      ...datedTasks,
+      createTask({
+        title: 'Flexible important task',
+        importance: 'important',
+        necessity: 'required',
+        resource: -3,
+        createdAt: '2025-01-01T00:00:00.000Z',
+      }),
+      createTask({ title: 'Flexible in progress', status: 'in_progress' }),
+      createTask({ title: 'Flexible done', status: 'done' }),
+      createTask({ title: 'Flexible archived', status: 'archived' }),
+      createTask({ title: 'Private task', authorUserId: OTHER_USER_ID }),
+    ])
+    const baseline = createService(datedTasks)
+    const dayParams = {
+      date: '2026-06-21',
+      timezone: 'UTC',
+      userId: USER_ID,
+    }
+    const rangeParams = {
+      from: '2026-06-15',
+      to: '2026-06-21',
+      timezone: 'UTC',
+      userId: USER_ID,
+    }
+    const today = await service.getTodayContext(dayParams)
+    const week = await service.getWeekContext(rangeParams)
+    const overload = await service.getOverloadContext(rangeParams)
+    const baselineToday = await baseline.getTodayContext(dayParams)
+    const baselineWeek = await baseline.getWeekContext(rangeParams)
+    const baselineOverload = await baseline.getOverloadContext(rangeParams)
+
+    assert.equal(today.tasks?.flexibleCount, 2)
+    assert.equal(today.tasks?.totalCount, 4)
+    assert.deepEqual(
+      today.tasks?.flexible.map((task) => task.title),
+      ['Flexible important task', 'Flexible in progress'],
+    )
+    for (const task of today.tasks.flexible) {
+      assert.equal(task.isFlexible, true)
+      assert.equal(task.dueDate, null)
+      assert.notEqual(task.status, 'overdue')
+    }
+    assert.equal(today.tasks?.flexible[0]?.obligation, 'required')
+    assert.equal(today.tasks?.flexible[0]?.resource, -3)
+    assert.deepEqual(today.tasks?.activeToday, baselineToday.tasks?.activeToday)
+    assert.deepEqual(today.stats, baselineToday.stats)
+    assert.deepEqual(today.calendar, baselineToday.calendar)
+    assert.deepEqual(today.overdue, baselineToday.overdue)
+
+    assert.deepEqual(week.remaining.tasksFlexible, today.tasks?.flexible)
+    assert.equal(week.summary.tasksFlexible, 2)
+    assert.deepEqual(week.summary, {
+      ...baselineWeek.summary,
+      tasksFlexible: 2,
+    })
+    assert.deepEqual(
+      week.remaining.tasksActive,
+      baselineWeek.remaining.tasksActive,
+    )
+    assert.deepEqual(week.highlights, baselineWeek.highlights)
+
+    assert.deepEqual(overload.flexibleTasks, {
+      count: 2,
+      items: today.tasks?.flexible,
+    })
+    assert.deepEqual(overload.counts, baselineOverload.counts)
+    assert.deepEqual(overload.load, {
+      ...baselineOverload.load,
+      ignoredCounts: {
+        ...baselineOverload.load.ignoredCounts,
+        flexibleTasks: 2,
+      },
+    })
+    assert.deepEqual(overload.bottlenecks, baselineOverload.bottlenecks)
+    assert.deepEqual(overload.suggestedFocus, baselineOverload.suggestedFocus)
+
+    const calendarOnly = await service.getTodayContext({
+      ...dayParams,
+      include: ['calendar'],
+    })
+    assert.equal(calendarOnly.tasks, undefined)
+    assert.equal(
+      JSON.stringify(calendarOnly).includes('Flexible important task'),
+      false,
+    )
+  })
+
+  void it('reports flexible counts before compacting lists and retains source coverage', async () => {
+    const service = createService(
+      Array.from({ length: 55 }, (_, index) =>
+        createTask({ title: `Flexible ${index}` }),
+      ),
+      [],
+      { taskTotalCount: 80, taskTruncated: true },
+    )
+    const params = { from: '2026-06-15', to: '2026-06-21', userId: USER_ID }
+    const today = await service.getTodayContext({
+      date: params.to,
+      userId: USER_ID,
+    })
+    const week = await service.getWeekContext(params)
+    const overload = await service.getOverloadContext(params)
+
+    assert.equal(today.tasks?.flexibleCount, 55)
+    assert.equal(today.tasks?.flexible.length, 50)
+    assert.deepEqual(today.listCoverage?.['tasks.flexible'], {
+      returnedCount: 50,
+      totalCount: 55,
+      truncated: true,
+    })
+    assert.equal(today.stats?.activeCounts.tasks, 0)
+    assert.equal(week.summary.tasksFlexible, 55)
+    assert.equal(week.remaining.tasksFlexible.length, 50)
+    assert.equal(week.summary.plannedTasks, 0)
+    assert.equal(overload.flexibleTasks.count, 55)
+    assert.equal(overload.flexibleTasks.items.length, 50)
+    assert.equal(overload.counts.tasksActive, 0)
+    for (const context of [today, week, overload]) {
+      assert.deepEqual(context.sourceCoverage.tasks, {
+        returnedCount: 55,
+        totalCount: 80,
+        truncated: true,
+      })
+    }
+  })
+
+  void it('finds flexible tasks without a date filter and never matches them as overdue', async () => {
+    const service = createService([createTask({ title: 'Flexible documents' })])
+    const params = {
+      query: 'documents',
+      types: ['tasks'] as const,
+      userId: USER_ID,
+    }
+    const search = (filters = {}) =>
+      service.searchPlanner({ ...params, types: [...params.types], ...filters })
+    const result = await search()
+
+    assert.equal(result.items.length, 1)
+    assert.equal((result.items[0] as { isFlexible: boolean }).isFlexible, true)
+    assert.equal((await search({ status: 'overdue' })).items.length, 0)
+    assert.equal(
+      (await search({ from: '2026-06-21', to: '2026-06-21' })).items.length,
+      0,
+    )
   })
 
   void it('reports bounded task and shopping source coverage to AI clients', async () => {
@@ -240,7 +492,7 @@ void describe('AiContextService', () => {
     assert.equal(context.stats?.overdueByDomain.shopping, 1)
     assert.equal(context.overdue?.shopping, 1)
     assert.deepEqual(
-      context.overdueItemsByDomain?.shopping.map((item) => item.title),
+      context.overdueItemsByDomain?.shopping?.map((item) => item.title),
       ['Expired milk'],
     )
   })
@@ -405,7 +657,7 @@ void describe('AiContextService', () => {
 
     const context = await service.getTodayContext({
       date: '2026-06-21',
-      include: ['stats'],
+      include: ['stats', 'cleaning', 'selfcare'],
       userId: USER_ID,
     })
 
@@ -426,15 +678,15 @@ void describe('AiContextService', () => {
       total: 4,
     })
     assert.deepEqual(
-      context.overdueItemsByDomain?.cleaning.map((item) => item.title),
+      context.overdueItemsByDomain?.cleaning?.map((item) => item.title),
       ['Overdue cleaning'],
     )
     assert.deepEqual(
-      context.overdueItemsByDomain?.selfcare.map((item) => item.title),
+      context.overdueItemsByDomain?.selfcare?.map((item) => item.title),
       ['Overdue self care'],
     )
     assert.deepEqual(
-      context.overdueItemsByDomain?.selfcare.map((item) => item.status),
+      context.overdueItemsByDomain?.selfcare?.map((item) => item.status),
       ['overdue'],
     )
   })
@@ -687,6 +939,7 @@ void describe('AiContextService', () => {
         },
         shoppingItems: [
           createShoppingItem({
+            completedAt: '2026-06-17T09:00:00.000Z',
             status: 'archived',
             text: 'Bought milk',
           }),
@@ -975,6 +1228,20 @@ void describe('AiContextService', () => {
         todayItems: [movedManicure, completedCare, activeYoga],
         upcomingImportant: [],
       },
+      selfCareHistory: {
+        appointmentDetails: [],
+        completions: [
+          createSelfCareCompletion({
+            completedAt: '2026-08-24T09:00:00.000Z',
+            itemId: completedCare.item.id,
+            scheduledFor: '2026-08-24',
+            status: 'done',
+          }),
+        ],
+        items: [completedCare.item],
+        procedureDetails: [],
+        stepCompletions: [],
+      },
       selfCarePlan: {
         courses: [],
         from: '2026-08-24',
@@ -1151,6 +1418,67 @@ void describe('AiContextService', () => {
     assert.equal(context.stats?.overdueByDomain.selfCare, 1)
   })
 
+  void it('keeps same-title flexible goals separate and preserves identity after a rename', async () => {
+    const first = createSelfCareTodayItem({
+      date: '2026-06-21',
+      occurrenceId: 'first-goal',
+      title: 'Вода',
+      type: 'flexible_goal',
+    })
+    const second = createSelfCareTodayItem({
+      date: '2026-06-21',
+      occurrenceId: 'second-goal',
+      title: 'Вода',
+      type: 'flexible_goal',
+    })
+    const dashboard = {
+      flexibleGoals: [first, second, first],
+      overdueItems: [],
+      planningHints: [],
+      todayItems: [],
+      upcomingImportant: [],
+    }
+    const service = createService([], [], { selfCareDashboard: dashboard })
+    const params = {
+      date: '2026-06-21',
+      include: ['selfcare'] as const,
+      userId: USER_ID,
+    }
+    const before = await service.getTodayContext({
+      ...params,
+      include: [...params.include],
+    })
+    assert.equal(before.selfCareFlexibleGoals?.totalGoals, 2)
+    const originalId = before.selfCare?.flexibleGoals.find((goal) =>
+      goal.id.includes('first-goal-item'),
+    )?.id
+    assert.ok(originalId)
+
+    first.item.title = 'Вода после тренировки'
+    const after = await service.getTodayContext({
+      ...params,
+      include: [...params.include],
+    })
+    assert.equal(after.selfCareFlexibleGoals?.totalGoals, 2)
+    assert.equal(
+      after.selfCare?.flexibleGoals.find(
+        (goal) => goal.title === 'Вода после тренировки',
+      )?.id,
+      originalId,
+    )
+    const tomorrow = await service.getTodayContext({
+      ...params,
+      date: '2026-06-22',
+      include: [...params.include],
+    })
+    assert.equal(
+      tomorrow.selfCare?.flexibleGoals.find(
+        (goal) => goal.title === 'Вода после тренировки',
+      )?.id,
+      originalId,
+    )
+  })
+
   void it('returns flexible self-care goals as one progress object per goal', async () => {
     const waterGoal = createSelfCareTodayItem({
       category: 'nutrition',
@@ -1212,7 +1540,7 @@ void describe('AiContextService', () => {
         date: '2026-06-21',
         doneCount: 1,
         expectedRepeats: true,
-        id: 'вода-2026-06-21',
+        id: 'flexible-goal:water-goal-item:2026-06-21:2026-06-21',
         remainingCount: 2,
         source: 'selfcare',
         status: 'in_progress',
@@ -1226,7 +1554,7 @@ void describe('AiContextService', () => {
         date: '2026-06-21',
         doneCount: 0,
         expectedRepeats: true,
-        id: 'отжимания-2026-06-21',
+        id: 'flexible-goal:pushups-goal-item:2026-06-21:2026-06-21',
         remainingCount: 3,
         source: 'selfcare',
         status: 'planned',
@@ -1263,6 +1591,198 @@ void describe('AiContextService', () => {
 
     assert.equal(result.totalCount, 0)
     assert.deepEqual(result.items, [])
+  })
+
+  void it('counts actual task completions in the planner timezone instead of planned dates or archives', async () => {
+    const service = createService([
+      createTask({
+        title: 'Finished after an old plan',
+        plannedDate: '2026-06-10',
+        completedAt: '2026-06-20T18:00:00.000Z',
+        status: 'done',
+      }),
+      createTask({
+        title: 'Finished before a future plan',
+        plannedDate: '2026-06-30',
+        completedAt: '2026-06-21T08:00:00.000Z',
+        status: 'done',
+      }),
+      createTask({
+        title: 'Finished on a different day',
+        plannedDate: '2026-06-21',
+        completedAt: '2026-06-22T08:00:00.000Z',
+        status: 'done',
+      }),
+      createTask({
+        title: 'Archived instead of completed',
+        plannedDate: '2026-06-21',
+        completedAt: '2026-06-21T08:00:00.000Z',
+        status: 'archived',
+      }),
+      createTask({
+        title: 'Missing completion time',
+        plannedDate: '2026-06-21',
+        status: 'done',
+      }),
+    ])
+    const period = {
+      from: '2026-06-21',
+      to: '2026-06-21',
+      timezone: 'Asia/Novosibirsk',
+      userId: USER_ID,
+    }
+    const today = await service.getTodayContext({
+      date: period.from,
+      timezone: period.timezone,
+      userId: USER_ID,
+    })
+    const week = await service.getWeekContext(period)
+    const overload = await service.getOverloadContext(period)
+    const expected = [
+      'Finished after an old plan',
+      'Finished before a future plan',
+    ]
+
+    assert.deepEqual(
+      today.tasks?.completedToday.map((item) => item.title),
+      expected,
+    )
+    assert.equal(today.tasks?.completedTodayCount, 2)
+    assert.deepEqual(
+      week.progress.tasksCompleted.items.map((item) => item.title),
+      expected,
+    )
+    assert.equal(week.summary.completedTasks, 2)
+    assert.equal(overload.load.ignoredCounts.completedTasks, 2)
+    assert.equal(today.tasks?.activeTodayCount, 0)
+    assert.equal(overload.counts.tasksActive, 0)
+  })
+
+  void it('selects gentle and restoring tasks using signed resource values', async () => {
+    const service = createService(
+      [-4, -2, -1, 0, 1, 4, null].map((resource) =>
+        createTask({
+          title: `Resource ${resource}`,
+          plannedDate: '2026-06-21',
+          resource,
+        }),
+      ),
+    )
+    const context = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['tasks'],
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(
+      context.tasks?.lowEnergy.map((item) => item.resource),
+      [-1, 0, 1, 4],
+    )
+    assert.equal(
+      context.tasks?.today.find((item) => item.resource === -4)?.priority,
+      'normal',
+    )
+    assert.equal(
+      context.tasks?.today.find((item) => item.resource === 4)?.priority,
+      'low',
+    )
+  })
+
+  void it('keeps independent same-title tasks separate in weekly and overload counts', async () => {
+    const service = createService([
+      createTask({ title: 'Read report', plannedDate: '2026-06-21' }),
+      createTask({ title: 'Read report', plannedDate: '2026-06-21' }),
+    ])
+    const period = { from: '2026-06-21', to: '2026-06-21', userId: USER_ID }
+    const week = await service.getWeekContext(period)
+    const overload = await service.getOverloadContext(period)
+
+    assert.equal(week.summary.taskGroupsActive, 2)
+    assert.equal(week.summary.tasksActive, 2)
+    assert.equal(week.remaining.tasksActive.length, 2)
+    assert.equal(overload.counts.tasksActive, 2)
+  })
+
+  void it('counts a task planned today with an overdue deadline only once in active load', async () => {
+    const service = createService([
+      createTask({ plannedDate: '2026-06-21', dueDate: '2026-06-20' }),
+    ])
+    const today = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['tasks', 'stats'],
+      userId: USER_ID,
+    })
+
+    assert.equal(today.tasks?.activeTodayCount, 1)
+    assert.equal(today.tasks?.overdueCount, 1)
+    assert.equal(today.tasks?.totalCount, 1)
+    assert.equal(today.stats?.activeCounts.tasks, 1)
+  })
+
+  void it('includes deadlines inside a period even when the task is planned outside it', async () => {
+    const service = createService([
+      createTask({
+        title: 'Deadline in range',
+        plannedDate: '2026-06-30',
+        plannedStartTime: '10:00',
+        dueDate: '2026-06-21',
+      }),
+      createTask({
+        title: 'Plan in range',
+        plannedDate: '2026-06-21',
+        dueDate: '2026-06-30',
+      }),
+    ])
+    const period = { from: '2026-06-21', to: '2026-06-21', userId: USER_ID }
+    const week = await service.getWeekContext(period)
+    const overload = await service.getOverloadContext(period)
+
+    assert.equal(week.remaining.tasksActive.length, 2)
+    assert.equal(week.summary.tasksActive, 2)
+    assert.equal(overload.counts.tasksActive, 2)
+    assert.equal(overload.counts.calendarEvents, 0)
+  })
+
+  void it('compacts historical task lists using the requested date instead of the current date', async () => {
+    const service = createService([
+      ...Array.from({ length: 50 }, (_, index) =>
+        createTask({
+          title: `Completed task ${index}`,
+          plannedDate: '2026-06-20',
+          completedAt: '2026-06-21T08:00:00.000Z',
+          status: 'done',
+        }),
+      ),
+      createTask({
+        title: 'Important with future plan',
+        plannedDate: '2026-06-30',
+        completedAt: '2026-06-21T08:00:00.000Z',
+        status: 'done',
+        importance: 'important',
+      }),
+    ])
+    const period = { from: '2026-06-21', to: '2026-06-21', userId: USER_ID }
+    const day = { date: period.from, userId: USER_ID }
+    mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2026-06-21T12:00:00Z'),
+    })
+    const currentDay = await service.getTodayContext(day)
+    const currentWeek = await service.getWeekContext(period)
+    mock.timers.setTime(new Date('2026-11-05T12:00:00Z').getTime())
+    const historicalDay = await service.getTodayContext(day)
+    const historicalWeek = await service.getWeekContext(period)
+
+    assert.equal(currentDay.tasks?.completedToday.length, 50)
+    assert.equal(currentDay.tasks?.completedTodayCount, 51)
+    assert.deepEqual(
+      historicalDay.tasks?.completedToday,
+      currentDay.tasks?.completedToday,
+    )
+    assert.deepEqual(
+      historicalWeek.progress.tasksCompleted,
+      currentWeek.progress.tasksCompleted,
+    )
   })
 })
 
@@ -1321,6 +1841,21 @@ function createService(
       },
     },
     taskService: {
+      searchTasksCursor: (_context, filters) => {
+        const matching = tasks.filter((task) =>
+          matchesTaskContextFilter(task, filters),
+        )
+        const items = matching.slice(0, filters.limit)
+        const hasMore = items.length < matching.length
+        return Promise.resolve({
+          items,
+          hasMore,
+          nextCursor: hasMore ? 'fixture-next-page' : null,
+          returnedCount: items.length,
+          totalCount: matching.length,
+          truncated: hasMore,
+        })
+      },
       getTaskReadModel: (_context, filters) => {
         options.taskReadModelCalls?.push(filters)
 

@@ -1,8 +1,11 @@
+import { isValidTimeZone } from '@planner/contracts'
 import { z } from 'zod'
 
+import { getAiDateRangeError } from '../ai-context/ai-context.validation.js'
 import {
   PLANNER_SEARCH_TYPES,
   TODAY_CONTEXT_INCLUDE_KEYS,
+  WEEK_CONTEXT_INCLUDE_KEYS,
 } from '../ai-context/index.js'
 
 export const mcpToolNameSchema = z.enum([
@@ -15,73 +18,94 @@ export const mcpToolNameSchema = z.enum([
 
 export type McpToolName = z.infer<typeof mcpToolNameSchema>
 
-const MAX_WEEK_CONTEXT_INCLUDE_ITEMS = 20
+const dateSchema = z.iso.date()
+const timezoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(100)
+  .refine(isValidTimeZone, {
+    message: 'timezone must be a valid IANA time zone.',
+  })
+
+function validateRange(
+  input: { from?: string | undefined; to?: string | undefined },
+  context: z.RefinementCtx,
+) {
+  const message = getAiDateRangeError(input.from, input.to)
+  if (message) context.addIssue({ code: 'custom', message, path: ['to'] })
+}
 
 export const getTodayContextInputSchema = z
   .object({
-    date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    date: dateSchema.optional(),
     include: z
       .array(z.enum(TODAY_CONTEXT_INCLUDE_KEYS))
       .max(TODAY_CONTEXT_INCLUDE_KEYS.length)
       .optional(),
-    timezone: z.string().trim().min(1).max(100).optional(),
+    timezone: timezoneSchema.optional(),
   })
   .strict()
 
 export const getWeekContextInputSchema = z
   .object({
-    from: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    from: dateSchema.optional(),
     include: z
-      .array(z.string().trim().min(1).max(40))
-      .max(MAX_WEEK_CONTEXT_INCLUDE_ITEMS)
+      .array(z.enum(WEEK_CONTEXT_INCLUDE_KEYS))
+      .max(WEEK_CONTEXT_INCLUDE_KEYS.length)
       .optional(),
-    timezone: z.string().trim().min(1).max(100).optional(),
-    to: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    timezone: timezoneSchema.optional(),
+    to: dateSchema.optional(),
   })
   .strict()
+  .superRefine(validateRange)
 
 export const searchPlannerInputSchema = z
   .object({
-    from: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    from: dateSchema.optional(),
     limit: z.number().int().min(1).max(30).optional(),
-    query: z.string().trim().min(1).max(200),
+    query: z.string().trim().max(200),
     status: z.enum(['todo', 'done', 'overdue', 'any']).optional(),
-    to: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    taskCursor: z.string().min(1).max(8192).optional(),
+    timezone: timezoneSchema.optional(),
+    to: dateSchema.optional(),
     types: z
       .array(z.enum(PLANNER_SEARCH_TYPES))
       .max(PLANNER_SEARCH_TYPES.length)
       .optional(),
   })
   .strict()
+  .superRefine(validateRange)
+  .superRefine((input, context) => {
+    const tasksOnly = input.types?.length === 1 && input.types[0] === 'tasks'
+    if (
+      !input.query &&
+      !(tasksOnly && input.status === 'done' && input.from && input.to)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'A query is required, except when listing completed tasks in a date range.',
+        path: ['query'],
+      })
+    }
+    if (input.taskCursor && !tasksOnly) {
+      context.addIssue({
+        code: 'custom',
+        message: 'taskCursor requires types: [tasks].',
+        path: ['taskCursor'],
+      })
+    }
+  })
 
 export const getOverloadContextInputSchema = z
   .object({
-    from: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
-    timezone: z.string().trim().min(1).max(100).optional(),
-    to: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
+    from: dateSchema.optional(),
+    timezone: timezoneSchema.optional(),
+    to: dateSchema.optional(),
   })
   .strict()
+  .superRefine(validateRange)
 
 export const getSelfCareContextInputSchema = getOverloadContextInputSchema
 
@@ -96,6 +120,8 @@ export const toolInputSchemas = {
 export const jsonSchemas = {
   get_overload_context: {
     additionalProperties: false,
+    description:
+      'Inclusive date range, at most 31 days. Split longer periods into smaller requests.',
     properties: {
       from: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       timezone: { maxLength: 100, minLength: 1, type: 'string' },
@@ -105,6 +131,8 @@ export const jsonSchemas = {
   },
   get_selfcare_context: {
     additionalProperties: false,
+    description:
+      'Inclusive date range, at most 31 days. Split longer periods into smaller requests.',
     properties: {
       from: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       timezone: { maxLength: 100, minLength: 1, type: 'string' },
@@ -127,11 +155,13 @@ export const jsonSchemas = {
   },
   get_week_context: {
     additionalProperties: false,
+    description:
+      'Inclusive date range, at most 31 days. Split longer periods into smaller requests.',
     properties: {
       from: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       include: {
-        items: { maxLength: 40, minLength: 1, type: 'string' },
-        maxItems: MAX_WEEK_CONTEXT_INCLUDE_ITEMS,
+        items: { enum: WEEK_CONTEXT_INCLUDE_KEYS, type: 'string' },
+        maxItems: WEEK_CONTEXT_INCLUDE_KEYS.length,
         type: 'array',
       },
       timezone: { maxLength: 100, minLength: 1, type: 'string' },
@@ -141,14 +171,29 @@ export const jsonSchemas = {
   },
   search_planner: {
     additionalProperties: false,
+    description:
+      'When both from and to are supplied, the inclusive range must not exceed 31 days.',
     properties: {
       from: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       limit: { maximum: 30, minimum: 1, type: 'integer' },
-      query: { maxLength: 200, minLength: 1, type: 'string' },
+      query: {
+        maxLength: 200,
+        type: 'string',
+        description:
+          'Search text. Use an empty string only with types: [tasks], status: done and both from/to to page through completed task history.',
+      },
       status: {
         enum: ['todo', 'done', 'overdue', 'any'],
         type: 'string',
       },
+      taskCursor: {
+        minLength: 1,
+        maxLength: 8192,
+        type: 'string',
+        description:
+          'Continue task-only results with the same query, status, dates and timezone.',
+      },
+      timezone: { maxLength: 100, minLength: 1, type: 'string' },
       to: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       types: {
         items: { enum: PLANNER_SEARCH_TYPES, type: 'string' },

@@ -1,6 +1,7 @@
 import { getTodayDate } from '@planner/contracts'
 
 export interface CompactForAiOptions {
+  includeListCoverage?: boolean
   maxArrayItems?: number
   maxStringLength?: number
   mode?: 'default' | 'search'
@@ -53,12 +54,28 @@ export function compactForAi<T>(input: T, options: CompactForAiOptions = {}) {
       : DEFAULT_MAX_ARRAY_ITEMS)
   const maxStringLength = options.maxStringLength ?? DEFAULT_MAX_STRING_LENGTH
   const todayDate = options.todayDate ?? getTodayDate('UTC')
+  const listCoverage: Record<
+    string,
+    { returnedCount: number; totalCount: number; truncated: boolean }
+  > = {}
 
-  return compactValue(input, {
-    maxArrayItems,
-    maxStringLength,
-    todayDate,
-  }) as T
+  const result = compactValue(
+    input,
+    {
+      maxArrayItems,
+      maxStringLength,
+      todayDate,
+    },
+    options.includeListCoverage ? listCoverage : undefined,
+  )
+  if (
+    options.includeListCoverage &&
+    isRecord(result) &&
+    !Array.isArray(result)
+  ) {
+    result.listCoverage = listCoverage
+  }
+  return result as T
 }
 
 export function compactArrayForAi<T>(
@@ -93,14 +110,45 @@ function compactValue(
   options: Required<
     Pick<CompactForAiOptions, 'maxArrayItems' | 'maxStringLength' | 'todayDate'>
   >,
+  coverage?: Record<
+    string,
+    { returnedCount: number; totalCount: number; truncated: boolean }
+  >,
+  path = '',
 ): unknown {
   if (Array.isArray(input)) {
+    if (
+      coverage &&
+      path &&
+      (input.some(isRecord) ||
+        (input.length === 0 &&
+          ![
+            'tags',
+            'dates',
+            'reasons',
+            'bottlenecks',
+            'suggestedFocus',
+            'possibleSimplifications',
+            'weakSpots',
+            'statuses',
+          ].includes(path.split('.').at(-1) ?? '')))
+    ) {
+      coverage[path] = {
+        returnedCount: Math.min(input.length, options.maxArrayItems),
+        totalCount: input.length,
+        truncated: input.length > options.maxArrayItems,
+      }
+    }
     return sortImportantFirst(input, options.todayDate)
       .slice(0, options.maxArrayItems)
-      .map((item) => compactValue(item, options))
+      .map((item, index) =>
+        compactValue(item, options, coverage, `${path}[${index}]`),
+      )
   }
 
   if (typeof input === 'string') {
+    // Continuations are opaque protocol values: truncating one makes the next page unreadable.
+    if (path.split('.').at(-1) === 'nextCursor') return input
     return input.length > options.maxStringLength
       ? input.slice(0, options.maxStringLength)
       : input
@@ -117,7 +165,12 @@ function compactValue(
       continue
     }
 
-    result[key] = compactValue(value, options)
+    result[key] = compactValue(
+      value,
+      options,
+      coverage,
+      path ? `${path}.${key}` : key,
+    )
   }
 
   return result
@@ -142,7 +195,10 @@ function scoreItem(item: unknown, todayDate: string): number {
   const priority = readString(item.priority)
   const urgency = readString(item.urgency)
   const importance = readString(item.importance)
-  const dueDate = readString(item.dueDate) ?? readString(item.date)
+  const dueDate =
+    readString(item.dueDate) ??
+    readString(item.plannedDate) ??
+    readString(item.date)
 
   if (status === 'overdue' || status === 'missed') {
     score += 100

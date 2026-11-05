@@ -21,6 +21,7 @@ import type {
   DeleteTaskCommand,
   DetachTaskChainCommand,
   StoredTaskRecord,
+  TaskContextPageFilters,
   TaskCursorFilters,
   TaskCursorListResult,
   TaskEventFilters,
@@ -73,6 +74,9 @@ export class TaskService {
     const anchor = decodeTaskCursor(filters.cursor, filters)
     const result = await this.repository.listCursorPageByWorkspace(context, {
       ...(anchor ? { anchor } : {}),
+      ...(filters.contextFilter
+        ? { contextFilter: filters.contextFilter }
+        : {}),
       ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
       dateMode: filters.dateMode,
       ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
@@ -103,6 +107,27 @@ export class TaskService {
       returnedCount: result.items.length,
       truncated: result.hasMore,
     }
+  }
+
+  searchTasksCursor(context: TaskReadContext, filters: TaskContextPageFilters) {
+    return this.listTasksCursor(context, {
+      cursor: filters.cursor,
+      dateMode: 'relevant',
+      direction: 'desc',
+      limit: Math.min(Math.max(filters.limit, 1), 500),
+      scope: 'all',
+      contextFilter: {
+        asOfDate: filters.asOfDate,
+        calendarOnly: filters.calendarOnly,
+        from: filters.from,
+        highPriorityOnly: filters.highPriorityOnly,
+        search: filters.search?.trim().toLowerCase(),
+        status: filters.status,
+        timezone: filters.timezone,
+        to: filters.to,
+        userId: filters.userId,
+      },
+    })
   }
 
   async getTaskReadModel(

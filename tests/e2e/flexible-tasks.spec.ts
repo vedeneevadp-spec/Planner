@@ -10,7 +10,7 @@ for (const viewport of [
   { name: 'desktop', width: 1360, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ]) {
-  test(`creates flexible and dated tasks with all settings on ${viewport.name}`, async ({
+  test(`creates and edits flexible and dated tasks with all settings on ${viewport.name}`, async ({
     page,
   }, testInfo) => {
     const errors: string[] = []
@@ -150,6 +150,86 @@ for (const viewport of [
       note: 'Сохранить контекст',
       recurrence: { isActive: true },
     })
+
+    const editor = page.getByRole('dialog', { name: 'Редактировать задачу' })
+    const openEditor = async () => {
+      await page
+        .getByRole('button', { name: 'Действия с задачей Когда будет удобно' })
+        .click()
+      await page
+        .getByRole('menuitem', { name: 'Редактировать', exact: true })
+        .click()
+      await expect(editor).toBeVisible()
+    }
+    const saveEdit = async () => {
+      const updated = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          /^\/api\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname) &&
+          response.status() === 200,
+      )
+      await editor
+        .getByRole('button', { name: 'Сохранить', exact: true })
+        .filter({ visible: true })
+        .first()
+        .click()
+      const response = await updated
+      await expect(editor).toBeHidden()
+      const input = response.request().postDataJSON() as {
+        plannedDate: string | null
+        plannedStartTime: string | null
+        remindBeforeStart?: boolean
+        reminderOffsets?: number[]
+      }
+      expect(input.reminderOffsets ?? []).toEqual(
+        input.plannedDate && input.plannedStartTime ? [15] : [],
+      )
+      expect(input.remindBeforeStart ?? false).toBe(
+        Boolean(input.plannedDate && input.plannedStartTime),
+      )
+      return response.json() as Promise<Record<string, unknown>>
+    }
+
+    await openEditor()
+    await expect(editor.getByLabel('План')).toBeHidden()
+    await editor.getByRole('button', { name: 'Указать дату' }).click()
+    await editor.getByLabel('План').fill(getTodayDate('UTC'))
+    await editor.getByLabel('Старт').fill('18:00')
+    await editor.getByLabel('Финиш').filter({ visible: true }).fill('18:30')
+    expect(await saveEdit()).toMatchObject({
+      plannedDate: getTodayDate('UTC'),
+      plannedStartTime: '18:00',
+      plannedEndTime: '18:30',
+      reminderOffsets: [15],
+      recurrence: { isActive: true },
+    })
+
+    await openEditor()
+    await editor.locator('form').screenshot({
+      path: testInfo.outputPath(`dated-edit-${viewport.name}.png`),
+    })
+    await editor.getByRole('button', { name: 'Оставить без даты' }).click()
+    await expect(editor.getByLabel('План')).toBeHidden()
+    await expect(editor.getByText('Напомнить', { exact: true })).toBeHidden()
+    await editor.locator('form').screenshot({
+      path: testInfo.outputPath(`flexible-edit-${viewport.name}.png`),
+    })
+    const unscheduled = await saveEdit()
+    expect(unscheduled).toMatchObject({
+      dueDate: null,
+      plannedDate: null,
+      plannedStartTime: null,
+      plannedEndTime: null,
+      note: 'Сохранить контекст',
+      recurrence: { isActive: true },
+    })
+    expect(unscheduled.remindBeforeStart ?? false).toBe(false)
+    expect(unscheduled.reminderOffsets ?? []).toEqual([])
+    await page.reload()
+    await openEditor()
+    await expect(editor.getByLabel('План')).toBeHidden()
+    await expect(editor.getByLabel('Повторять задачу')).toBeChecked()
+    expect(await saveEdit()).toMatchObject({ plannedDate: null })
 
     const task = page.locator('article').filter({
       has: page.getByText('Разобрать документы', { exact: true }),

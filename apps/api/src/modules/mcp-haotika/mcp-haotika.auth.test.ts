@@ -9,6 +9,7 @@ import {
   McpOAuthService,
   MemoryMcpOAuthTokenRepository,
 } from './mcp-haotika.auth.js'
+import { getRequiredScopesForTool } from './mcp-haotika.tools.js'
 import { McpHaotikaError } from './mcp-haotika.types.js'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
@@ -23,6 +24,44 @@ const CONFIG = {
 const RESOURCE = createMcpResource(CONFIG.publicBaseUrl)
 
 void describe('McpOAuthService', () => {
+  void it('requires every day or week scope for both empty and omitted include', async () => {
+    const repository = new MemoryMcpOAuthTokenRepository()
+    const service = new McpOAuthService(repository, CONFIG)
+    await repository.createToken({
+      accessTokenHash: hashOpaqueToken('tasks-only-token'),
+      clientId: 'chatgpt',
+      expiresAt: new Date(Date.now() + 60_000),
+      issuer: CONFIG.oauthIssuer,
+      refreshTokenHash: null,
+      resource: RESOURCE,
+      scopes: ['haotika:tasks.read'],
+      userId: USER_ID,
+    })
+
+    for (const name of ['get_today_context', 'get_week_context'] as const) {
+      const scopedAuth = await service.authenticateBearer(
+        'Bearer tasks-only-token',
+        getRequiredScopesForTool(name, { include: ['tasks'] }),
+      )
+      assert.equal(scopedAuth.userId, USER_ID)
+      assert.deepEqual(
+        getRequiredScopesForTool(name, { include: [] }),
+        getRequiredScopesForTool(name, {}),
+      )
+      for (const input of [{}, { include: [] }]) {
+        await assert.rejects(
+          service.authenticateBearer(
+            'Bearer tasks-only-token',
+            getRequiredScopesForTool(name, input),
+          ),
+          (error) =>
+            error instanceof McpHaotikaError &&
+            error.code === 'FORBIDDEN_SCOPE',
+        )
+      }
+    }
+  })
+
   void it('completes the authorization-code flow and stores hashed tokens only', async () => {
     const repository = new MemoryMcpOAuthTokenRepository()
     const signInMetadata: AuthRequestMetadata[] = []

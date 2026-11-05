@@ -34,6 +34,7 @@ import {
   addDays,
   createDefaultMinimumItems,
   createDefaultSelfCareSettings,
+  getFlexibleGoalPeriod,
   type SelfCareAnalyticsReadModel,
   type SelfCareDashboardReadModel,
   type SelfCareHistoryReadModel,
@@ -525,6 +526,7 @@ export class PostgresSelfCareReadModelLoader {
             selectCompletions(executor, {
               actorUserId: context.actorUserId ?? null,
               completionRange: { from, to },
+              plannerTimeZone: context.clientTimeZone,
               itemIds: root.itemIds,
             }),
             selectChildren(
@@ -572,6 +574,20 @@ export class PostgresSelfCareReadModelLoader {
     from: string,
     to: string,
   ): Promise<SelfCareAnalyticsReadModel> {
+    // Goal progress describes its whole day/week/month, even when the requested
+    // analytics interval is shorter. Shared analytics still filters ordinary
+    // completion metrics to from/to after loading this bounded superset.
+    const goalPeriods = [
+      getFlexibleGoalPeriod(to, 'week'),
+      getFlexibleGoalPeriod(to, 'month'),
+    ]
+    const completionRange = {
+      from: [
+        from,
+        ...goalPeriods.map((period) => period.periodStart),
+      ].sort()[0]!,
+      to: [to, ...goalPeriods.map((period) => period.periodEnd)].sort().at(-1)!,
+    }
     const rows = await withOptionalRls(
       this.db,
       context.auth,
@@ -601,7 +617,8 @@ export class PostgresSelfCareReadModelLoader {
           }),
           selectCompletions(executor, {
             actorUserId: context.actorUserId ?? null,
-            completionRange: { from, to },
+            completionRange,
+            plannerTimeZone: context.clientTimeZone,
             itemIds: root.itemIds,
           }),
           selectChildren(executor, 'app.self_care_ritual_steps', root.itemIds),

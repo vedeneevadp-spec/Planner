@@ -12,6 +12,7 @@ import { generateSelfCareOccurrencesForRange } from './self-care.shared.js'
 /** Reconcile the already materialized future, preserving manual and closed slots. */
 export function reconcileSelfCareSchedule(input: {
   completions: SelfCareCompletion[]
+  plannerTimeZone?: string | undefined
   courseDetails: SelfCareCourseDetails | null
   from: string
   item: SelfCareItem

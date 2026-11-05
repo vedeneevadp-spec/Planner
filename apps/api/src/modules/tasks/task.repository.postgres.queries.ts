@@ -17,6 +17,8 @@ import {
   type ProjectRow,
   type ResolvedTaskAssignee,
   type ResolvedTaskProject,
+  TASK_IMPORTANCE_KEY,
+  TASK_URGENCY_KEY,
   type TaskListRow,
   type TaskRow,
   type TaskRowsQuery,
@@ -726,6 +728,69 @@ function applyTaskCursorFilters<Output>(
             ) between ${cursorQuery.dateFrom}::date and ${cursorQuery.dateTo}::date
           `,
     )
+  }
+
+  if (cursorQuery.contextFilter) {
+    const filter = cursorQuery.contextFilter
+    const plannedDate = sql`coalesce(app.tasks.local_date, app.tasks.planned_on)`
+    const deadline = sql`coalesce(app.tasks.due_on, ${plannedDate})`
+    const active = sql`app.tasks.status in ('todo', 'in_progress', 'ready_for_review')`
+    const overdue = sql`(${active} and ${deadline} < ${filter.asOfDate}::date)`
+    filteredQuery = filteredQuery.where(sql<boolean>`
+      (app.tasks.created_by is null or app.tasks.created_by = ${filter.userId}::uuid)
+      and (app.tasks.assignee_user_id is null or app.tasks.assignee_user_id = ${filter.userId}::uuid)
+    `)
+    if (filter.calendarOnly) {
+      filteredQuery = filteredQuery.where(sql<boolean>`
+        ${plannedDate} is not null and (
+          app.tasks.local_time is not null
+          or exists (select 1 from app.task_time_blocks
+            where app.task_time_blocks.task_id = app.tasks.id
+              and app.task_time_blocks.workspace_id = app.tasks.workspace_id
+              and app.task_time_blocks.deleted_at is null)
+        )
+      `)
+    }
+    if (filter.highPriorityOnly) {
+      filteredQuery = filteredQuery.where(sql<boolean>`
+        (app.tasks.metadata ->> ${TASK_IMPORTANCE_KEY} = 'important'
+         or app.tasks.metadata ->> ${TASK_URGENCY_KEY} = 'urgent')
+      `)
+    }
+    if (filter.status === 'done')
+      filteredQuery = filteredQuery.where('status', '=', 'done')
+    if (filter.status === 'active')
+      filteredQuery = filteredQuery.where(sql<boolean>`${active}`)
+    if (filter.status === 'overdue')
+      filteredQuery = filteredQuery.where(sql<boolean>`${overdue}`)
+    if (filter.status === 'todo')
+      filteredQuery = filteredQuery.where(
+        sql<boolean>`${active} and (${deadline} is null or ${deadline} >= ${filter.asOfDate}::date)`,
+      )
+    if (filter.search) {
+      filteredQuery =
+        filteredQuery.where(sql<boolean>`position(lower(${filter.search}) in lower(concat_ws(' ',
+        app.tasks.title,
+        app.tasks.description,
+        coalesce((select app.projects.title from app.projects
+          where app.projects.id = app.tasks.project_id and app.projects.workspace_id = app.tasks.workspace_id
+            and app.projects.deleted_at is null), app.tasks.metadata ->> ${LEGACY_PROJECT_NAME_KEY})
+      ))) > 0`)
+    }
+    if (filter.from || filter.to) {
+      const completedDate = sql`(app.tasks.completed_at at time zone ${filter.timezone})::date`
+      const inRange = (date: ReturnType<typeof sql>) => sql`(
+        ${date} is not null
+        and (${filter.from ?? null}::date is null or ${date} >= ${filter.from ?? null}::date)
+        and (${filter.to ?? null}::date is null or ${date} <= ${filter.to ?? null}::date)
+      )`
+      filteredQuery = filteredQuery.where(
+        filter.calendarOnly
+          ? sql<boolean>`${inRange(plannedDate)}`
+          : sql<boolean>`case when app.tasks.status = 'done' then ${inRange(completedDate)}
+            else (${inRange(plannedDate)} or ${inRange(sql`app.tasks.due_on`)}) end`,
+      )
+    }
   }
 
   return filteredQuery

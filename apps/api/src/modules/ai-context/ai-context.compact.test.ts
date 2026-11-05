@@ -4,6 +4,42 @@ import { describe, it } from 'node:test'
 import { compactArrayForAi, compactForAi } from './ai-context.compact.js'
 
 void describe('compactForAi', () => {
+  void it('preserves opaque pagination cursors while still bounding user text', () => {
+    const nextCursor = 'x'.repeat(1200)
+    const result = compactForAi({
+      sourceCoverage: { taskCompletions: { nextCursor } },
+      note: 'n'.repeat(1200),
+    })
+    assert.equal(result.sourceCoverage.taskCompletions.nextCursor, nextCursor)
+    assert.equal(result.note.length, 500)
+  })
+  void it('reports each visible list before truncation without leaking private arrays', () => {
+    const compacted = compactForAi(
+      {
+        tasks: {
+          active: Array.from({ length: 55 }, (_, index) => ({
+            source: 'tasks',
+            title: `Task ${index}`,
+            tags: [],
+          })),
+          completed: [],
+        },
+        calendar: { events: [] },
+        auth: { items: [{ secret: 'hidden' }] },
+        reasons: [],
+        listCoverage: {},
+      },
+      { includeListCoverage: true },
+    )
+    assert.equal(compacted.tasks.active.length, 50)
+    assert.deepEqual(compacted.listCoverage, {
+      'tasks.active': { returnedCount: 50, totalCount: 55, truncated: true },
+      'tasks.completed': { returnedCount: 0, totalCount: 0, truncated: false },
+      'calendar.events': { returnedCount: 0, totalCount: 0, truncated: false },
+    })
+    assert.equal('auth' in compacted, false)
+  })
+
   void it('removes technical and auth fields while preserving source', () => {
     const compacted = compactForAi({
       accessToken: 'plain-token',

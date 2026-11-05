@@ -1226,7 +1226,7 @@ export function CalendarPage() {
   ])
 
   useEffect(() => {
-    if (viewMode !== 'day' && viewMode !== 'week') {
+    if (calendarBlockingState || (viewMode !== 'day' && viewMode !== 'week')) {
       lastTimelineScrollKeyRef.current = null
 
       return
@@ -1274,7 +1274,13 @@ export function CalendarPage() {
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [anchorDate, timeRange.endHour, timeRange.startHour, viewMode])
+  }, [
+    anchorDate,
+    calendarBlockingState,
+    timeRange.endHour,
+    timeRange.startHour,
+    viewMode,
+  ])
 
   return (
     <section

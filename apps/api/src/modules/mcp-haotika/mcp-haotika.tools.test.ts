@@ -8,7 +8,11 @@ import {
   jsonSchemas,
   searchPlannerInputSchema,
 } from './mcp-haotika.schemas.js'
-import { executeMcpTool, MCP_HAOTIKA_TOOLS } from './mcp-haotika.tools.js'
+import {
+  executeMcpTool,
+  getRequiredScopesForTool,
+  MCP_HAOTIKA_TOOLS,
+} from './mcp-haotika.tools.js'
 import { McpHaotikaError } from './mcp-haotika.types.js'
 
 void describe('MCP Haotika tools', () => {
@@ -68,7 +72,7 @@ void describe('MCP Haotika tools', () => {
     )
 
     assert.equal(readMaxItems('get_today_context', 'include'), 7)
-    assert.equal(readMaxItems('get_week_context', 'include'), 20)
+    assert.equal(readMaxItems('get_week_context', 'include'), 6)
     assert.equal(readMaxItems('search_planner', 'types'), 6)
   })
 
@@ -100,6 +104,39 @@ void describe('MCP Haotika tools', () => {
         userId: 'user-id',
       },
     ])
+  })
+
+  void it('validates weekly section names and requires only the requested scopes', () => {
+    for (const include of [
+      ['tasks'],
+      ['calendar'],
+      ['shopping'],
+      ['cleaning'],
+      ['selfcare'],
+      ['stats'],
+    ]) {
+      assert.equal(
+        getWeekContextInputSchema.safeParse({ include }).success,
+        true,
+      )
+      assert.deepEqual(
+        getRequiredScopesForTool('get_week_context', { include }),
+        [`haotika:${include[0]}.read`],
+      )
+    }
+    assert.equal(
+      getWeekContextInputSchema.safeParse({ include: ['invented'] }).success,
+      false,
+    )
+    assert.deepEqual(
+      jsonSchemas.get_week_context.properties.include.items.enum,
+      ['tasks', 'calendar', 'shopping', 'cleaning', 'selfcare', 'stats'],
+    )
+    assert.deepEqual(
+      getRequiredScopesForTool('get_week_context', { include: [] }),
+      getRequiredScopesForTool('get_week_context', {}),
+    )
+    assert.equal(getRequiredScopesForTool('get_week_context', {}).length, 6)
   })
 })
 

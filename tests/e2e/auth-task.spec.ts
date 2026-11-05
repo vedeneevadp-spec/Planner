@@ -597,7 +597,10 @@ test('creates self-care offline and keeps it after reconnect and reload', async 
   )
 
   const dialog = page.getByRole('dialog', { name: 'Создать свою заботу' })
-  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('Название')).toBeEditable()
+  await expect(
+    page.getByText('Здесь пока нет забот', { exact: true }),
+  ).toBeVisible()
 
   await context.setOffline(true)
   await expect(page.getByText('Нет подключения').first()).toBeVisible()

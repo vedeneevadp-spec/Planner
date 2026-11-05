@@ -765,6 +765,36 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.scheduleSection {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.scheduleSection [hidden] {
+  display: none;
+}
+
+.scheduleToggle {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  .scheduleToggle {
+    min-height: 44px;
+  }
+}
+
 .editorVisual {
   display: block;
   padding: 0;

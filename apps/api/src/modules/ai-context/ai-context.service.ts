@@ -6,8 +6,10 @@ import {
   type CleaningListResponse,
   type CleaningTodayResponse,
   enumerateDateRange,
+  getDateKeyInTimeZone,
   getIsoWeekStartDate,
   getTodayDate,
+  isValidTimeZone,
   type SelfCareAnalyticsResponse,
   type SelfCareHistoryResponse,
   type SelfCarePlanResponse,
@@ -18,12 +20,20 @@ import {
   type WorkspaceRole,
 } from '@planner/contracts'
 
+import { isHttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import { buildCleaningTodayResponse } from '../cleaning/cleaning.shared.js'
-import { compactArrayForAi, compactForAi } from './ai-context.compact.js'
+import type { TaskContextPageFilters } from '../tasks/task.model.js'
+import {
+  compactArrayForAi,
+  compactForAi,
+  sortImportantFirst,
+} from './ai-context.compact.js'
 import {
   PLANNER_SEARCH_TYPES,
-  TODAY_CONTEXT_INCLUDE_KEYS,
+  resolveTodayContextInclude,
+  resolveWeekContextInclude,
+  type TodayContextInclude,
 } from './ai-context.permissions.js'
 import type {
   AiCalendarEvent,
@@ -44,6 +54,7 @@ import type {
   AiSuggestedMode,
   AiTaskGroup,
   AiTaskItem,
+  FullWeekContext,
   GetOverloadContextParams,
   GetSelfCareContextParams,
   GetTodayContextParams,
@@ -55,6 +66,7 @@ import type {
   TodayContext,
   WeekContext,
 } from './ai-context.types.js'
+import { getAiDateRangeError } from './ai-context.validation.js'
 
 const DEFAULT_TIMEZONE = 'Europe/Astrakhan'
 const AI_SOURCE_PAGE_SIZE = 100
@@ -88,6 +100,17 @@ interface SessionServiceLike {
 }
 
 interface TaskServiceLike {
+  searchTasksCursor(
+    context: AiServiceReadContext,
+    filters: TaskContextPageFilters,
+  ): Promise<{
+    items: Task[]
+    returnedCount: number
+    totalCount: number
+    truncated: boolean
+    hasMore: boolean
+    nextCursor: string | null
+  }>
   getTaskReadModel(
     context: AiServiceReadContext,
     filters: {
@@ -197,12 +220,16 @@ interface LoadedContext {
   }
   shopping: AiShoppingItem[]
   sourceCoverage: {
+    calendar: AiSourceCoverage
     shopping: AiSourceCoverage
     tasks: AiSourceCoverage
+    taskCompletions: AiSourceCoverage & { nextCursor: string | null }
   }
   tasks: {
     all: AiTaskItem[]
     completedToday: AiTaskItem[]
+    completedTodayCount: number
+    flexible: AiTaskItem[]
     important: AiTaskItem[]
     lowEnergy: AiTaskItem[]
     overdue: AiTaskItem[]
@@ -216,18 +243,40 @@ export class AiContextService {
   async getTodayContext(params: GetTodayContextParams): Promise<TodayContext> {
     const timezone = resolveTimezone(params.timezone)
     const date = params.date ?? getTodayDate(timezone)
-    const include = params.include?.length
-      ? params.include
-      : [...TODAY_CONTEXT_INCLUDE_KEYS]
+    validateDateRange(date, date)
+    const include = resolveTodayContextInclude(params.include)
     const context = await this.resolvePersonalReadContext(
       params.userId,
       timezone,
     )
-    const loaded = await this.loadDayContext(context, params.userId, date)
+    const loaded = await this.loadDayContext(
+      context,
+      params.userId,
+      date,
+      include,
+    )
     const result: TodayContext = {
       date,
       generatedAt: new Date().toISOString(),
-      sourceCoverage: loaded.sourceCoverage,
+      sourceCoverage: {
+        ...(include.includes('calendar') || include.includes('stats')
+          ? { calendar: loaded.sourceCoverage.calendar }
+          : {}),
+        ...(include.includes('tasks') || include.includes('stats')
+          ? {
+              tasks: loaded.sourceCoverage.tasks,
+              taskCompletions: {
+                ...loaded.sourceCoverage.taskCompletions,
+                nextCursor: include.includes('tasks')
+                  ? loaded.sourceCoverage.taskCompletions.nextCursor
+                  : null,
+              },
+            }
+          : {}),
+        ...(include.includes('shopping') || include.includes('stats')
+          ? { shopping: loaded.sourceCoverage.shopping }
+          : {}),
+      },
       timezone,
     }
     const shopping = markShoppingOverdue(loaded.shopping, date)
@@ -244,44 +293,64 @@ export class AiContextService {
       tasks: loaded.tasks.overdue.length,
     }
 
-    result.cleaningOverdueByZone = groupCleaningOverdueByZone(
-      loaded.cleaning.overdue,
-    )
-    result.overdue = buildOverdueSummary(overdueByDomain)
-    result.overdueItemsByDomain = buildOverdueItemsByDomain({
-      cleaning: loaded.cleaning.overdue,
-      habits: loaded.habits.missed,
-      selfCare: loaded.selfCare.overdue,
-      shopping: overdueShopping,
-      tasks: loaded.tasks.overdue,
-    })
-    result.selfCareFlexibleGoals = buildFlexibleGoalSummary(
-      loaded.selfCare.flexibleGoals,
-    )
+    const overdueSummary = buildOverdueSummary(overdueByDomain)
+    result.overdue = { total: 0 }
+    for (const domain of [
+      'tasks',
+      'shopping',
+      'cleaning',
+      'selfcare',
+      'habits',
+    ] as const) {
+      if (include.includes(domain) || include.includes('stats')) {
+        result.overdue[domain] = overdueSummary[domain]
+        result.overdue.total += overdueSummary[domain]
+      }
+    }
+    result.overdueItemsByDomain = {
+      ...(include.includes('tasks')
+        ? { tasks: prepareItems(loaded.tasks.overdue, date) }
+        : {}),
+      ...(include.includes('shopping')
+        ? { shopping: prepareItems(overdueShopping) }
+        : {}),
+      ...(include.includes('cleaning')
+        ? { cleaning: prepareItems(loaded.cleaning.overdue) }
+        : {}),
+      ...(include.includes('selfcare')
+        ? { selfcare: prepareItems(loaded.selfCare.overdue) }
+        : {}),
+      ...(include.includes('habits')
+        ? { habits: prepareItems(loaded.habits.missed) }
+        : {}),
+    }
 
     if (include.includes('tasks')) {
       result.tasks = {
-        activeToday: limitItems(loaded.tasks.today),
+        activeToday: prepareItems(loaded.tasks.today, date),
         activeTodayCount: loaded.tasks.today.length,
-        completedToday: limitItems(loaded.tasks.completedToday),
-        completedTodayCount: loaded.tasks.completedToday.length,
-        important: limitItems(loaded.tasks.important),
-        importantActiveToday: limitItems(loaded.tasks.important),
-        importantOverdue: limitItems(
+        completedToday: prepareItems(loaded.tasks.completedToday, date),
+        completedTodayCount: loaded.tasks.completedTodayCount,
+        flexible: prepareItems(loaded.tasks.flexible, date),
+        flexibleCount: loaded.tasks.flexible.length,
+        important: prepareItems(loaded.tasks.important, date),
+        importantActiveToday: prepareItems(loaded.tasks.important, date),
+        importantOverdue: prepareItems(
           loaded.tasks.overdue.filter((item) => item.priority === 'high'),
+          date,
         ),
-        lowEnergy: limitItems(loaded.tasks.lowEnergy),
-        overdue: limitItems(loaded.tasks.overdue),
+        lowEnergy: prepareItems(loaded.tasks.lowEnergy, date),
+        overdue: prepareItems(loaded.tasks.overdue, date),
         overdueCount: loaded.tasks.overdue.length,
-        today: limitItems(loaded.tasks.today),
+        today: prepareItems(loaded.tasks.today, date),
         totalCount: loaded.tasks.all.length,
       }
     }
 
     if (include.includes('calendar')) {
       result.calendar = {
-        events: limitItems(loaded.calendar),
-        totalCount: loaded.calendar.length,
+        events: prepareItems(loaded.calendar),
+        totalCount: loaded.sourceCoverage.calendar.totalCount,
       }
     }
 
@@ -290,36 +359,42 @@ export class AiContextService {
       const normal = activeShopping.filter((item) => !item.urgent)
 
       result.shopping = {
-        active: limitItems(activeShopping),
+        active: prepareItems(activeShopping),
         activeCount: activeShopping.length,
-        completed: limitItems(completedShopping),
+        completed: prepareItems(completedShopping),
         completedCount: completedShopping.length,
-        normal: limitItems(normal),
+        normal: prepareItems(normal),
         totalCount: shopping.length,
-        urgent: limitItems(urgent),
+        urgent: prepareItems(urgent),
         urgentActiveCount: urgent.length,
       }
     }
 
     if (include.includes('cleaning')) {
+      result.cleaningOverdueByZone = groupCleaningOverdueByZone(
+        loaded.cleaning.overdue,
+      )
       result.cleaning = {
-        completed: limitItems(loaded.cleaning.completed),
+        completed: prepareItems(loaded.cleaning.completed),
         completedCount: loaded.cleaning.completed.length,
-        overdue: limitItems(loaded.cleaning.overdue),
-        tasks: limitItems(loaded.cleaning.tasks),
+        overdue: prepareItems(loaded.cleaning.overdue),
+        tasks: prepareItems(loaded.cleaning.tasks),
         todayZone: loaded.cleaning.todayZone,
       }
     }
 
     if (include.includes('selfcare')) {
+      result.selfCareFlexibleGoals = buildFlexibleGoalSummary(
+        loaded.selfCare.flexibleGoals,
+      )
       result.selfCare = {
-        completed: limitItems(loaded.selfCare.completed),
-        flexibleGoals: limitItems(loaded.selfCare.flexibleGoals),
-        missed: limitItems(loaded.selfCare.missed),
-        overdue: limitItems(loaded.selfCare.overdue),
-        planned: limitItems(loaded.selfCare.planned),
-        remaining: limitItems(loaded.selfCare.remaining),
-        scheduled: limitItems(loaded.selfCare.scheduled),
+        completed: prepareItems(loaded.selfCare.completed),
+        flexibleGoals: prepareItems(loaded.selfCare.flexibleGoals),
+        missed: prepareItems(loaded.selfCare.missed),
+        overdue: prepareItems(loaded.selfCare.overdue),
+        planned: prepareItems(loaded.selfCare.planned),
+        remaining: prepareItems(loaded.selfCare.remaining),
+        scheduled: prepareItems(loaded.selfCare.scheduled),
         suggestedFocus: loaded.selfCare.suggestedFocus,
       }
     }
@@ -327,56 +402,100 @@ export class AiContextService {
     if (include.includes('stats')) {
       result.stats = buildStats({
         activeCounts: {
-          calendar: loaded.calendar.length,
+          calendar: loaded.sourceCoverage.calendar.totalCount,
           cleaning: countActiveCleaningTasks(loaded.cleaning),
           habits: 0,
           selfCare: loaded.selfCare.remaining.length,
           shopping: activeShopping.length,
-          tasks: loaded.tasks.today.length + loaded.tasks.overdue.length,
+          tasks: loaded.tasks.all.length - loaded.tasks.flexible.length,
         },
         overdueByDomain,
       })
     }
 
-    return compactForAi(result, { todayDate: date })
+    return compactForAi(result, { todayDate: date, includeListCoverage: true })
   }
 
+  getWeekContext(
+    params: Omit<GetWeekContextParams, 'include'> & { include?: undefined },
+  ): Promise<FullWeekContext>
+  getWeekContext(params: GetWeekContextParams): Promise<WeekContext>
   async getWeekContext(params: GetWeekContextParams): Promise<WeekContext> {
     const timezone = resolveTimezone(params.timezone)
     const [from, to] = resolveRange(params.from, params.to, timezone)
+    const include = resolveWeekContextInclude(params.include)
+    const needsStats = include.includes('stats')
     const context = await this.resolvePersonalReadContext(
       params.userId,
       timezone,
     )
-    const taskLoad = await this.listTasks(context, params.userId, from, to)
+    const taskLoad =
+      needsStats || include.includes('tasks')
+        ? await this.listTasks(
+            context,
+            params.userId,
+            from,
+            to,
+            needsStats || include.includes('tasks'),
+          )
+        : {
+            items: [],
+            coverage: { returnedCount: 0, totalCount: 0, truncated: false },
+            completions: {
+              returnedCount: 0,
+              totalCount: 0,
+              truncated: false,
+              nextCursor: null,
+            },
+          }
     const tasks = taskLoad.items
     const activeTasks = tasks.filter(isActiveTask)
     const weekTasks = activeTasks.filter((task) =>
-      isTaskInRange(task, from, to),
+      isTaskInRange(task, from, to, timezone),
     )
+    const flexibleTasks = activeTasks.filter(isFlexibleTask)
     const completedRangeTasks = tasks
       .filter(isTaskCompleted)
-      .filter((task) => isTaskInRange(task, from, to))
+      .filter((task) => isTaskInRange(task, from, to, timezone))
     const overdueAsOfDate = resolveOverdueAsOfDate(to, timezone)
     const overdueTasks = activeTasks.filter((task) =>
       isTaskOverdue(task, overdueAsOfDate),
     )
-    const shoppingLoad = await this.listShopping(context, params.userId)
+    const shoppingLoad =
+      needsStats || include.includes('shopping')
+        ? await this.listShopping(context, params.userId)
+        : {
+            items: [],
+            coverage: { returnedCount: 0, totalCount: 0, truncated: false },
+          }
     const shopping = markShoppingOverdue(shoppingLoad.items, overdueAsOfDate)
     const activeShopping = shopping.filter(isActiveShoppingItem)
-    const completedShopping = shopping.filter(isCompletedShoppingItem)
+    const completedShopping = shopping
+      .filter(isCompletedShoppingItem)
+      .filter((item) =>
+        matchesDateRange(readShoppingDate(item, timezone), from, to),
+      )
     const overdueShopping = activeShopping.filter(
       (item) => item.status === 'overdue',
     )
-    const cleaning = await this.getCleaningRange(context, from, to)
+    const cleaning =
+      needsStats || include.includes('cleaning')
+        ? await this.getCleaningRange(context, from, to)
+        : { completed: [], overdue: [], tasks: [], todayZone: null }
     const cleaningActive = countActiveCleaningTasks(cleaning)
     const cleaningCompleted = cleaning.completed
-    const selfCare = await this.getSelfCareRange(
-      context,
-      from,
-      to,
-      overdueAsOfDate,
-    )
+    const selfCare =
+      needsStats || include.includes('selfcare')
+        ? await this.getSelfCareRange(context, from, to, overdueAsOfDate)
+        : {
+            completed: [],
+            flexibleGoals: [],
+            missed: [],
+            overdue: [],
+            planned: [],
+            remaining: [],
+            scheduled: [],
+          }
     const taskItems = weekTasks.map((task) =>
       mapTaskItem(task, overdueAsOfDate),
     )
@@ -391,9 +510,17 @@ export class AiContextService {
       weekTasks.filter(isRoutineOrRecurringTask),
     )
     const repeatedOrStuck = repeatedRoutineGroups.map(mapTaskGroupToTaskItem)
+    const calendarLoad =
+      needsStats || include.includes('calendar')
+        ? await this.listCalendar(context, params.userId, from, to)
+        : {
+            items: [],
+            coverage: { returnedCount: 0, totalCount: 0, truncated: false },
+          }
+    const calendarEvents = calendarLoad.items
     const stats = buildStats({
       activeCounts: {
-        calendar: weekTasks.filter((task) => task.plannedStartTime).length,
+        calendar: calendarLoad.coverage.totalCount,
         cleaning: cleaningActive,
         habits: 0,
         selfCare: selfCare.remaining.length,
@@ -409,89 +536,134 @@ export class AiContextService {
       },
     })
 
-    return compactForAi(
-      {
-        bottlenecks: buildBottlenecks(stats.reasons, stats.overdueItems),
-        from,
-        generatedAt: new Date().toISOString(),
-        highlights: {
-          completed: limitItems(completedTaskItems),
-          overdue: limitItems(overdueItems),
-          repeatedRoutineGroups: limitItems(repeatedRoutineGroups),
-          repeatedOrStuck: limitItems(repeatedOrStuck),
-          upcomingImportant: limitItems(
-            taskItems.filter((item) => item.priority === 'high'),
-          ),
-        },
-        possibleSimplifications: buildSimplifications(stats),
-        progress: {
-          cleaningCompleted: {
-            count: cleaningCompleted.length,
-            items: limitItems(cleaningCompleted),
-          },
-          selfCareCompleted: {
-            count: selfCare.completed.length,
-            items: limitItems(selfCare.completed),
-          },
-          selfCareFlexibleGoals: buildFlexibleGoalSummary(
-            selfCare.flexibleGoals,
-          ),
-          shoppingCompleted: {
-            count: completedShopping.length,
-            items: limitItems(completedShopping),
-          },
-          tasksCompleted: {
-            count: completedRangeTasks.length,
-            items: limitItems(completedTaskItems),
-          },
-        },
-        remaining: {
-          cleaningOverdue: limitItems(cleaning.overdue),
-          cleaningOverdueByZone: groupCleaningOverdueByZone(cleaning.overdue),
-          selfCareFlexibleGoals: buildFlexibleGoalSummary(
-            selfCare.flexibleGoals,
-          ),
-          selfCareRemaining: limitItems(selfCare.remaining),
-          shoppingActive: limitItems(activeShopping),
-          tasksActive: limitItems(taskItems),
-        },
-        sourceCoverage: {
-          shopping: shoppingLoad.coverage,
-          tasks: taskLoad.coverage,
-        },
-        summary: {
-          cleaningActive,
-          cleaningOverdue: cleaning.overdue.length,
-          cleaningOverdueCurrentBacklog: cleaning.overdue.length,
-          cleaningScheduledThisPeriod: cleaning.tasks.length,
-          cleaningTasks: cleaningActive,
-          completedTasks: completedRangeTasks.length,
-          loadLevel: stats.loadLevel,
-          overdueTasks: overdueItems.length,
-          plannedTasks: activeTaskGroups.length,
-          selfCareCompleted: selfCare.completed.length,
-          selfCareFlexibleGoals: buildFlexibleGoalSummary(
-            selfCare.flexibleGoals,
-          ),
-          selfCareMissed: selfCare.missed.length,
-          selfCareOverdue: selfCare.overdue.length,
-          selfCareRemaining: selfCare.remaining.length,
-          selfCareScheduled: selfCare.scheduled.length,
-          shoppingActive: activeShopping.length,
-          shoppingCompleted: completedShopping.length,
-          shoppingItems: activeShopping.length,
-          shoppingTotal: shopping.length,
-          shoppingUrgentActive: activeShopping.filter((item) => item.urgent)
-            .length,
-          taskGroupsActive: activeTaskGroups.length,
-          taskOccurrencesActive: weekTasks.length,
-          tasksActive: activeTaskGroups.length,
-        },
-        timezone,
+    const result: WeekContext = {
+      from,
+      generatedAt: new Date().toISOString(),
+      highlights: {},
+      progress: {},
+      remaining: {},
+      sourceCoverage: {},
+      summary: {},
+      timezone,
+      to,
+    }
+
+    if (include.includes('tasks')) {
+      result.highlights = {
+        completed: prepareItems(completedTaskItems, to),
+        overdue: prepareItems(overdueItems, to),
+        repeatedRoutineGroups: prepareItems(repeatedRoutineGroups, to),
+        repeatedOrStuck: prepareItems(repeatedOrStuck, to),
+        upcomingImportant: prepareItems(
+          taskItems.filter((item) => item.priority === 'high'),
+          to,
+        ),
+      }
+      result.progress.tasksCompleted = {
+        count: taskLoad.completions.totalCount,
+        items: prepareItems(completedTaskItems, to),
+      }
+      result.remaining.tasksActive = prepareItems(taskItems, to)
+      result.remaining.tasksFlexible = prepareItems(
+        flexibleTasks.map((task) => mapTaskItem(task, overdueAsOfDate)),
         to,
-      } satisfies WeekContext,
-      { todayDate: to },
-    )
+      )
+    }
+    if (include.includes('calendar')) {
+      result.calendar = {
+        events: prepareItems(calendarEvents, to),
+        totalCount: calendarLoad.coverage.totalCount,
+      }
+    }
+    if (needsStats || include.includes('calendar'))
+      result.sourceCoverage.calendar = calendarLoad.coverage
+    if (include.includes('shopping')) {
+      result.progress.shoppingCompleted = {
+        count: completedShopping.length,
+        items: prepareItems(completedShopping, to),
+      }
+      result.remaining.shoppingActive = prepareItems(activeShopping, to)
+    }
+    if (include.includes('cleaning')) {
+      result.progress.cleaningCompleted = {
+        count: cleaningCompleted.length,
+        items: prepareItems(cleaningCompleted, to),
+      }
+      result.remaining.cleaningOverdue = prepareItems(cleaning.overdue, to)
+      result.remaining.cleaningOverdueByZone = groupCleaningOverdueByZone(
+        cleaning.overdue,
+      )
+    }
+    if (include.includes('selfcare')) {
+      result.progress.selfCareCompleted = {
+        count: selfCare.completed.length,
+        items: prepareItems(selfCare.completed, to),
+      }
+      result.progress.selfCareFlexibleGoals = buildFlexibleGoalSummary(
+        selfCare.flexibleGoals,
+      )
+      result.remaining.selfCareFlexibleGoals = buildFlexibleGoalSummary(
+        selfCare.flexibleGoals,
+      )
+      result.remaining.selfCareRemaining = prepareItems(selfCare.remaining, to)
+      result.summary.selfCareFlexibleGoals = buildFlexibleGoalSummary(
+        selfCare.flexibleGoals,
+      )
+    }
+    if (needsStats || include.includes('tasks')) {
+      Object.assign(result.summary, {
+        completedTasks: taskLoad.completions.totalCount,
+        overdueTasks: overdueItems.length,
+        plannedTasks: activeTaskGroups.length,
+        taskGroupsActive: activeTaskGroups.length,
+        taskOccurrencesActive: weekTasks.length,
+        tasksActive: activeTaskGroups.length,
+        tasksFlexible: flexibleTasks.length,
+      })
+      result.sourceCoverage.tasks = taskLoad.coverage
+      result.sourceCoverage.taskCompletions = {
+        ...taskLoad.completions,
+        nextCursor: include.includes('tasks')
+          ? taskLoad.completions.nextCursor
+          : null,
+      }
+    }
+    if (needsStats || include.includes('shopping')) {
+      Object.assign(result.summary, {
+        shoppingActive: activeShopping.length,
+        shoppingCompleted: completedShopping.length,
+        shoppingItems: activeShopping.length,
+        shoppingTotal: shopping.length,
+        shoppingUrgentActive: activeShopping.filter((item) => item.urgent)
+          .length,
+      })
+      result.sourceCoverage.shopping = shoppingLoad.coverage
+    }
+    if (needsStats || include.includes('cleaning')) {
+      Object.assign(result.summary, {
+        cleaningActive,
+        cleaningOverdue: cleaning.overdue.length,
+        cleaningOverdueCurrentBacklog: cleaning.overdue.length,
+        cleaningScheduledThisPeriod: cleaning.tasks.length,
+        cleaningTasks: cleaningActive,
+      })
+    }
+    if (needsStats || include.includes('selfcare')) {
+      Object.assign(result.summary, {
+        selfCareCompleted: selfCare.completed.length,
+        selfCareMissed: selfCare.missed.length,
+        selfCareOverdue: selfCare.overdue.length,
+        selfCareRemaining: selfCare.remaining.length,
+        selfCareScheduled: selfCare.scheduled.length,
+      })
+    }
+    if (needsStats) {
+      result.bottlenecks = buildBottlenecks(stats.reasons, stats.overdueItems)
+      result.possibleSimplifications = buildSimplifications(stats)
+      result.summary.loadLevel = stats.loadLevel
+    }
+
+    return compactForAi(result, { todayDate: to, includeListCoverage: true })
   }
 
   async searchPlanner(
@@ -499,11 +671,21 @@ export class AiContextService {
   ): Promise<PlannerSearchResult> {
     const query = params.query.trim()
 
-    if (!query) {
+    if (
+      !query &&
+      !(
+        params.types?.length === 1 &&
+        params.types[0] === 'tasks' &&
+        params.status === 'done' &&
+        params.from &&
+        params.to
+      )
+    ) {
       throw new AiContextValidationError('query is required.')
     }
 
-    const timezone = resolveTimezone()
+    const timezone = resolveTimezone(params.timezone)
+    validateDateRange(params.from, params.to)
     const context = await this.resolvePersonalReadContext(
       params.userId,
       timezone,
@@ -521,32 +703,75 @@ export class AiContextService {
     const normalizedQuery = query.toLowerCase()
     const results: PlannerSearchResult['items'] = []
     const sourceCoverage: AiContextSourceCoverage = {}
+    const tasksOnly = types.length === 1 && types[0] === 'tasks'
+    if (params.taskCursor && !tasksOnly) {
+      throw new AiContextValidationError(
+        'taskCursor requires types: ["tasks"].',
+      )
+    }
+    let taskPagination: PlannerSearchResult['taskPagination']
+    let additionalTaskMatches = 0
+    let additionalCalendarMatches = 0
 
-    if (types.includes('tasks') || types.includes('calendar')) {
-      const taskLoad = await this.listTasks(context, params.userId, from, to)
-      const tasks = taskLoad.items
-
-      sourceCoverage.tasks = taskLoad.coverage
-
-      if (types.includes('tasks')) {
-        results.push(
-          ...tasks
-            .filter((task) => matchesDateRange(readTaskDate(task), from, to))
-            .map((task) => mapTaskItem(task, searchAsOfDate))
-            .filter((item) => matchesSearch(item, normalizedQuery))
-            .filter((item) => matchesSearchStatus(item.status, params.status)),
-        )
+    if (types.includes('tasks')) {
+      const page = await this.dependencies.taskService
+        .searchTasksCursor(context, {
+          asOfDate: searchAsOfDate,
+          from,
+          to,
+          search: normalizedQuery,
+          status: params.status ?? 'any',
+          timezone,
+          userId: params.userId,
+          cursor: params.taskCursor,
+          limit,
+        })
+        .catch((error: unknown) => {
+          if (isHttpError(error) && error.code === 'invalid_task_cursor') {
+            throw new AiContextValidationError(error.message)
+          }
+          throw error
+        })
+      sourceCoverage.tasks = {
+        returnedCount: page.returnedCount,
+        totalCount: page.totalCount,
+        truncated: page.truncated,
       }
+      additionalTaskMatches = page.totalCount - page.items.length
+      results.push(
+        ...page.items.map((task) => mapTaskItem(task, searchAsOfDate)),
+      )
+      if (tasksOnly)
+        taskPagination = {
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+          returnedCount: page.returnedCount,
+          totalCount: page.totalCount,
+        }
+    }
 
-      if (types.includes('calendar')) {
-        results.push(
-          ...tasks
-            .filter((task) => task.plannedDate && task.plannedStartTime)
-            .filter((task) => matchesDateRange(task.plannedDate, from, to))
-            .map(mapTaskCalendarEvent)
-            .filter((item) => matchesSearch(item, normalizedQuery)),
-        )
+    if (types.includes('calendar')) {
+      const page = await this.dependencies.taskService.searchTasksCursor(
+        context,
+        {
+          asOfDate: searchAsOfDate,
+          calendarOnly: true,
+          from,
+          to,
+          search: normalizedQuery,
+          status: params.status ?? 'any',
+          timezone,
+          userId: params.userId,
+          limit,
+        },
+      )
+      sourceCoverage.calendar = {
+        returnedCount: page.returnedCount,
+        totalCount: page.totalCount,
+        truncated: page.truncated,
       }
+      additionalCalendarMatches = page.totalCount - page.items.length
+      results.push(...page.items.map(mapTaskCalendarEvent))
     }
 
     if (types.includes('shopping')) {
@@ -555,6 +780,9 @@ export class AiContextService {
       sourceCoverage.shopping = shoppingLoad.coverage
       results.push(
         ...markShoppingOverdue(shoppingLoad.items, searchAsOfDate)
+          .filter((item) =>
+            matchesDateRange(readShoppingDate(item, timezone), from, to),
+          )
           .filter((item) => matchesSearch(item, normalizedQuery))
           .filter((item) => matchesSearchStatus(item.status, params.status)),
       )
@@ -566,7 +794,11 @@ export class AiContextService {
       const cleaning = await this.getCleaningRange(context, rangeFrom, rangeTo)
 
       results.push(
-        ...[...cleaning.tasks, ...cleaning.overdue, ...cleaning.completed]
+        ...dedupeCleaningItems([
+          ...cleaning.tasks,
+          ...cleaning.overdue,
+          ...cleaning.completed,
+        ])
           .filter((item) => matchesDateRange(item.date, from, to))
           .filter((item) => matchesSearch(item, normalizedQuery))
           .filter((item) => matchesSearchStatus(item.status, params.status)),
@@ -586,7 +818,6 @@ export class AiContextService {
         ...selfCare.completed,
         ...selfCare.overdue,
         ...selfCare.remaining,
-        ...selfCare.scheduled,
       ]
         .filter((item) => matchesSearch(item, normalizedQuery))
         .filter((item) => matchesSearchStatus(item.status, params.status))
@@ -599,13 +830,25 @@ export class AiContextService {
       mode: 'search',
       todayDate: to ?? from ?? getTodayDate(timezone),
     })
+    for (const source of ['tasks', 'calendar'] as const) {
+      const coverage = sourceCoverage[source]
+      if (!coverage) continue
+      coverage.returnedCount = compacted.items.filter(
+        (item) => item.source === source,
+      ).length
+      coverage.truncated = coverage.returnedCount < coverage.totalCount
+    }
 
     return {
+      ...(taskPagination ? { taskPagination } : {}),
       items: compacted.items,
       query,
       returnedCount: compacted.returnedCount,
       sourceCoverage,
-      totalCount: compacted.totalCount,
+      totalCount:
+        compacted.totalCount +
+        additionalTaskMatches +
+        additionalCalendarMatches,
     }
   }
 
@@ -622,11 +865,9 @@ export class AiContextService {
     const tasks = taskLoad.items
     const activeTasks = tasks.filter(isActiveTask)
     const rangeTasks = activeTasks.filter((task) =>
-      isTaskInRange(task, from, to),
+      isTaskInRange(task, from, to, timezone),
     )
-    const completedRangeTasks = tasks
-      .filter(isTaskCompleted)
-      .filter((task) => isTaskInRange(task, from, to))
+    const flexibleTasks = activeTasks.filter(isFlexibleTask)
     const activeTaskGroups = groupTaskOccurrences(rangeTasks)
     const overdueAsOfDate = resolveOverdueAsOfDate(to, timezone)
     const overdueTasks = activeTasks.filter((task) =>
@@ -647,10 +888,25 @@ export class AiContextService {
       to,
       overdueAsOfDate,
     )
-    const calendarEvents = rangeTasks.filter((task) => task.plannedStartTime)
+    const calendarLoad = await this.listCalendar(
+      context,
+      params.userId,
+      from,
+      to,
+    )
     const tasksHighPriorityActive = rangeTasks.filter(isHighPriorityTask).length
-    const completedHighPriorityTasks =
-      completedRangeTasks.filter(isHighPriorityTask).length
+    const completedHighPriorityTasks = (
+      await this.dependencies.taskService.searchTasksCursor(context, {
+        asOfDate: overdueAsOfDate,
+        from,
+        to,
+        highPriorityOnly: true,
+        status: 'done',
+        timezone,
+        userId: params.userId,
+        limit: 1,
+      })
+    ).totalCount
     const overdueByDomain = {
       cleaning: cleaning.overdue.length,
       habits: 0,
@@ -660,7 +916,7 @@ export class AiContextService {
     }
     const stats = buildStats({
       activeCounts: {
-        calendar: calendarEvents.length,
+        calendar: calendarLoad.coverage.totalCount,
         cleaning: cleaningActive,
         habits: 0,
         selfCare: selfCare.remaining.length,
@@ -671,7 +927,7 @@ export class AiContextService {
     })
     const loadScore = calculateLoadScore(stats)
     const structuredReasons = buildStructuredLoadReasons({
-      calendarEvents: calendarEvents.length,
+      calendarEvents: calendarLoad.coverage.totalCount,
       cleaningOverdue: cleaning.overdue.length,
       habitsMissed: 0,
       selfcareMissed: selfCare.missed.length,
@@ -686,6 +942,7 @@ export class AiContextService {
       selfCare: selfCare.overdue,
       shopping: overdueShopping,
       tasks: overdueTasks.map((task) => mapTaskItem(task, overdueAsOfDate)),
+      todayDate: to,
     })
 
     return compactForAi(
@@ -700,8 +957,8 @@ export class AiContextService {
         }),
         counts: {
           activeItemsTotal: stats.activeCounts.total,
-          calendarEvents: calendarEvents.length,
-          calendarEventsActive: calendarEvents.length,
+          calendarEvents: calendarLoad.coverage.totalCount,
+          calendarEventsActive: calendarLoad.coverage.totalCount,
           cleaningActive,
           cleaningOverdue: cleaning.overdue.length,
           cleaningTasks: cleaningActive,
@@ -720,11 +977,18 @@ export class AiContextService {
           tasksOverdue: overdueTasks.length,
           tasksTotal: activeTaskGroups.length,
         },
+        flexibleTasks: {
+          count: flexibleTasks.length,
+          items: prepareItems(
+            flexibleTasks.map((task) => mapTaskItem(task, overdueAsOfDate)),
+            to,
+          ),
+        },
         from,
         generatedAt: new Date().toISOString(),
         load: {
           activeCounts: {
-            calendarEvents: calendarEvents.length,
+            calendarEvents: calendarLoad.coverage.totalCount,
             cleaningOverdue: cleaning.overdue.length,
             selfcareMissed: selfCare.missed.length,
             selfcareOverdue: selfCare.overdue.length,
@@ -737,7 +1001,8 @@ export class AiContextService {
             completedHighPriorityTasks,
             completedSelfcare: selfCare.completed.length,
             completedShopping: completedShopping.length,
-            completedTasks: completedRangeTasks.length,
+            completedTasks: taskLoad.completions.totalCount,
+            flexibleTasks: flexibleTasks.length,
           },
           level: stats.loadLevel,
           reasons: stats.reasons,
@@ -748,14 +1013,16 @@ export class AiContextService {
         overdue: buildOverdueSummary(overdueByDomain),
         overdueItemsByDomain,
         sourceCoverage: {
+          calendar: calendarLoad.coverage,
           shopping: shoppingLoad.coverage,
           tasks: taskLoad.coverage,
+          taskCompletions: taskLoad.completions,
         },
         suggestedFocus: buildSuggestedFocus(stats),
         timezone,
         to,
       } satisfies OverloadContext,
-      { todayDate: to },
+      { todayDate: to, includeListCoverage: true },
     )
   }
 
@@ -781,16 +1048,16 @@ export class AiContextService {
 
     return compactForAi(
       {
-        completed: limitItems(selfCare.completed),
-        flexibleGoals: limitItems(selfCare.flexibleGoals),
+        completed: prepareItems(selfCare.completed),
+        flexibleGoals: prepareItems(selfCare.flexibleGoals),
         from,
         generatedAt: new Date().toISOString(),
-        missed: limitItems(selfCare.missed),
-        overdue: limitItems(selfCare.overdue),
-        planned: limitItems(selfCare.planned),
-        potentialDuplicates: limitItems(potentialDuplicates),
-        remaining: limitItems(selfCare.remaining),
-        scheduled: limitItems(selfCare.scheduled),
+        missed: prepareItems(selfCare.missed),
+        overdue: prepareItems(selfCare.overdue),
+        planned: prepareItems(selfCare.planned),
+        potentialDuplicates: prepareItems(potentialDuplicates),
+        remaining: prepareItems(selfCare.remaining),
+        scheduled: prepareItems(selfCare.scheduled),
         summary: {
           completedCount: selfCare.completed.length,
           flexibleGoals: buildFlexibleGoalSummary(selfCare.flexibleGoals),
@@ -809,7 +1076,7 @@ export class AiContextService {
         timezone,
         to,
       } satisfies SelfCareContext,
-      { todayDate: to },
+      { todayDate: to, includeListCoverage: true },
     )
   }
 
@@ -817,27 +1084,74 @@ export class AiContextService {
     context: AiServiceReadContext,
     userId: string,
     date: string,
+    include: readonly TodayContextInclude[],
   ): Promise<LoadedContext> {
-    const [taskLoad, shoppingLoad, cleaning, selfCare] = await Promise.all([
-      this.listTasks(context, userId, date, date),
-      this.listShopping(context, userId),
-      this.getCleaningToday(context, date),
-      this.getSelfCareDay(context, date),
-    ])
+    const needsStats = include.includes('stats')
+    const emptyCoverage = { returnedCount: 0, totalCount: 0, truncated: false }
+    const [taskLoad, shoppingLoad, cleaning, selfCare, calendarLoad] =
+      await Promise.all([
+        needsStats || include.includes('tasks')
+          ? this.listTasks(
+              context,
+              userId,
+              date,
+              date,
+              needsStats || include.includes('tasks'),
+            )
+          : Promise.resolve({
+              items: [],
+              coverage: emptyCoverage,
+              completions: { ...emptyCoverage, nextCursor: null },
+            }),
+        needsStats || include.includes('shopping')
+          ? this.listShopping(context, userId)
+          : Promise.resolve({ items: [], coverage: emptyCoverage }),
+        needsStats || include.includes('cleaning')
+          ? this.getCleaningToday(context, date)
+          : Promise.resolve({
+              completed: [],
+              overdue: [],
+              tasks: [],
+              todayZone: null,
+            }),
+        needsStats || include.includes('selfcare')
+          ? this.getSelfCareDay(context, date)
+          : Promise.resolve({
+              completed: [],
+              flexibleGoals: [],
+              missed: [],
+              overdue: [],
+              planned: [],
+              remaining: [],
+              scheduled: [],
+              suggestedFocus: null,
+            }),
+        needsStats || include.includes('calendar')
+          ? this.listCalendar(context, userId, date, date)
+          : Promise.resolve({ items: [], coverage: emptyCoverage }),
+      ])
     const tasks = taskLoad.items
     const shopping = shoppingLoad.items
     const activeTasks = tasks.filter(isActiveTask)
     const todayTasks = activeTasks.filter((task) => isTaskForDate(task, date))
+    const flexibleTasks = activeTasks.filter(isFlexibleTask)
     const completedTodayTasks = tasks.filter(
-      (task) => isTaskCompleted(task) && readTaskDate(task) === date,
+      (task) =>
+        isTaskCompleted(task) &&
+        readTaskCompletionDate(
+          task,
+          context.clientTimeZone ?? DEFAULT_TIMEZONE,
+        ) === date,
     )
     const overdueTasks = activeTasks.filter((task) => isTaskOverdue(task, date))
-    const currentTasks = dedupeTaskItems([...todayTasks, ...overdueTasks])
+    const currentTasks = dedupeTaskItems([
+      ...todayTasks,
+      ...overdueTasks,
+      ...flexibleTasks,
+    ])
 
     return {
-      calendar: activeTasks
-        .filter((task) => task.plannedDate === date && task.plannedStartTime)
-        .map(mapTaskCalendarEvent),
+      calendar: calendarLoad.items,
       cleaning,
       habits: {
         completed: [],
@@ -847,14 +1161,18 @@ export class AiContextService {
       selfCare,
       shopping,
       sourceCoverage: {
+        calendar: calendarLoad.coverage,
         shopping: shoppingLoad.coverage,
         tasks: taskLoad.coverage,
+        taskCompletions: taskLoad.completions,
       },
       tasks: {
         all: currentTasks.map((task) => mapTaskItem(task, date)),
         completedToday: completedTodayTasks.map((task) =>
           mapTaskItem(task, date),
         ),
+        completedTodayCount: taskLoad.completions.totalCount,
+        flexible: flexibleTasks.map((task) => mapTaskItem(task, date)),
         important: todayTasks
           .filter(isHighPriorityTask)
           .map((task) => mapTaskItem(task, date)),
@@ -917,13 +1235,46 @@ export class AiContextService {
     }
   }
 
+  private async listCalendar(
+    context: AiServiceReadContext,
+    userId: string,
+    from: string,
+    to: string,
+  ): Promise<{ items: AiCalendarEvent[]; coverage: AiSourceCoverage }> {
+    const timezone = context.clientTimeZone ?? DEFAULT_TIMEZONE
+    const result = await this.dependencies.taskService.searchTasksCursor(
+      context,
+      {
+        asOfDate: resolveOverdueAsOfDate(to, timezone),
+        calendarOnly: true,
+        from,
+        to,
+        search: '',
+        status: 'active',
+        timezone,
+        userId,
+        limit: 50,
+      },
+    )
+    return {
+      items: result.items.map(mapTaskCalendarEvent),
+      coverage: {
+        returnedCount: result.returnedCount,
+        totalCount: result.totalCount,
+        truncated: result.truncated,
+      },
+    }
+  }
+
   private async listTasks(
     context: AiServiceReadContext,
     userId: string,
     from?: string,
     to?: string,
+    includeCompletions = true,
   ): Promise<{
     coverage: AiSourceCoverage
+    completions: AiSourceCoverage & { nextCursor: string | null }
     items: Array<Task & { userId?: string; workspaceId?: string }>
   }> {
     const fallbackDate = getTodayDate(
@@ -931,23 +1282,52 @@ export class AiContextService {
     )
     const dateFrom = from ?? to ?? fallbackDate
     const dateTo = to ?? from ?? fallbackDate
-    const result = await this.dependencies.taskService.getTaskReadModel(
-      context,
-      {
+    const [result, completed] = await Promise.all([
+      this.dependencies.taskService.getTaskReadModel(context, {
         activeLimit: AI_SOURCE_MAX_ITEMS,
         dateFrom,
         dateTo,
         historyLimit: 250,
         rangeLimit: AI_SOURCE_MAX_ITEMS,
-      },
-    )
-    const items = result.items.filter((task) => belongsToUser(task, userId))
+      }),
+      includeCompletions
+        ? this.dependencies.taskService.searchTasksCursor(context, {
+            from: dateFrom,
+            to: dateTo,
+            asOfDate: resolveOverdueAsOfDate(
+              dateTo,
+              context.clientTimeZone ?? DEFAULT_TIMEZONE,
+            ),
+            timezone: context.clientTimeZone ?? DEFAULT_TIMEZONE,
+            status: 'done',
+            search: '',
+            userId,
+            limit: 50,
+          })
+        : Promise.resolve({
+            items: [],
+            returnedCount: 0,
+            totalCount: 0,
+            truncated: false,
+            nextCursor: null,
+          }),
+    ])
+    const items = dedupeTaskItems([
+      ...result.items.filter((task) => !isTaskCompleted(task)),
+      ...completed.items,
+    ]).filter((task) => belongsToUser(task, userId))
 
     return {
       coverage: {
         returnedCount: items.length,
         totalCount: result.totalCount,
         truncated: result.truncated || items.length < result.returnedCount,
+      },
+      completions: {
+        returnedCount: completed.returnedCount,
+        totalCount: completed.totalCount,
+        truncated: completed.truncated,
+        nextCursor: completed.nextCursor,
       },
       items,
     }
@@ -1050,7 +1430,7 @@ export class AiContextService {
       return { completed: [], overdue: [], tasks: [], todayZone: null }
     }
 
-    const dates = enumerateDateRange(from, to).slice(0, 14)
+    const dates = enumerateDateRange(from, to)
     const snapshot = await this.loadCleaningSnapshot(context)
     const results = snapshot
       ? dates.map((date) =>
@@ -1069,8 +1449,8 @@ export class AiContextService {
       completed: snapshot
         ? mapCompletedCleaningTasks(snapshot, from, to)
         : dedupeCleaningItems(results.flatMap((result) => result.completed)),
-      overdue: dedupeItems(results.flatMap((result) => result.overdue)),
-      tasks: dedupeItems(results.flatMap((result) => result.tasks)),
+      overdue: dedupeCleaningItems(results.flatMap((result) => result.overdue)),
+      tasks: dedupeCleaningItems(results.flatMap((result) => result.tasks)),
       todayZone: results[0]?.todayZone ?? null,
     }
   }
@@ -1101,10 +1481,10 @@ export class AiContextService {
       }
     }
 
-    const dashboard = await this.dependencies.selfCareService.getDashboard(
-      context,
-      date,
-    )
+    const [dashboard, history] = await Promise.all([
+      this.dependencies.selfCareService.getDashboard(context, date),
+      this.dependencies.selfCareService.getHistory(context, date, date),
+    ])
     const todayItems = dashboard.todayItems.filter(
       isRegularSelfCareTodayItemVisibleForAi,
     )
@@ -1117,10 +1497,9 @@ export class AiContextService {
         .filter(isSelfCareTodayItemActivelyPlanned)
         .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
-    const completed = normalizeSelfCareItemsForAi(
-      todayItems
-        .filter(isSelfCareTodayItemCompleted)
-        .map((item) => mapSelfCareTodayItem(item, 'done')),
+    const completed = mapCompletedSelfCareHistory(
+      history,
+      context.clientTimeZone ?? DEFAULT_TIMEZONE,
     )
     const missed = normalizeSelfCareItemsForAi(
       [...todayItems, ...overdueItems]
@@ -1203,23 +1582,9 @@ export class AiContextService {
         .filter((item) => isSelfCareTodayItemRemaining(item, overdueAsOfDate))
         .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
-    const itemsById = new Map(history.items.map((item) => [item.id, item]))
-    const completed = filterSelfCareItemsForAi(
-      history.completions
-        .filter((completion) => completion.status === 'done')
-        .map((completion) => {
-          const item = itemsById.get(completion.itemId)
-
-          return {
-            category: item?.category ?? null,
-            date:
-              completion.scheduledFor ?? completion.completedAt.slice(0, 10),
-            source: 'selfcare' as const,
-            status: 'done',
-            title: item?.title ?? 'Self-care item',
-            type: item?.type ?? null,
-          }
-        }),
+    const completed = mapCompletedSelfCareHistory(
+      history,
+      context.clientTimeZone ?? DEFAULT_TIMEZONE,
     )
 
     return {
@@ -1249,13 +1614,16 @@ function mapTaskItem(
 ): AiTaskItem {
   return {
     area: task.project || task.sphereId || null,
-    dueDate: task.dueDate ?? task.plannedDate,
+    completedAt: task.completedAt,
+    dueDate: task.dueDate,
+    plannedDate: task.plannedDate,
     importance: task.importance,
+    isFlexible: isFlexibleTask(task),
     obligation: task.necessity,
     priority:
       task.importance === 'important' || task.urgency === 'urgent'
         ? 'high'
-        : task.resource !== null && task.resource <= 1
+        : isLowEnergyTask(task)
           ? 'low'
           : 'normal',
     resource: task.resource,
@@ -1330,7 +1698,9 @@ function mapCleaningContext(
   return {
     completed: snapshot ? mapCompletedCleaningTasks(snapshot, from, to) : [],
     overdue: result.accumulatedItems.map(mapCleaningTask),
-    tasks: result.items.map(mapCleaningTask),
+    tasks: [...result.items, ...(result.generalItems ?? [])].map(
+      mapCleaningTask,
+    ),
     todayZone:
       result.zones.find((zone) => zone.dayOfWeek === result.dayOfWeek)?.title ??
       null,
@@ -1374,6 +1744,31 @@ function mapCompletedCleaningTasks(
         },
       ]
     }),
+  )
+}
+
+function mapCompletedSelfCareHistory(
+  history: SelfCareHistoryResponse,
+  timezone: string,
+): AiSelfCareItem[] {
+  const itemsById = new Map(history.items.map((item) => [item.id, item]))
+
+  return filterSelfCareItemsForAi(
+    history.completions
+      .filter((completion) => completion.status === 'done')
+      .map((completion) => {
+        const item = itemsById.get(completion.itemId)
+
+        return {
+          category: item?.category ?? null,
+          date: getDateKeyInTimeZone(completion.completedAt, timezone),
+          plannedDate: completion.scheduledFor,
+          source: 'selfcare' as const,
+          status: 'done',
+          title: item?.title ?? 'Self-care item',
+          type: item?.type ?? null,
+        }
+      }),
   )
 }
 
@@ -1456,7 +1851,7 @@ function mapFlexibleGoalContext(
     date,
     doneCount,
     expectedRepeats: true,
-    id: buildFlexibleGoalContextId(entry.item.title, date),
+    id: `flexible-goal:${entry.item.id}:${progress.periodStart}:${progress.periodEnd}`,
     remainingCount,
     source: 'selfcare',
     status:
@@ -1500,7 +1895,7 @@ function buildFlexibleGoalSummary(
     completedGoals: goals.filter((goal) => goal.status === 'done').length,
     inProgressGoals: goals.filter((goal) => goal.status === 'in_progress')
       .length,
-    items: limitItems(goals),
+    items: prepareItems(goals),
     totalGoals: goals.length,
   }
 }
@@ -1523,14 +1918,6 @@ function readFlexibleGoalUnit(entry: SelfCareTodayItem): string | null {
   return (
     entry.lastMeasurement?.measurementUnit ?? entry.measurement?.unit ?? null
   )
-}
-
-function buildFlexibleGoalContextId(title: string, date: string): string {
-  const slug = normalizeTitle(title)
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-|-$/g, '')
-
-  return `${slug || 'flexible-goal'}-${date}`
 }
 
 function isSelfCareTodayItemCompleted(item: SelfCareTodayItem): boolean {
@@ -1601,11 +1988,11 @@ function buildTaskSnippet(task: Task): string | null {
 }
 
 function isActiveTask(task: Task): boolean {
-  return !isTaskCompleted(task)
+  return task.status !== 'done' && task.status !== 'archived'
 }
 
 function isTaskCompleted(task: Task): boolean {
-  return task.status === 'done' || task.status === 'archived'
+  return task.status === 'done'
 }
 
 function isActiveShoppingItem(item: AiShoppingItem): boolean {
@@ -1614,6 +2001,19 @@ function isActiveShoppingItem(item: AiShoppingItem): boolean {
 
 function isCompletedShoppingItem(item: AiShoppingItem): boolean {
   return item.status === 'done'
+}
+
+function readShoppingDate(
+  item: AiShoppingItem,
+  timezone: string,
+): string | null {
+  if (isCompletedShoppingItem(item)) {
+    return item.completedAt
+      ? getDateKeyInTimeZone(item.completedAt, timezone)
+      : null
+  }
+
+  return item.dueDate ?? null
 }
 
 function markShoppingOverdue(
@@ -1634,7 +2034,7 @@ function isActiveCleaningTask(item: AiCleaningTask): boolean {
 function countActiveCleaningTasks(
   cleaning: Pick<LoadedContext['cleaning'], 'overdue' | 'tasks'>,
 ): number {
-  return dedupeAiItems([
+  return dedupeCleaningItems([
     ...cleaning.tasks.filter(isActiveCleaningTask),
     ...cleaning.overdue,
   ]).length
@@ -1687,13 +2087,15 @@ function readTaskGroupKey(task: Task): string {
     return `recurrence:${task.recurrence.seriesId}`
   }
 
-  return `task:${normalizeTitle(task.title)}`
+  return `task:${task.id}`
 }
 
 function mapTaskGroupToTaskItem(group: AiTaskGroup): AiTaskItem {
   return {
     area: null,
-    dueDate: group.dates[0] ?? null,
+    dueDate: null,
+    plannedDate: group.dates[0] ?? null,
+    completedAt: null,
     importance: 'not_important',
     obligation: 'desired',
     priority: 'normal',
@@ -1843,13 +2245,14 @@ function buildOverdueItemsByDomain(input: {
   selfCare: AiSelfCareItem[]
   shopping: AiShoppingItem[]
   tasks: AiTaskItem[]
+  todayDate: string
 }): AiOverdueItemsByDomain {
   return {
-    cleaning: limitItems(input.cleaning),
-    habits: limitItems(input.habits),
-    selfcare: limitItems(input.selfCare),
-    shopping: limitItems(input.shopping),
-    tasks: limitItems(input.tasks),
+    cleaning: prepareItems(input.cleaning),
+    habits: prepareItems(input.habits),
+    selfcare: prepareItems(input.selfCare),
+    shopping: prepareItems(input.shopping),
+    tasks: prepareItems(input.tasks, input.todayDate),
   }
 }
 
@@ -1866,11 +2269,11 @@ function groupCleaningOverdueByZone(
     groups.set(zone, groupItems)
   }
 
-  return limitItems(
+  return prepareItems(
     [...groups.entries()]
       .map(([zone, groupItems]) => ({
         count: groupItems.length,
-        items: limitItems(groupItems),
+        items: prepareItems(groupItems),
         zone,
       }))
       .sort(
@@ -1900,7 +2303,6 @@ function buildStats(input: {
   const activeCounts = {
     ...input.activeCounts,
     total:
-      input.activeCounts.calendar +
       input.activeCounts.cleaning +
       input.activeCounts.habits +
       input.activeCounts.selfCare +
@@ -1913,7 +2315,6 @@ function buildStats(input: {
   }
   const totalPlannedItems =
     activeCounts.tasks +
-    activeCounts.calendar +
     activeCounts.shopping +
     activeCounts.cleaning +
     activeCounts.selfCare +
@@ -1976,7 +2377,7 @@ function calculateLoadScore(stats: NonNullable<TodayContext['stats']>): number {
   }
 
   const base =
-    stats.totalPlannedItems * 2 +
+    (stats.totalPlannedItems + stats.activeCounts.calendar) * 2 +
     stats.overdueItems * 5 +
     stats.reasons.length * 3
 
@@ -2188,16 +2589,36 @@ function isTaskForDate(task: Task, date: string): boolean {
   return task.plannedDate === date || task.dueDate === date
 }
 
-function isTaskInRange(task: Task, from: string, to: string): boolean {
-  const date = readTaskDate(task)
-
-  return matchesDateRange(date, from, to)
+function isFlexibleTask(task: Task): boolean {
+  return !task.plannedDate && !task.dueDate
 }
 
-function readTaskDate(task: Task): string | null {
+function isTaskInRange(
+  task: Task,
+  from: string,
+  to: string,
+  timezone: string,
+): boolean {
+  if (isTaskCompleted(task)) {
+    return matchesDateRange(readTaskCompletionDate(task, timezone), from, to)
+  }
+
   return (
-    task.plannedDate ?? task.dueDate ?? task.completedAt?.slice(0, 10) ?? null
+    matchesDateRange(task.plannedDate, from, to) ||
+    matchesDateRange(task.dueDate, from, to)
   )
+}
+
+function readTaskDate(task: Task, timezone = DEFAULT_TIMEZONE): string | null {
+  return isTaskCompleted(task)
+    ? readTaskCompletionDate(task, timezone)
+    : (task.plannedDate ?? task.dueDate)
+}
+
+function readTaskCompletionDate(task: Task, timezone: string): string | null {
+  return task.completedAt
+    ? getDateKeyInTimeZone(task.completedAt, timezone)
+    : null
 }
 
 function isTaskOverdue(task: Task, today: string): boolean {
@@ -2215,7 +2636,7 @@ function isHighPriorityTask(task: Task): boolean {
 }
 
 function isLowEnergyTask(task: Task): boolean {
-  return task.resource !== null && task.resource <= 1
+  return task.resource !== null && task.resource >= -1
 }
 
 function matchesSearch(item: unknown, query: string): boolean {
@@ -2228,6 +2649,15 @@ function matchesSearchStatus(
 ): boolean {
   if (!filter || filter === 'any') {
     return true
+  }
+
+  if (filter === 'todo') {
+    return (
+      status === 'todo' ||
+      status === 'planned' ||
+      status === 'in_progress' ||
+      status === 'ready_for_review'
+    )
   }
 
   return status === filter
@@ -2258,6 +2688,7 @@ function resolveRange(
   to: string | undefined,
   timezone: string,
 ): [string, string] {
+  validateDateRange(from, to)
   if (from && to) {
     return [from, to]
   }
@@ -2290,6 +2721,11 @@ function getWeekRange(date: string): [string, string] {
 }
 
 function resolveTimezone(timezone?: string): string {
+  if (timezone !== undefined && !isValidTimeZone(timezone.trim())) {
+    throw new AiContextValidationError(
+      'timezone must be a valid IANA time zone.',
+    )
+  }
   const candidate =
     timezone?.trim() ||
     process.env.HAOTIKA_DEFAULT_TIMEZONE?.trim() ||
@@ -2306,8 +2742,13 @@ function resolveTimezone(timezone?: string): string {
   }
 }
 
-function limitItems<T>(items: readonly T[]): T[] {
-  return compactArrayForAi(items).items
+function validateDateRange(from?: string, to?: string): void {
+  const message = getAiDateRangeError(from, to)
+  if (message) throw new AiContextValidationError(message)
+}
+
+function prepareItems<T>(items: readonly T[], todayDate?: string): T[] {
+  return sortImportantFirst(items, todayDate)
 }
 
 function dedupeItems<

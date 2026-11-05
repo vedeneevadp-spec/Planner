@@ -22,6 +22,23 @@ export const TODAY_CONTEXT_INCLUDE_KEYS = [
 
 export type TodayContextInclude = (typeof TODAY_CONTEXT_INCLUDE_KEYS)[number]
 
+export const WEEK_CONTEXT_INCLUDE_KEYS = [
+  'tasks',
+  'calendar',
+  'shopping',
+  'cleaning',
+  'selfcare',
+  'stats',
+] as const
+
+export type WeekContextInclude = (typeof WEEK_CONTEXT_INCLUDE_KEYS)[number]
+
+export function resolveWeekContextInclude(
+  include?: readonly WeekContextInclude[],
+): WeekContextInclude[] {
+  return include?.length ? [...include] : [...WEEK_CONTEXT_INCLUDE_KEYS]
+}
+
 export const PLANNER_SEARCH_TYPES = [
   'tasks',
   'calendar',
@@ -32,6 +49,12 @@ export const PLANNER_SEARCH_TYPES = [
 ] as const
 
 export type PlannerSearchType = (typeof PLANNER_SEARCH_TYPES)[number]
+
+export function resolveTodayContextInclude(
+  include?: readonly TodayContextInclude[],
+): TodayContextInclude[] {
+  return include?.length ? [...include] : [...TODAY_CONTEXT_INCLUDE_KEYS]
+}
 
 export function getScopesForInclude(
   include: readonly TodayContextInclude[],
