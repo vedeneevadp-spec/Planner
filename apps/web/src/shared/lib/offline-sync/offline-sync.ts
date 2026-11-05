@@ -202,11 +202,12 @@ export function createOfflineDrainCoordinator<TKey, TResult>() {
 
   return {
     async drain(key: TKey, run: () => Promise<TResult>): Promise<TResult> {
-      if (currentDrain) {
+      while (currentDrain) {
         if (Object.is(currentDrain.key, key)) {
           return currentDrain.promise
         }
 
+        // Another waiter may acquire the coordinator before this one resumes.
         await currentDrain.promise.catch(() => undefined)
       }
 

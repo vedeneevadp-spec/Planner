@@ -46,31 +46,39 @@ export class SelfCareRemindersService {
         const outcome = classifyReminderPushDelivery(result)
 
         if (outcome === 'delivered') {
-          await this.repository.markDelivered(reminder.id)
-          deliveredCount += 1
+          if (await this.repository.markDelivered(reminder)) {
+            deliveredCount += 1
+          }
           continue
         }
 
         if (outcome === 'invalid_recipient' || outcome === 'no_recipient') {
-          await this.repository.markUndeliverable(reminder.id, outcome)
-          undeliverableCount += 1
+          if (await this.repository.markUndeliverable(reminder, outcome)) {
+            undeliverableCount += 1
+          }
           continue
         }
 
         if (outcome === 'retryable') {
-          await this.repository.releaseClaim(
-            reminder.id,
-            'push_delivery_retryable',
-          )
-          releasedCount += 1
+          if (
+            await this.repository.releaseClaim(
+              reminder,
+              'push_delivery_retryable',
+            )
+          ) {
+            releasedCount += 1
+          }
           continue
         }
       } catch (error) {
-        await this.repository.releaseClaim(
-          reminder.id,
-          formatDeliveryError(error),
-        )
-        releasedCount += 1
+        if (
+          await this.repository.releaseClaim(
+            reminder,
+            formatDeliveryError(error),
+          )
+        ) {
+          releasedCount += 1
+        }
       }
     }
 

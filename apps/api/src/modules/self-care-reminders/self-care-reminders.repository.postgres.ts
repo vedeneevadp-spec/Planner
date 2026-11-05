@@ -3,11 +3,13 @@ import { type Kysely, sql } from 'kysely'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   DueSelfCareReminder,
+  SelfCareReminderClaim,
   SelfCareReminderRepository,
 } from './self-care-reminders.model.js'
 import { PostgresSelfCareReminderOccurrenceGenerator } from './self-care-reminders.occurrence-generator.js'
 
 interface DueSelfCareReminderRow {
+  claimed_at: string
   id: string
   item_id: string
   item_title: string
@@ -73,10 +75,10 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
       ),
       claimed as (
         update app.self_care_reminders as reminder
-        set claimed_at = now()
+        set claimed_at = clock_timestamp()
         from candidates
         where reminder.id = candidates.id
-        returning candidates.*
+        returning candidates.*, cast(reminder.claimed_at as text) as claimed_at
       )
       select *
       from claimed
@@ -85,39 +87,52 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
     return result.rows.map(mapDueSelfCareReminder)
   }
 
-  async markDelivered(reminderId: string): Promise<void> {
-    await this.db
+  async markDelivered(claim: SelfCareReminderClaim): Promise<boolean> {
+    const updated = await this.db
       .updateTable('app.self_care_reminders')
       .set({
         claimed_at: null,
         last_error: null,
         sent_at: new Date().toISOString(),
       })
-      .where('id', '=', reminderId)
+      .where('id', '=', claim.id)
+      .where('claimed_at', '=', claim.claimedAt)
+      .where('sent_at', 'is', null)
       .where('expired_at', 'is', null)
       .where('failed_at', 'is', null)
       .where('canceled_at', 'is', null)
-      .execute()
+      .returning('id')
+      .executeTakeFirst()
+    return updated !== undefined
   }
 
-  async markUndeliverable(reminderId: string, reason: string): Promise<void> {
-    await sql`
+  async markUndeliverable(
+    claim: SelfCareReminderClaim,
+    reason: string,
+  ): Promise<boolean> {
+    const result = await sql`
       update app.self_care_reminders
       set
         attempt_count = attempt_count + 1,
         claimed_at = null,
         failed_at = now(),
         last_error = left(${reason}, 1000)
-      where id = cast(${reminderId} as uuid)
+      where id = cast(${claim.id} as uuid)
+        and claimed_at = cast(${claim.claimedAt} as timestamptz)
         and sent_at is null
         and expired_at is null
         and failed_at is null
         and canceled_at is null
+      returning id
     `.execute(this.db)
+    return result.rows.length > 0
   }
 
-  async releaseClaim(reminderId: string, error: string): Promise<void> {
-    await sql`
+  async releaseClaim(
+    claim: SelfCareReminderClaim,
+    error: string,
+  ): Promise<boolean> {
+    const result = await sql`
       update app.self_care_reminders
       set
         attempt_count = attempt_count + 1,
@@ -127,11 +142,15 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
           else failed_at
         end,
         last_error = left(${error}, 1000)
-      where id = cast(${reminderId} as uuid)
+      where id = cast(${claim.id} as uuid)
+        and claimed_at = cast(${claim.claimedAt} as timestamptz)
         and sent_at is null
         and expired_at is null
+        and failed_at is null
         and canceled_at is null
+      returning id
     `.execute(this.db)
+    return result.rows.length > 0
   }
 
   private async cancelInvalidPendingReminders(): Promise<void> {
@@ -274,7 +293,14 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
         due_at = excluded.due_at,
         reminder_at = excluded.reminder_at,
         time_zone = excluded.time_zone,
-        claimed_at = null,
+        claimed_at = case
+          when app.self_care_reminders.due_at = excluded.due_at
+            and app.self_care_reminders.reminder_at = excluded.reminder_at
+            and app.self_care_reminders.time_zone = excluded.time_zone
+            and app.self_care_reminders.canceled_at is null
+          then app.self_care_reminders.claimed_at
+          else null
+        end,
         canceled_at = null,
         expired_at = case
           when app.self_care_reminders.due_at = excluded.due_at
@@ -319,6 +345,7 @@ function mapDueSelfCareReminder(
   row: DueSelfCareReminderRow,
 ): DueSelfCareReminder {
   return {
+    claimedAt: row.claimed_at,
     id: row.id,
     itemId: row.item_id,
     itemTitle: row.item_title,

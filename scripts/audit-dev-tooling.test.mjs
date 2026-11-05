@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import {
   isAllowedEslintToolingVulnerability,
@@ -16,6 +21,103 @@ const packageJson = {
     'eslint-plugin-jsx-a11y': '^6.10.2',
   },
 }
+
+void describe('dev tooling audit command', () => {
+  for (const fixture of [
+    {
+      name: 'clean result',
+      output: { vulnerabilities: {} },
+      code: 0,
+      passes: true,
+    },
+    {
+      name: 'registry error',
+      output: { error: { code: 'EAI_AGAIN' } },
+      code: 1,
+    },
+    {
+      name: 'error alongside an empty result',
+      output: { error: { code: 'E500' }, vulnerabilities: {} },
+      code: 1,
+    },
+    { name: 'missing result', output: {}, code: 0 },
+    { name: 'null result', output: null, code: 0 },
+    {
+      name: 'array instead of vulnerabilities',
+      output: { vulnerabilities: [] },
+      code: 0,
+    },
+    {
+      name: 'string instead of vulnerabilities',
+      output: { vulnerabilities: '' },
+      code: 0,
+    },
+    { name: 'invalid JSON', output: '{', code: 1 },
+    { name: 'empty stdout', output: '', code: 1 },
+    {
+      name: 'unsuccessful exit with an empty result',
+      output: { vulnerabilities: {} },
+      code: 1,
+    },
+    { name: 'unexpected exit code', output: { vulnerabilities: {} }, code: 2 },
+    {
+      name: 'reported vulnerability',
+      output: {
+        vulnerabilities: {
+          example: { name: 'example', severity: 'high', via: [] },
+        },
+      },
+      code: 1,
+    },
+  ]) {
+    void it(
+      `handles ${fixture.name} without a registry request`,
+      { skip: process.platform === 'win32' },
+      async () => {
+        const directory = await mkdtemp(
+          join(tmpdir(), 'planner-audit-command-'),
+        )
+        try {
+          const output =
+            typeof fixture.output === 'string'
+              ? fixture.output
+              : JSON.stringify(fixture.output)
+          await writeFile(
+            join(directory, 'npm'),
+            `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(output)}); process.exitCode = ${fixture.code};\n`,
+            { mode: 0o700 },
+          )
+          const result = spawnSync(
+            process.execPath,
+            [
+              fileURLToPath(
+                new URL('./audit-dev-tooling.mjs', import.meta.url),
+              ),
+            ],
+            {
+              encoding: 'utf8',
+              env: {
+                ...process.env,
+                PATH: `${directory}${delimiter}${process.env.PATH ?? ''}`,
+              },
+              timeout: 10000,
+            },
+          )
+          assert.ifError(result.error)
+          if (fixture.passes) {
+            assert.equal(result.status, 0, result.stderr)
+            assert.match(result.stdout, /Full npm audit is clean/)
+          } else {
+            assert.equal(result.status, 1, result.stderr)
+            assert.doesNotMatch(result.stdout, /Full npm audit is clean/)
+          }
+        } finally {
+          await rm(directory, { recursive: true, force: true })
+        }
+      },
+    )
+  }
+})
 
 void describe('dev tooling audit policy', () => {
   void it('allows the exact dev-only ESLint node', () => {

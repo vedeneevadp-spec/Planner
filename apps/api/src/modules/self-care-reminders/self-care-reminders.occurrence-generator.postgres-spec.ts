@@ -10,7 +10,7 @@ import {
   selfCareItemScheduleInputSchema,
   selfCareItemUpdateInputSchema,
 } from '@planner/contracts'
-import type { Transaction } from 'kysely'
+import { sql, type Transaction } from 'kysely'
 
 import {
   createDatabaseConnection,
@@ -25,6 +25,7 @@ import {
 } from '../../testing/repository-contract-fixtures.js'
 import type { SelfCareWriteContext } from '../self-care/self-care.model.js'
 import { PostgresSelfCareRepository } from '../self-care/self-care.repository.postgres.js'
+import type { DueSelfCareReminder } from './self-care-reminders.model.js'
 import { PostgresSelfCareReminderOccurrenceGenerator } from './self-care-reminders.occurrence-generator.js'
 import { PostgresSelfCareReminderRepository } from './self-care-reminders.repository.postgres.js'
 
@@ -127,6 +128,203 @@ void test('self-care pause suppresses reminders until the recurring item is resu
   })
 })
 
+void test('self-care workers cannot reclaim an unchanged reminder while delivery is in flight', async () => {
+  await withClaimedReminder(async ({ reminder, reminders, trx }) => {
+    const secondWorker = new PostgresSelfCareReminderRepository(trx)
+    // The first worker is sending its push while the second materializes the same reminder.
+    const second = (await secondWorker.claimDueReminders(250)).filter(
+      (entry) => entry.id === reminder.id,
+    )
+    assert.equal(second.length, 0)
+    const row = await trx
+      .selectFrom('app.self_care_reminders')
+      .select(sql<string>`claimed_at::text`.as('claimedAt'))
+      .where('id', '=', reminder.id)
+      .executeTakeFirstOrThrow()
+    assert.equal(reminder.claimedAt, row.claimedAt)
+    assert.equal(await reminders.markDelivered(reminder), true)
+    assert.equal(await reminders.markDelivered(reminder), false)
+  })
+})
+
+void test('self-care reminder acknowledgements cannot overwrite a replacement claim', async () => {
+  await withClaimedReminder(async ({ reminder, reminders, trx }) => {
+    await trx
+      .updateTable('app.self_care_reminders')
+      .set({ claimed_at: sql`now() - interval '6 minutes'` })
+      .where('id', '=', reminder.id)
+      .execute()
+    const replacement = (await reminders.claimDueReminders(250)).find(
+      (entry) => entry.id === reminder.id,
+    )
+    assert.ok(replacement)
+    assert.notEqual(replacement.claimedAt, reminder.claimedAt)
+    const read = () =>
+      trx
+        .selectFrom('app.self_care_reminders')
+        .selectAll()
+        .where('id', '=', reminder.id)
+        .executeTakeFirstOrThrow()
+    const before = await read()
+
+    assert.equal(await reminders.markDelivered(reminder), false)
+    assert.equal(
+      await reminders.markUndeliverable(reminder, 'old outcome'),
+      false,
+    )
+    assert.equal(await reminders.releaseClaim(reminder, 'old failure'), false)
+    assert.deepEqual(await read(), before)
+    assert.equal(await reminders.markDelivered(replacement), true)
+  })
+})
+
+void test('rescheduling a self-care reminder invalidates the previous delivery claim', async () => {
+  await withClaimedReminder(async ({ reminder, reminders, trx }) => {
+    await trx
+      .updateTable('app.self_care_occurrences')
+      .set({ due_at: sql`due_at + interval '1 minute'` })
+      .where('id', '=', reminder.occurrenceId)
+      .execute()
+    const replacement = (await reminders.claimDueReminders(250)).find(
+      (entry) => entry.id === reminder.id,
+    )
+    assert.ok(replacement)
+    assert.notEqual(replacement.claimedAt, reminder.claimedAt)
+    assert.equal(await reminders.markDelivered(reminder), false)
+    assert.equal(
+      await reminders.markUndeliverable(reminder, 'old recipient'),
+      false,
+    )
+    assert.equal(await reminders.releaseClaim(reminder, 'old retry'), false)
+    assert.equal(await reminders.markDelivered(replacement), true)
+  })
+})
+
+void test('canceling a self-care item invalidates its in-flight reminder claim', async () => {
+  await withClaimedReminder(async ({ reminder, reminders, trx }) => {
+    await trx
+      .updateTable('app.self_care_items')
+      .set({ is_active: false })
+      .where('id', '=', reminder.itemId)
+      .execute()
+    assert.equal(
+      (await reminders.claimDueReminders(250)).some(
+        (entry) => entry.id === reminder.id,
+      ),
+      false,
+    )
+    assert.equal(await reminders.markDelivered(reminder), false)
+    assert.equal(await reminders.markUndeliverable(reminder, 'canceled'), false)
+    assert.equal(await reminders.releaseClaim(reminder, 'canceled'), false)
+    const row = await trx
+      .selectFrom('app.self_care_reminders')
+      .selectAll()
+      .where('id', '=', reminder.id)
+      .executeTakeFirstOrThrow()
+    assert.ok(row.canceled_at)
+    assert.equal(row.sent_at, null)
+    assert.equal(row.attempt_count, 0)
+  })
+})
+
+void test('self-care retries require a fresh claim and stop after the attempt limit', async () => {
+  await withClaimedReminder(async ({ reminder, reminders, trx }) => {
+    let current = reminder
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      assert.equal(
+        await reminders.releaseClaim(current, `attempt ${attempt}`),
+        true,
+      )
+      assert.equal(
+        await reminders.releaseClaim(current, 'duplicate outcome'),
+        false,
+      )
+      const next = (await reminders.claimDueReminders(250)).find(
+        (entry) => entry.id === reminder.id,
+      )
+      if (attempt < 8) {
+        assert.ok(next)
+        assert.notEqual(next.claimedAt, current.claimedAt)
+        current = next
+      } else {
+        assert.equal(next, undefined)
+      }
+    }
+    const row = await trx
+      .selectFrom('app.self_care_reminders')
+      .selectAll()
+      .where('id', '=', reminder.id)
+      .executeTakeFirstOrThrow()
+    assert.equal(row.attempt_count, 8)
+    assert.equal(row.last_error, 'attempt 8')
+    assert.ok(row.failed_at)
+    assert.equal(row.sent_at, null)
+  })
+})
+
+void test('an owned undeliverable self-care reminder stays terminal on the next poll', async () => {
+  await withClaimedReminder(async ({ reminder, reminders, trx }) => {
+    assert.equal(
+      await reminders.markUndeliverable(reminder, 'no_recipient'),
+      true,
+    )
+    assert.equal(
+      await reminders.markUndeliverable(reminder, 'duplicate'),
+      false,
+    )
+    assert.equal(
+      (await reminders.claimDueReminders(250)).some(
+        (entry) => entry.id === reminder.id,
+      ),
+      false,
+    )
+    const row = await trx
+      .selectFrom('app.self_care_reminders')
+      .selectAll()
+      .where('id', '=', reminder.id)
+      .executeTakeFirstOrThrow()
+    assert.equal(row.attempt_count, 1)
+    assert.equal(row.last_error, 'no_recipient')
+    assert.ok(row.failed_at)
+    assert.equal(row.sent_at, null)
+  })
+})
+
+async function withClaimedReminder(
+  verify: (input: {
+    reminder: DueSelfCareReminder
+    reminders: PostgresSelfCareReminderRepository
+    trx: Transaction<DatabaseSchema>
+  }) => Promise<void>,
+) {
+  await withFixture(async ({ context, repository, trx }) => {
+    const due = new Date(Date.now() + 2 * 60_000)
+    const item = await repository.createItem({
+      context,
+      input: selfCareItemInputSchema.parse({
+        category: 'movement',
+        title: 'Concurrent reminder delivery',
+        type: 'habit',
+        scheduleRule: {
+          repeatKind: 'daily',
+          startDate: getDateKeyInTimeZone(due, 'UTC'),
+          preferredTime: getTimeInTimeZone(due, 'UTC'),
+          timezone: 'UTC',
+          reminderOffsetsMinutes: [15],
+        },
+      }),
+    })
+    const reminders = new PostgresSelfCareReminderRepository(trx)
+    const claimed = (await reminders.claimDueReminders(250)).filter(
+      (entry) => entry.itemId === item.id,
+    )
+    assert.equal(claimed.length, 1)
+    const reminder = claimed[0]!
+    assert.equal(typeof reminder.claimedAt, 'string')
+    await verify({ reminder, reminders, trx })
+  })
+}
+
 void test('self-care worker claims a recurring reminder without any interactive read', async () => {
   await withFixture(async ({ context, repository, trx }) => {
     const due = new Date(Date.now() + 2 * 60_000)
@@ -160,7 +358,7 @@ void test('self-care worker claims a recurring reminder without any interactive 
     assert.equal(claimed.length, 1)
     assert.equal(claimed[0]!.scheduledFor, getDateKeyInTimeZone(due, 'UTC'))
     assert.ok((await occurrences()).length >= 31)
-    await reminders.markDelivered(claimed[0]!.id)
+    assert.equal(await reminders.markDelivered(claimed[0]!), true)
     assert.equal(
       (await reminders.claimDueReminders(250)).filter(
         (entry) => entry.itemId === item.id,
