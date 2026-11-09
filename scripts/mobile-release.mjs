@@ -907,27 +907,39 @@ async function resolveAndroidSdkPath(preferredPath) {
 }
 
 async function resolveAndroidSigningConfig() {
-  const properties = await readSimplePropertiesFile(
-    androidKeystorePropertiesPath,
-  )
+  const isGooglePlay = options.androidChannel === 'googlePlay'
+  const propertiesPath = isGooglePlay
+    ? path.join(
+        androidDirectoryPath,
+        'keystore/google-play-upload/keystore.properties',
+      )
+    : androidKeystorePropertiesPath
+  const envPrefix = isGooglePlay ? 'GOOGLE_PLAY_UPLOAD' : 'ANDROID'
+  const properties = await readSimplePropertiesFile(propertiesPath)
   const storeFileValue =
-    readFirstDefined(properties.storeFile, process.env.ANDROID_KEYSTORE_PATH) ??
-    undefined
+    readFirstDefined(
+      properties.storeFile,
+      process.env[`${envPrefix}_KEYSTORE_PATH`],
+    ) ?? undefined
   const storePassword =
     readFirstDefined(
       properties.storePassword,
-      process.env.ANDROID_KEYSTORE_PASSWORD,
+      process.env[`${envPrefix}_KEYSTORE_PASSWORD`],
     ) ?? undefined
   const keyAlias =
-    readFirstDefined(properties.keyAlias, process.env.ANDROID_KEY_ALIAS) ??
-    undefined
+    readFirstDefined(
+      properties.keyAlias,
+      process.env[`${envPrefix}_KEY_ALIAS`],
+    ) ?? undefined
   const keyPassword =
     readFirstDefined(
       properties.keyPassword,
-      process.env.ANDROID_KEY_PASSWORD,
+      process.env[`${envPrefix}_KEY_PASSWORD`],
     ) ?? undefined
 
   return {
+    envPrefix,
+    propertiesPath,
     keyAlias,
     keyPassword,
     storeFile: storeFileValue
@@ -970,19 +982,19 @@ async function ensureAndroidSigningConfig(config) {
   const missingFields = []
 
   if (!config.storeFile) {
-    missingFields.push('storeFile / ANDROID_KEYSTORE_PATH')
+    missingFields.push(`storeFile / ${config.envPrefix}_KEYSTORE_PATH`)
   }
 
   if (!config.storePassword) {
-    missingFields.push('storePassword / ANDROID_KEYSTORE_PASSWORD')
+    missingFields.push(`storePassword / ${config.envPrefix}_KEYSTORE_PASSWORD`)
   }
 
   if (!config.keyAlias) {
-    missingFields.push('keyAlias / ANDROID_KEY_ALIAS')
+    missingFields.push(`keyAlias / ${config.envPrefix}_KEY_ALIAS`)
   }
 
   if (!config.keyPassword) {
-    missingFields.push('keyPassword / ANDROID_KEY_PASSWORD')
+    missingFields.push(`keyPassword / ${config.envPrefix}_KEY_PASSWORD`)
   }
 
   if (missingFields.length > 0) {
@@ -990,14 +1002,14 @@ async function ensureAndroidSigningConfig(config) {
       [
         'Android release signing is not configured.',
         `Missing: ${missingFields.join(', ')}.`,
-        `Create ${androidKeystorePropertiesPath} from ${androidKeystorePropertiesExamplePath} or provide the matching env vars.`,
+        `Create ${config.propertiesPath} from ${androidKeystorePropertiesExamplePath} or provide the matching env vars.`,
       ].join(' '),
     )
   }
 
   if (!(await pathExists(config.storeFile))) {
     throw new Error(
-      `Android keystore file was not found: ${config.storeFile}. Update ${androidKeystorePropertiesPath} or ANDROID_KEYSTORE_PATH.`,
+      `Android keystore file was not found: ${config.storeFile}. Update ${config.propertiesPath} or ${config.envPrefix}_KEYSTORE_PATH.`,
     )
   }
 }

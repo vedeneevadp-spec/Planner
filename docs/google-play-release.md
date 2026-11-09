@@ -4,8 +4,24 @@
 
 Идентификатор приложения: `ru.chaotika.app`. Сохранять существующий ключ
 подписи для совместимости с установленными APK. В Play App Signing нужно
-использовать копию существующего app signing key; upload key можно отделить.
+использовать копию существующего app signing key и отдельный upload key.
 Не менять applicationId ради карточки магазина с другим именем пакета.
+
+Канал `googlePlay` читает параметры ключа загрузки из
+`android/keystore/google-play-upload/keystore.properties` или переменных
+`GOOGLE_PLAY_UPLOAD_KEYSTORE_PATH`, `GOOGLE_PLAY_UPLOAD_KEYSTORE_PASSWORD`,
+`GOOGLE_PLAY_UPLOAD_KEY_ALIAS`, `GOOGLE_PLAY_UPLOAD_KEY_PASSWORD`. Формат
+properties такой же, как у `android/keystore.properties.example`; относительный
+`storeFile` считается от `android/`. Каталог `android/keystore/` исключён из Git.
+Хранилище ключа и properties с паролями нужно сохранять вместе в защищённой
+резервной копии. В Google загружается только открытый PEM-сертификат upload key.
+
+Канал `direct` по-прежнему использует `android/keystore.properties` и
+`ANDROID_*`. Канал Google Play не подставляет этот ключ при отсутствии
+настроек upload key: такой AAB отклонён консолью как подписанный ключом,
+уже использованным для APK. После регистрации отдельного upload key оба
+отпечатка в Console должны быть разными: подпись приложения сохраняется,
+а сертификат загрузки должен совпадать с сертификатом AAB.
 
 ```bash
 npm run mobile:release:google-play -- --api-url=https://chaotika.ru --version=1.1.36 --build=44
