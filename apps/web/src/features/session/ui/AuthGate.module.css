@@ -340,7 +340,8 @@
   overflow-wrap: anywhere;
 }
 
-.helperText {
+.helperText,
+.privacyPolicy {
   margin: -0.1rem 0 0;
   font-size: 0.9rem;
   color: var(--text-soft);

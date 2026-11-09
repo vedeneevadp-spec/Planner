@@ -745,7 +745,18 @@ function AuthShell({ children }: { children: ReactNode }) {
           </div>
         </section>
 
-        <aside className={styles.formCard}>{children}</aside>
+        <aside className={styles.formCard}>
+          {children}
+          <p className={styles.privacyPolicy}>
+            <a
+              href="https://chaotika.ru/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Политика конфиденциальности
+            </a>
+          </p>
+        </aside>
 
         <section className={styles.benefitsCard}>
           <ul className={styles.featureList}>

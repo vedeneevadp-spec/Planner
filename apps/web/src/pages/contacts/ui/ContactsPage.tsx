@@ -7,6 +7,20 @@ import styles from './ContactsPage.module.css'
 
 const CONTACT_LINKS = [
   {
+    description: 'Как Chaotika обрабатывает и защищает ваши данные.',
+    href: 'https://chaotika.ru/privacy.html',
+    icon: <GlobeIcon size={20} strokeWidth={2} />,
+    isExternal: true,
+    label: 'Политика конфиденциальности',
+  },
+  {
+    description: 'Удаление через браузер или запрос в поддержку.',
+    href: 'https://chaotika.ru/delete-account.html',
+    icon: <GlobeIcon size={20} strokeWidth={2} />,
+    isExternal: true,
+    label: 'Удаление аккаунта и данных',
+  },
+  {
     description:
       'Если нужна помощь или хотите сообщить о проблеме, пишите на почту.',
     href: 'mailto:support@chaotika.ru',
