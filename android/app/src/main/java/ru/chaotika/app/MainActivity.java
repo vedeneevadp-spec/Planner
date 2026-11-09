@@ -14,7 +14,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlannerBackupFilesPlugin.class);
         registerPlugin(PlannerWidgetPlugin.class);
         registerPlugin(PlannerAppSettingsPlugin.class);
-        registerPlugin(PlannerAppUpdatesPlugin.class);
+        PlannerDistribution.registerPlugins(this);
         registerPlugin(PlannerCalendarEventsPlugin.class);
         registerPlugin(PlannerIncomingSharesPlugin.class);
         if (savedInstanceState == null) {

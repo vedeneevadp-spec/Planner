@@ -334,6 +334,12 @@ backward-compatible с предыдущим release.
 
 ## 7. Выпустить iOS и Android build
 
+Для Google Play используйте отдельную команду
+`npm run mobile:release:google-play -- --api-url=https://chaotika.ru`.
+Она исключает внешний APK-updater из магазинной сборки и проверяет готовый
+AAB. Подготовка карточки, анкет и закрытого теста описана в
+[инструкции Google Play](./google-play-release.md).
+
 Этот шаг нужен только если изменения должны дойти до пользователей store-app.
 
 Большую часть подготовки можно автоматизировать одной командой:

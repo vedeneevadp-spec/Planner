@@ -13,6 +13,7 @@ import path from 'node:path'
 import process from 'node:process'
 
 import { assertAndroidFirebaseConfig } from './mobile-release-android-config.mjs'
+import { assertGooglePlayArtifact } from './google-play-artifact.mjs'
 import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
 
 const repoRoot = process.cwd()
@@ -113,6 +114,7 @@ async function main() {
       `  assets:         ${options.assets ? 'yes' : 'no'}`,
       `  buildArtifacts: ${options.buildArtifacts}`,
       `  androidFormat:  ${options.androidFormat}`,
+      `  androidChannel: ${options.androidChannel}`,
       `  androidAbi:     ${options.androidAbiFilters ?? '(all)'}`,
       `  authMode:       ${authMode}`,
       `  requireSigning: ${options.requireAndroidSigning ? 'yes' : 'no'}`,
@@ -141,10 +143,21 @@ async function main() {
     })
   }
 
-  await runCommand('npm', ['run', 'mobile:sync'], {
-    dryRun: options.dryRun,
-    env: mobileWebBuild.env,
-  })
+  await runCommand(
+    'npm',
+    [
+      'run',
+      'mobile:sync',
+      ...(options.buildArtifacts === 'android' ? ['--', 'android'] : []),
+    ],
+    {
+      dryRun: options.dryRun,
+      env: {
+        ...mobileWebBuild.env,
+        VITE_ANDROID_DISTRIBUTION: options.androidChannel,
+      },
+    },
+  )
 
   await buildArtifacts({
     androidAbiFilters: options.androidAbiFilters,
@@ -277,7 +290,10 @@ async function buildAndroidArtifacts({
     tasks.push(':app:assembleRelease')
   }
 
-  const gradleArgs = [...tasks]
+  const gradleArgs = [
+    ...tasks,
+    `-PdistributionChannel=${options.androidChannel}`,
+  ]
 
   if (androidAbiFilters) {
     gradleArgs.push(`-PandroidAbiFilters=${androidAbiFilters}`)
@@ -324,6 +340,13 @@ async function buildAndroidArtifacts({
   }
 
   await assertAndroidArtifactBudgets(outputs)
+
+  if (options.androidChannel === 'googlePlay') {
+    await assertGooglePlayArtifact(androidReleaseBundlePath)
+    console.log(
+      '[mobile-release] Google Play AAB has no external APK updater or install permission.',
+    )
+  }
 
   console.log(
     `[mobile-release] Android artifacts: ${outputs
@@ -592,6 +615,7 @@ function replaceIosVersion(content, { version, buildNumber }) {
 
 function parseArgs(args) {
   const options = {
+    androidChannel: 'direct',
     androidAbiFilters: process.env.MOBILE_ANDROID_ABI_FILTERS
       ? parseAndroidAbiFilters(process.env.MOBILE_ANDROID_ABI_FILTERS)
       : undefined,
@@ -679,6 +703,17 @@ function parseArgs(args) {
       continue
     }
 
+    if (arg.startsWith('--android-channel=')) {
+      const value = arg.slice('--android-channel='.length)
+      if (!['direct', 'googlePlay'].includes(value)) {
+        throw new Error(
+          'Invalid --android-channel value. Use direct or googlePlay.',
+        )
+      }
+      options.androidChannel = value
+      continue
+    }
+
     if (arg.startsWith('--android-abi=')) {
       options.androidAbiFilters = parseAndroidAbiFilters(
         arg.slice('--android-abi='.length),
@@ -718,6 +753,17 @@ function parseArgs(args) {
     }
 
     throw new Error(`Unknown argument: ${arg}`)
+  }
+
+  if (
+    options.androidChannel === 'googlePlay' &&
+    (options.buildArtifacts !== 'android' ||
+      options.androidFormat !== 'bundle' ||
+      !options.requireAndroidSigning)
+  ) {
+    throw new Error(
+      'Google Play requires --build-artifacts=android --android-format=bundle --require-android-signing.',
+    )
   }
 
   return options
@@ -1133,6 +1179,7 @@ Options:
   --assets                     Regenerate native icons and splash assets before sync.
   --build-artifacts=<target>   Build none, android, ios, or all native artifacts after sync.
   --android-format=<format>    Build Android apk, bundle, or both. Default: bundle.
+  --android-channel=<channel>  direct (default) or googlePlay (signed Android AAB only).
   --android-abi=<abis>         Limit Android native ABIs, e.g. arm64-v8a for a physical phone APK.
   --android-sdk=<path>         Override Android SDK path used for android/local.properties.
   --android-java-home=<path>   Override Java 21 home used for Android Gradle build.

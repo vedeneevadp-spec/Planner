@@ -42,6 +42,10 @@ def androidAbiFilters = (project.findProperty('androidAbiFilters') ?: '')
     .split(',')
     .collect { value -> value.trim() }
     .findAll { value -> !value.isEmpty() }
+def distributionChannel = (project.findProperty('distributionChannel') ?: 'direct').toString()
+if (!(distributionChannel in ['direct', 'googlePlay'])) {
+    throw new GradleException('distributionChannel must be direct or googlePlay')
+}
 
 apply plugin: 'com.android.application'
 
@@ -63,8 +67,8 @@ android {
         applicationId "ru.chaotika.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 43
-        versionName "1.1.35"
+        versionCode 44
+        versionName "1.1.36"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         if (!androidAbiFilters.isEmpty()) {
             ndk {
@@ -76,6 +80,19 @@ android {
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             // Exclude retired local recognition assets even if old ignored files are restored.
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:wakewords:*.onnx:*.tflite'
+        }
+    }
+    sourceSets {
+        main {
+            java.srcDir "src/${distributionChannel}/java"
+            if (distributionChannel == 'googlePlay') {
+                java.exclude '**/PlannerAppUpdate*.java'
+            }
+        }
+        if (distributionChannel == 'googlePlay') {
+            release.manifest.srcFile 'src/googlePlay/AndroidManifest.xml'
+            test.java.exclude '**/PlannerAppUpdate*.java'
+            androidTest.java.exclude '**/PlannerAppUpdate*.java'
         }
     }
     buildTypes {
