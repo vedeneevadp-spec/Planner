@@ -540,6 +540,7 @@ export function createPlannerPeripheralContractSchemas(): Record<
     }),
     ChaosInboxItemUpdateInput: objectSchema(
       {
+        text: { type: 'string', minLength: 1, maxLength: 5000 },
         dueDate: nullableStringSchema(),
         isFavorite: booleanSchema(),
         kind: enumSchema(chaosInboxKindSchema.options),

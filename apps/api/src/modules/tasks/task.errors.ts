@@ -1,5 +1,11 @@
 import { HttpError } from '../../bootstrap/http-error.js'
 
+export class TaskIdConflictError extends HttpError {
+  constructor() {
+    super(409, 'task_id_conflict', 'Task identifier is already in use.')
+  }
+}
+
 export class TaskNotFoundError extends HttpError {
   constructor(taskId: string) {
     super(404, 'task_not_found', `Task "${taskId}" was not found.`)

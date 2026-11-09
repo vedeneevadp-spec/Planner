@@ -394,6 +394,7 @@ describe('MorePage', () => {
     expect(controls.map((control) => control.textContent?.trim())).toEqual([
       expect.stringMatching(/тема/i),
       'Уведомления',
+      'API и интеграции',
     ])
   })
 

@@ -227,6 +227,13 @@ API строится как modular monolith поверх Fastify. Основн�
 - backups: `/api/v1/backups/export`, `/api/v1/backups/import/preview`,
   `/api/v1/backups/import/restore`
 
+### API для интеграций
+
+Персональные ключи создаются в **Ещё → Настройки → API и интеграции**.
+Они дают выбранный доступ к задачам и покупкам одного пространства через
+`/api/public/v1`. [Документация и примеры](docs/public-api.md),
+интерактивная спецификация — `/api/docs/#/integrations`.
+
 ### Alice skill webhook
 
 Навык Алисы подключается к backend URL:

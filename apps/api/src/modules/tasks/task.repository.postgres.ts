@@ -9,7 +9,11 @@ import type {
   AppTaskCompletionType,
   DatabaseSchema,
 } from '../../infrastructure/db/schema.js'
-import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
+import {
+  TaskIdConflictError,
+  TaskNotFoundError,
+  TaskVersionConflictError,
+} from './task.errors.js'
 import type {
   CloseTaskChainCommand,
   CompleteRecurringTaskCommand,
@@ -366,10 +370,11 @@ export class PostgresTaskRepository implements TaskRepository {
               .selectAll()
               .where('id', '=', taskId)
               .where('workspace_id', '=', command.context.workspaceId)
+              .where('deleted_at', 'is', null)
               .executeTakeFirst()
 
         if (!task) {
-          throw new Error('Failed to create task record.')
+          throw new TaskIdConflictError()
         }
 
         const timeBlock = insertedTask

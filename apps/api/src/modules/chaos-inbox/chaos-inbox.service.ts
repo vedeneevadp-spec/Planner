@@ -30,6 +30,28 @@ export class ChaosInboxService {
     return this.repository.create({ context, input })
   }
 
+  async getShoppingItem(context: ChaosInboxReadContext, id: string) {
+    const item = await this.repository.getById(context, id)
+    if (item.kind !== 'shopping') {
+      throw new HttpError(404, 'shopping_item_not_found', 'Покупка не найдена.')
+    }
+    return item
+  }
+
+  updateShoppingItem(
+    context: ChaosInboxWriteContext,
+    id: string,
+    input: UpdateChaosInboxItemCommand['input'],
+  ) {
+    assertCanWriteChaosInbox(context)
+    return this.repository.update({
+      context,
+      id,
+      input,
+      requiredKind: 'shopping',
+    })
+  }
+
   updateItem(
     context: ChaosInboxWriteContext,
     id: string,

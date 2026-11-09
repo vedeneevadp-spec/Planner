@@ -117,6 +117,9 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
     command: UpdateChaosInboxItemCommand,
   ): Promise<StoredChaosInboxItemRecord> {
     const item = this.getItemOrThrow(command.context, command.id)
+    if (command.requiredKind && item.kind !== command.requiredKind) {
+      throw new HttpError(404, 'shopping_item_not_found', 'Покупка не найдена.')
+    }
     const nextItem = applyUpdate(item, command.input)
 
     this.items.set(nextItem.id, nextItem)
@@ -249,6 +252,7 @@ function applyUpdate(
   return {
     ...item,
     ...statusDates,
+    ...(patch.text !== undefined ? { text: patch.text.trim() } : {}),
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
     ...(patch.isFavorite !== undefined ? { isFavorite: patch.isFavorite } : {}),

@@ -96,6 +96,7 @@ const publicAssetBudgets = [
 const forbiddenInitialPreloadPatterns = [
   /\/assets\/backup-contracts-[^/]+\.js$/,
   /\/assets\/shopping-contracts-[^/]+\.js$/,
+  /\/assets\/integration-contracts-[^/]+\.js$/,
   /\/assets\/SharedDraft-[^/]+\.js$/,
   /\/assets\/confetti\.module-[^/]+\.js$/,
   /\/assets\/NativePushRegistration-[^/]+\.js$/,

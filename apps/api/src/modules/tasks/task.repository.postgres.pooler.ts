@@ -4,6 +4,7 @@ import type {
   DatabaseSchema,
   JsonObject,
 } from '../../infrastructure/db/schema.js'
+import { TaskIdConflictError } from './task.errors.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
@@ -172,6 +173,7 @@ export class PostgresTaskPoolerWriteFallback {
             from app.tasks as task
             where task.id = ${params.taskId}
               and task.workspace_id = ${command.context.workspaceId}
+              and task.deleted_at is null
               and not exists (select 1 from inserted_task)
           ),
           ${insertedTimeBlockCte}
@@ -352,7 +354,7 @@ export class PostgresTaskPoolerWriteFallback {
     )
 
     if (!createdTask) {
-      throw new Error('Failed to create task record.')
+      throw new TaskIdConflictError()
     }
 
     return mapTaskRecordFromListRow(createdTask)

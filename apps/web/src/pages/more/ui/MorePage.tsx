@@ -657,6 +657,13 @@ export function MorePage() {
             to="/notifications/settings"
           />
         ) : null}
+        {session ? (
+          <MoreActionLink
+            icon={<GearIcon size={19} strokeWidth={2} />}
+            label="API и интеграции"
+            to="/integrations/api"
+          />
+        ) : null}
       </section>
 
       <p className={styles.sectionLabel}>Разделы</p>

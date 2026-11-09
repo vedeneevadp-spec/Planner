@@ -186,6 +186,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
           command.context,
           [command.id],
           command.input,
+          command.requiredKind,
         )
           .returningAll()
           .executeTakeFirst()
@@ -491,12 +492,16 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
     context: UpdateChaosInboxItemCommand['context'],
     ids: string[],
     patch: UpdateChaosInboxItemCommand['input'],
+    requiredKind?: 'shopping',
   ) {
     const statusTimestamps = buildStatusTimestampPatch(patch.status)
     let query = executor
       .updateTable('app.chaos_inbox_items')
       .set({
         ...statusTimestamps,
+        ...(patch.text !== undefined
+          ? { text: normalizeText(patch.text) }
+          : {}),
         ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.isFavorite !== undefined
@@ -516,6 +521,8 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       .where('workspace_id', '=', context.workspaceId)
       .where('id', 'in', ids)
       .where('deleted_at', 'is', null)
+
+    if (requiredKind) query = query.where('kind', '=', requiredKind)
 
     if (context.workspaceKind !== 'shared') {
       query = query.where('user_id', '=', context.actorUserId)

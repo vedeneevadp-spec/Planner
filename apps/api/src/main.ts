@@ -18,6 +18,11 @@ import {
 import { createDatabaseConfig } from './infrastructure/db/config.js'
 import { AiContextService } from './modules/ai-context/index.js'
 import {
+  MemoryApiKeyRepository,
+  PostgresApiKeyRepository,
+} from './modules/api-keys/api-key.repository.js'
+import { ApiKeyService } from './modules/api-keys/api-key.service.js'
+import {
   AuthService,
   NoopAuthEmailSender,
   PostgresAuthRepository,
@@ -240,6 +245,11 @@ export function createApiKernel(
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
     aiContextService,
+    apiKeyService: new ApiKeyService(
+      database
+        ? new PostgresApiKeyRepository(database.db)
+        : new MemoryApiKeyRepository(),
+    ),
     config,
     ...(authService ? { authService } : {}),
     chaosInboxService,

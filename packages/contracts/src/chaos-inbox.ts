@@ -86,6 +86,7 @@ export const createChaosInboxItemsInputSchema = z.object({
 
 export const chaosInboxItemUpdateInputSchema = z
   .object({
+    text: z.string().trim().min(1).max(5000).optional(),
     kind: chaosInboxKindSchema.optional(),
     sphereId: z.string().nullable().optional(),
     priority: chaosInboxPrioritySchema.nullable().optional(),
@@ -97,6 +98,7 @@ export const chaosInboxItemUpdateInputSchema = z
   })
   .refine(
     (value) =>
+      value.text !== undefined ||
       value.kind !== undefined ||
       value.sphereId !== undefined ||
       value.priority !== undefined ||

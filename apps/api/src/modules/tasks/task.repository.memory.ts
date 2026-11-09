@@ -1,7 +1,11 @@
 import { generateUuidV7 } from '@planner/contracts'
 
 import { matchesTaskContextFilter } from './task.context-filter.js'
-import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
+import {
+  TaskIdConflictError,
+  TaskNotFoundError,
+  TaskVersionConflictError,
+} from './task.errors.js'
 import type {
   CloseTaskChainCommand,
   CompleteRecurringTaskCommand,
@@ -173,6 +177,8 @@ export class MemoryTaskRepository implements TaskRepository {
     ) {
       return Promise.resolve(existingTask)
     }
+
+    if (existingTask) throw new TaskIdConflictError()
 
     const task = createStoredTaskRecord(command.input, {
       authorDisplayName: command.context.actorDisplayName,
