@@ -1,5 +1,27 @@
 import type { OpenAPIV3 } from 'openapi-types'
 
+// These handlers normalize an omitted body to {} and accept an empty input.
+const optionalRequestBodies = new Set([
+  'AliceWebhookRequest',
+  'AuthRefreshInput',
+  'AuthSignOutInput',
+  'CleaningTaskActionInput',
+  'CleaningTaskDeleteInput',
+  'CleaningZoneDeleteInput',
+  'CreateSharedWorkspaceInput',
+  'HabitEntryDeleteInput',
+  'SelfCareCompletionInput',
+  'SelfCareDailyStateInput',
+  'SelfCareOccurrenceSkipInput',
+  'SelfCareRitualCompletionInput',
+  'SelfCareSettingsUpdateInput',
+  'SelfCareTemplateCreateInput',
+  'TaskChainCloseInput',
+  'TaskChainDetachInput',
+  'TaskNextStageInput',
+  'TaskPersonalTransferInput',
+])
+
 export function errorResponse(): OpenAPIV3.ResponseObject {
   return jsonResponse('ApiError')
 }
@@ -21,7 +43,7 @@ export function jsonRequestBody(
         },
       },
     },
-    required: true,
+    required: !optionalRequestBodies.has(schemaName),
   }
 }
 

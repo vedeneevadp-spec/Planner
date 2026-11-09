@@ -1,15 +1,6 @@
 import {
-  apiKeyListResponseSchema,
-  apiKeyRecordSchema,
-  createApiKeyInputSchema,
-  createdApiKeyResponseSchema,
-  publicShoppingCreateSchema,
   publicShoppingListSchema,
-  publicShoppingUpdateSchema,
-  publicTaskCreateSchema,
   publicTaskListSchema,
-  publicTaskStatusSchema,
-  publicTaskUpdateSchema,
 } from '@planner/contracts'
 import type { OpenAPIV3 } from 'openapi-types'
 import { z } from 'zod'
@@ -20,32 +11,6 @@ import {
   jsonRequestBody,
   jsonResponse,
 } from './openapi-helpers.js'
-
-const schemaMap = {
-  ApiKeyRecord: apiKeyRecordSchema,
-  ApiKeyListResponse: apiKeyListResponseSchema,
-  CreatedApiKeyResponse: createdApiKeyResponseSchema,
-  CreateApiKeyInput: createApiKeyInputSchema,
-  PublicTaskCreate: publicTaskCreateSchema,
-  PublicTaskUpdate: publicTaskUpdateSchema,
-  PublicTaskStatus: publicTaskStatusSchema,
-  PublicShoppingCreate: publicShoppingCreateSchema,
-  PublicShoppingUpdate: publicShoppingUpdateSchema,
-}
-export function createIntegrationSchemas(): Record<
-  string,
-  OpenAPIV3.SchemaObject
-> {
-  return Object.fromEntries(
-    Object.entries(schemaMap).map(([name, schema]) => [
-      name,
-      z.toJSONSchema(schema, {
-        target: 'openapi-3.0',
-        io: 'input',
-      }) as OpenAPIV3.SchemaObject,
-    ]),
-  )
-}
 
 const idParameter: OpenAPIV3.ParameterObject = {
   name: 'id',

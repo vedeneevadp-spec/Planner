@@ -1,1757 +1,330 @@
+import * as contracts from '@planner/contracts'
+import * as backup from '@planner/contracts/backup'
 import type { OpenAPIV3 } from 'openapi-types'
+import { z } from 'zod'
 
+import { aliceWebhookRequestSchema } from '../modules/alice/alice.routes.js'
 import {
-  createCleaningContractSchemas,
-  createHabitContractSchemas,
-  createPlannerPeripheralContractSchemas,
-  createSelfCareContractSchemas,
-  createUserBackupContractSchemas,
-} from './openapi-contract-schemas.js'
+  authorizationFormSchema,
+  tokenRequestSchema,
+} from '../modules/auth/oauth.routes.js'
+import { idsBodySchema } from '../modules/chaos-inbox/chaos-inbox.routes.js'
+import { stepsInputSchema } from '../modules/self-care/self-care.routes.js'
 import {
-  genericJsonArraySchema,
-  genericJsonObjectSchema,
-  nullableRefSchema,
-  nullableStringSchema,
-  positiveIntegerSchema,
-} from './openapi-helpers.js'
-import { createIntegrationSchemas } from './openapi-integrations.js'
+  legacyUserPreferencesUpdateInputSchema,
+  legacyWorkspaceSettingsUpdateInputSchema,
+} from '../modules/session/session.legacy-preferences.js'
+import { contractSchema } from './openapi-schema.js'
 
-export function createComponentSchemas(): Record<
-  string,
+const userPreferences = contracts.userPreferencesSchema.extend({
+  voiceAssistantEnabled: z
+    .literal(false)
+    .describe('Retired compatibility field; always false.'),
+})
+const workspaceSettings = contracts.workspaceSettingsSchema.extend({
+  wakeWordTrainingModeEnabled: z
+    .literal(false)
+    .describe('Retired compatibility field; always false.'),
+})
+const aliceOAuthTokenResponseSchema = z.object({
+  access_token: z.string(),
+  expires_in: z.number().int().nonnegative(),
+  refresh_token: z.string(),
+  token_type: z.literal('Bearer'),
+})
+const aliceWebhookResponseSchema = z.union([
+  z.object({
+    response: z.object({
+      buttons: z
+        .array(
+          z.object({
+            hide: z.boolean().optional(),
+            payload: z.record(z.string(), z.unknown()).optional(),
+            title: z.string(),
+          }),
+        )
+        .optional(),
+      end_session: z.boolean(),
+      text: z.string().max(1024),
+    }),
+    version: z.literal('1.0'),
+  }),
+  z.object({ start_account_linking: z.object({}), version: z.literal('1.0') }),
+])
+
+// Names stay stable for clients. Shapes, required fields, defaults, enums and
+// limits come from the actual validators instead of a second handwritten model.
+export const openApiInputContracts = {
+  UserBackupArchiveInput: backup.userBackupArchiveSchema,
+  AddEmojiSetItemsInput: contracts.addEmojiSetItemsInputSchema,
+  AdminUserRoleUpdateInput: contracts.adminUserRoleUpdateInputSchema,
+  AliceOAuthAuthorizeForm: authorizationFormSchema,
+  AliceOAuthTokenRequest: tokenRequestSchema,
+  AliceWebhookRequest: aliceWebhookRequestSchema,
+  AuthPasswordResetConfirmInput: contracts.authPasswordResetConfirmInputSchema,
+  AuthPasswordResetRequestInput: contracts.authPasswordResetRequestInputSchema,
+  AuthPasswordUpdateInput: contracts.authPasswordUpdateInputSchema,
+  AuthRefreshInput: contracts.authRefreshInputSchema,
+  AuthSignInInput: contracts.authSignInInputSchema,
+  AuthSignOutInput: contracts.authSignOutInputSchema,
+  AuthSignUpInput: contracts.authSignUpInputSchema,
+  ChaosInboxBulkUpdateInput: contracts.chaosInboxBulkUpdateInputSchema,
+  ChaosInboxItemUpdateInput: contracts.chaosInboxItemUpdateInputSchema,
+  CleaningSeedInput: contracts.cleaningSeedInputSchema,
+  CleaningTaskActionInput: contracts.cleaningTaskActionInputSchema,
+  CleaningTaskDeleteInput: contracts.cleaningTaskDeleteInputSchema,
+  CleaningTaskUpdateInput: contracts.cleaningTaskUpdateInputSchema,
+  CleaningZoneDeleteInput: contracts.cleaningZoneDeleteInputSchema,
+  CleaningZoneUpdateInput: contracts.cleaningZoneUpdateInputSchema,
+  CreateApiKeyInput: contracts.createApiKeyInputSchema,
+  CreateChaosInboxItemsInput: contracts.createChaosInboxItemsInputSchema,
+  CreateSharedWorkspaceInput: contracts.createSharedWorkspaceInputSchema,
+  DailyPlanAutoBuildInput: contracts.dailyPlanAutoBuildInputSchema,
+  DailyPlanUnloadInput: contracts.dailyPlanUnloadInputSchema,
+  DailyPlanUpsertInput: contracts.dailyPlanUpsertInputSchema,
+  HabitEntryDeleteInput: contracts.habitEntryDeleteInputSchema,
+  // The handler takes date from the URL, overriding any body value.
+  HabitEntryUpsertInput: contracts.habitEntryUpsertInputSchema.omit({
+    date: true,
+  }),
+  HabitUpdateInput: contracts.habitUpdateInputSchema,
+  IdListInput: idsBodySchema,
+  LifeSphereUpdateInput: contracts.lifeSphereUpdateInputSchema,
+  NewChaosInboxItemInput: contracts.newChaosInboxItemInputSchema,
+  NewCleaningTaskInput: contracts.newCleaningTaskInputSchema,
+  NewCleaningZoneInput: contracts.newCleaningZoneInputSchema,
+  NewEmojiAssetInput: contracts.newEmojiAssetInputSchema,
+  NewEmojiSetInput: contracts.newEmojiSetInputSchema,
+  NewHabitInput: contracts.newHabitInputSchema,
+  NewLifeSphereInput: contracts.newLifeSphereInputSchema,
+  NewTaskInput: contracts.newTaskInputSchema,
+  NewTaskTemplateInput: contracts.newTaskTemplateInputSchema,
+  PublicShoppingCreate: contracts.publicShoppingCreateSchema,
+  PublicShoppingUpdate: contracts.publicShoppingUpdateSchema,
+  PublicTaskCreate: contracts.publicTaskCreateSchema,
+  PublicTaskStatus: contracts.publicTaskStatusSchema,
+  PublicTaskUpdate: contracts.publicTaskUpdateSchema,
+  PushDeviceUpsertInput: contracts.pushDeviceUpsertInputSchema,
+  PushTestNotificationInput: contracts.pushTestNotificationInputSchema,
+  SelfCareAppointmentDetailsInput:
+    contracts.selfCareAppointmentDetailsInputSchema,
+  SelfCareCompletionInput: contracts.selfCareCompletionInputSchema,
+  SelfCareCompletionUpdateInput: contracts.selfCareCompletionUpdateInputSchema,
+  SelfCareCourseDetailsInput: contracts.selfCareCourseDetailsInputSchema,
+  SelfCareDailyStateInput: contracts.selfCareDailyStateInputSchema,
+  SelfCareExerciseDetailsInput: contracts.selfCareExerciseDetailsInputSchema,
+  SelfCareItemInput: contracts.selfCareItemInputSchema,
+  SelfCareItemScheduleInput: contracts.selfCareItemScheduleInputSchema,
+  SelfCareItemUpdateInput: contracts.selfCareItemUpdateInputSchema,
+  SelfCareMeasurementDetailsInput:
+    contracts.selfCareMeasurementDetailsInputSchema,
+  SelfCareMedicalDetailsInput: contracts.selfCareMedicalDetailsInputSchema,
+  SelfCareMinimumItemInput: contracts.selfCareMinimumItemInputSchema,
+  SelfCareMinimumItemsUpdateInput:
+    contracts.selfCareMinimumItemsUpdateInputSchema,
+  SelfCareOccurrenceMoveInput: contracts.selfCareOccurrenceMoveInputSchema,
+  SelfCareOccurrenceSkipInput: contracts.selfCareOccurrenceSkipInputSchema,
+  SelfCareOfflineCommand: contracts.selfCareOfflineCommandSchema,
+  SelfCareOfflineCommandRequest: contracts.selfCareOfflineCommandRequestSchema,
+  SelfCareProcedureDetailsInput: contracts.selfCareProcedureDetailsInputSchema,
+  SelfCareRangeInput: contracts.selfCareRangeQuerySchema,
+  SelfCareRitualCompletionInput: contracts.selfCareRitualCompletionInputSchema,
+  SelfCareRitualStepDraftInput: contracts.selfCareRitualStepDraftInputSchema,
+  SelfCareRitualStepInput: contracts.selfCareRitualStepInputSchema,
+  SelfCareRitualStepsUpdateInput: stepsInputSchema,
+  SelfCareScheduleRuleInput: contracts.selfCareScheduleRuleInputSchema,
+  SelfCareSettingsUpdateInput: contracts.selfCareSettingsUpdateInputSchema,
+  SelfCareTemplateCreateInput: contracts.selfCareTemplateCreateInputSchema,
+  TaskChainCloseInput: contracts.taskChainCloseInputSchema,
+  TaskChainDetachInput: contracts.taskChainDetachInputSchema,
+  TaskDetailsUpdateInput: contracts.taskDetailsUpdateInputSchema,
+  TaskNextStageInput: contracts.taskNextStageInputSchema,
+  TaskNextStageUndoInput: contracts.taskNextStageUndoInputSchema,
+  TaskPersonalTransferInput: contracts.taskPersonalTransferInputSchema,
+  TaskScheduleInput: contracts.taskScheduleInputSchema,
+  TaskScheduleUpdateInput: contracts.taskScheduleUpdateInputSchema,
+  TaskStatusUpdateInput: contracts.taskStatusUpdateInputSchema,
+  UpdateSharedWorkspaceInput: contracts.updateSharedWorkspaceInputSchema,
+  UpdateUserProfileInput: contracts.updateUserProfileInputSchema,
+  UserBackupRestoreRequest: backup.userBackupRestoreRequestSchema,
+  UserPreferencesUpdateInput: legacyUserPreferencesUpdateInputSchema,
+  WorkspaceInvitationCreateInput:
+    contracts.workspaceInvitationCreateInputSchema,
+  WorkspaceSettingsUpdateInput: legacyWorkspaceSettingsUpdateInputSchema,
+  WorkspaceUserGroupRoleUpdateInput:
+    contracts.workspaceUserGroupRoleUpdateInputSchema,
+} satisfies Record<string, z.ZodType>
+
+export const openApiOutputContracts = {
+  OAuthError: z.object({ error: z.string(), error_description: z.string() }),
+  AdminUserListResponse: contracts.adminUserListResponseSchema,
+  AdminUserRecord: contracts.adminUserRecordSchema,
+  AliceOAuthTokenResponse: aliceOAuthTokenResponseSchema,
+  AliceWebhookResponse: aliceWebhookResponseSchema,
+  ApiError: contracts.apiErrorSchema,
+  ApiKeyListResponse: contracts.apiKeyListResponseSchema,
+  ApiKeyRecord: contracts.apiKeyRecordSchema,
+  AppRole: contracts.appRoleSchema,
+  AssignableAppRole: contracts.assignableAppRoleSchema,
+  AssignableWorkspaceGroupRole: contracts.assignableWorkspaceGroupRoleSchema,
+  AuthTokenResponse: contracts.authTokenResponseSchema,
+  CalendarViewMode: contracts.calendarViewModeSchema,
+  ChaosInboxConvertToTaskRecordResponse:
+    contracts.chaosInboxConvertToTaskRecordResponseSchema,
+  ChaosInboxConvertToTaskRecordResponseList: z.array(
+    contracts.chaosInboxConvertToTaskRecordResponseSchema,
+  ),
+  ChaosInboxCreatedRecordResponse:
+    contracts.chaosInboxCreatedRecordResponseSchema,
+  ChaosInboxItemRecord: contracts.chaosInboxItemRecordSchema,
+  ChaosInboxListRecordResponse: contracts.chaosInboxListRecordResponseSchema,
+  CleaningListResponse: contracts.cleaningListResponseSchema,
+  CleaningSummary: contracts.cleaningSummarySchema,
+  CleaningTaskActionResponse: contracts.cleaningTaskActionResponseSchema,
+  CleaningTaskHistoryItemRecord: contracts.cleaningTaskHistoryItemRecordSchema,
+  CleaningTaskRecord: contracts.cleaningTaskRecordSchema,
+  CleaningTaskStateRecord: contracts.cleaningTaskStateRecordSchema,
+  CleaningTaskWithState: contracts.cleaningTaskWithStateSchema,
+  CleaningTodayResponse: contracts.cleaningTodayResponseSchema,
+  CleaningZoneRecord: contracts.cleaningZoneRecordSchema,
+  CreatedApiKeyResponse: contracts.createdApiKeyResponseSchema,
+  DailyPlanRecord: contracts.dailyPlanRecordSchema,
+  DailyPlanUnloadResponse: contracts.dailyPlanUnloadResponseSchema,
+  DailyPlanUnloadSuggestion: contracts.dailyPlanUnloadSuggestionSchema,
+  EmojiAssetKind: contracts.emojiAssetKindSchema,
+  EmojiAssetRecord: contracts.emojiAssetRecordSchema,
+  EmojiSetListResponse: contracts.emojiSetListResponseSchema,
+  EmojiSetRecord: contracts.emojiSetRecordSchema,
+  EmojiSetSource: contracts.emojiSetSourceSchema,
+  EnergyMode: contracts.energyModeSchema,
+  HabitEntryRecord: contracts.habitEntryRecordSchema,
+  HabitListResponse: contracts.habitListResponseSchema,
+  HabitRecord: contracts.habitRecordSchema,
+  HabitStats: contracts.habitStatsSchema,
+  HabitStatsResponse: contracts.habitStatsResponseSchema,
+  HabitTodayItem: contracts.habitTodayItemSchema,
+  HabitTodayResponse: contracts.habitTodayResponseSchema,
+  HealthResponse: contracts.healthResponseSchema,
+  LifeSphereListResponse: contracts.lifeSphereListRecordResponseSchema,
+  LifeSphereRecord: contracts.lifeSphereRecordSchema,
+  PlannerSearchItem: contracts.plannerSearchItemSchema,
+  PlannerSearchResponse: contracts.plannerSearchResponseSchema,
+  PushDeviceRecord: contracts.pushDeviceRecordSchema,
+  PushTestNotificationResponse: contracts.pushTestNotificationResponseSchema,
+  ReceivedWorkspaceInvitationListResponse:
+    contracts.receivedWorkspaceInvitationListResponseSchema,
+  ReceivedWorkspaceInvitationRecord:
+    contracts.receivedWorkspaceInvitationRecordSchema,
+  SelfCareAnalyticsResponse: contracts.selfCareAnalyticsResponseSchema,
+  SelfCareAppointmentDetails: contracts.selfCareAppointmentDetailsSchema,
+  SelfCareCompletion: contracts.selfCareCompletionSchema,
+  SelfCareCourseDetails: contracts.selfCareCourseDetailsSchema,
+  SelfCareDailyState: contracts.selfCareDailyStateSchema,
+  SelfCareDashboardResponse: contracts.selfCareDashboardResponseSchema,
+  SelfCareExerciseDetails: contracts.selfCareExerciseDetailsSchema,
+  SelfCareExerciseTrend: contracts.selfCareExerciseTrendSchema,
+  SelfCareExerciseTrendPoint: contracts.selfCareExerciseTrendPointSchema,
+  SelfCareFlexibleGoalProgress: contracts.selfCareFlexibleGoalProgressSchema,
+  SelfCareHistoryResponse: contracts.selfCareHistoryResponseSchema,
+  SelfCareItem: contracts.selfCareItemSchema,
+  SelfCareItemAlternative: contracts.selfCareItemAlternativeSchema,
+  SelfCareListResponse: contracts.selfCareListResponseSchema,
+  SelfCareMeasurementDetails: contracts.selfCareMeasurementDetailsSchema,
+  SelfCareMeasurementTrend: contracts.selfCareMeasurementTrendSchema,
+  SelfCareMeasurementTrendPoint: contracts.selfCareMeasurementTrendPointSchema,
+  SelfCareMedicalDetails: contracts.selfCareMedicalDetailsSchema,
+  SelfCareMinimumItem: contracts.selfCareMinimumItemSchema,
+  SelfCareOccurrence: contracts.selfCareOccurrenceSchema,
+  SelfCareOccurrenceListResponse: z.array(contracts.selfCareOccurrenceSchema),
+  SelfCareOfflineCommandResponse:
+    contracts.selfCareOfflineCommandResponseSchema,
+  SelfCareOfflineCommandResult: contracts.selfCareOfflineCommandResultSchema,
+  SelfCarePlanResponse: contracts.selfCarePlanResponseSchema,
+  SelfCareProcedureDetails: contracts.selfCareProcedureDetailsSchema,
+  SelfCareRitualStep: contracts.selfCareRitualStepSchema,
+  SelfCareRitualStepCompletion: contracts.selfCareRitualStepCompletionSchema,
+  SelfCareRitualStepDraft: contracts.selfCareRitualStepDraftSchema,
+  SelfCareRitualStepDraftListResponse:
+    contracts.selfCareRitualStepDraftListResponseSchema,
+  SelfCareScheduleRule: contracts.selfCareScheduleRuleSchema,
+  SelfCareSettings: contracts.selfCareSettingsSchema,
+  SelfCareSettingsResponse: contracts.selfCareSettingsResponseSchema,
+  SelfCareTemplate: contracts.selfCareTemplateSchema,
+  SelfCareTemplateListResponse: z.array(contracts.selfCareTemplateSchema),
+  SelfCareTodayItem: contracts.selfCareTodayItemSchema,
+  SessionActor: contracts.sessionActorSchema,
+  SessionResponse: contracts.sessionResponseSchema.extend({
+    userPreferences,
+    workspaceSettings,
+  }),
+  SessionWorkspace: contracts.sessionWorkspaceSchema,
+  SessionWorkspaceMembership: contracts.sessionWorkspaceMembershipSchema,
+  Task: contracts.taskSchema,
+  TaskCursorListResponse: contracts.taskCursorListResponseSchema,
+  TaskEventListResponse: contracts.taskEventListResponseSchema,
+  TaskEventRecord: contracts.taskEventRecordSchema,
+  TaskImportance: contracts.taskImportanceSchema,
+  TaskListPageResponse: contracts.taskListPageResponseSchema,
+  TaskListResponse: contracts.taskListResponseSchema,
+  TaskNextStageResponse: contracts.taskNextStageResponseSchema,
+  TaskNextStageUndoResponse: contracts.taskNextStageUndoResponseSchema,
+  TaskReadModelResponse: contracts.taskReadModelResponseSchema,
+  TaskReadModelSource: contracts.taskReadModelSourceSchema,
+  TaskRecord: contracts.taskRecordSchema,
+  TaskResource: contracts.taskResourceSchema,
+  TaskStatus: contracts.taskStatusSchema,
+  TaskTemplate: contracts.taskTemplateSchema,
+  TaskTemplateListResponse: contracts.taskTemplateListResponseSchema,
+  TaskTemplateRecord: contracts.taskTemplateRecordSchema,
+  TaskUrgency: contracts.taskUrgencySchema,
+  UserBackupArchive: backup.userBackupArchiveSchema,
+  UserBackupAsset: backup.userBackupAssetSchema,
+  UserBackupPreviewResponse: backup.userBackupPreviewResponseSchema,
+  UserBackupRestoreResponse: backup.userBackupRestoreResponseSchema,
+  UserBackupRestoreTableResult: backup.userBackupRestoreTableResultSchema,
+  UserPreferences: userPreferences,
+  UserProfile: contracts.userProfileSchema,
+  WeeklySphereStatsRecordResponse:
+    contracts.weeklySphereStatsRecordResponseSchema,
+  WorkspaceGroupRole: contracts.workspaceGroupRoleSchema,
+  WorkspaceInvitationListResponse:
+    contracts.workspaceInvitationListResponseSchema,
+  WorkspaceInvitationRecord: contracts.workspaceInvitationRecordSchema,
+  WorkspaceInvitationStatus: contracts.workspaceInvitationStatusSchema,
+  WorkspaceKind: contracts.workspaceKindSchema,
+  WorkspaceRole: contracts.workspaceRoleSchema,
+  WorkspaceSettings: workspaceSettings,
+  WorkspaceUserListResponse: contracts.workspaceUserListResponseSchema,
+  WorkspaceUserRecord: contracts.workspaceUserRecordSchema,
+} satisfies Record<string, z.ZodType>
+
+type ComponentSchemas = Record<
+  keyof typeof openApiInputContracts | keyof typeof openApiOutputContracts,
   OpenAPIV3.SchemaObject
-> {
-  return {
-    ...createIntegrationSchemas(),
-    ApiError: {
-      additionalProperties: false,
-      properties: {
-        error: {
-          additionalProperties: false,
-          properties: {
-            code: {
-              type: 'string',
-            },
-            details: {
-              nullable: true,
-            },
-            message: {
-              type: 'string',
-            },
-          },
-          required: ['code', 'message'],
-          type: 'object',
-        },
-      },
-      required: ['error'],
-      type: 'object',
-    },
-    JsonObject: genericJsonObjectSchema(),
-    PlannerSearchItem: {
-      type: 'object',
-      additionalProperties: false,
-      required: [
-        'id',
-        'source',
-        'title',
-        'description',
-        'context',
-        'date',
-        'status',
-      ],
-      properties: {
-        id: { type: 'string' },
-        source: {
-          type: 'string',
-          enum: ['tasks', 'shopping', 'cleaning', 'care'],
-        },
-        title: { type: 'string' },
-        description: { type: 'string' },
-        context: { type: 'string' },
-        date: nullableStringSchema(),
-        status: { type: 'string', enum: ['active', 'done', 'archived'] },
-      },
-    },
-    PlannerSearchResponse: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['items', 'hasMore', 'page', 'unavailableSources'],
-      properties: {
-        items: genericJsonArraySchema('PlannerSearchItem'),
-        hasMore: { type: 'boolean' },
-        page: positiveIntegerSchema(),
-        unavailableSources: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['tasks', 'shopping', 'cleaning', 'care'],
-          },
-        },
-      },
-    },
-    AliceOAuthAuthorizeForm: genericJsonObjectSchema(),
-    AliceOAuthTokenRequest: genericJsonObjectSchema(),
-    AliceOAuthTokenResponse: genericJsonObjectSchema(),
-    AliceWebhookRequest: genericJsonObjectSchema(),
-    AliceWebhookResponse: genericJsonObjectSchema(),
-    AuthPasswordResetConfirmInput: {
-      additionalProperties: false,
-      properties: {
-        password: {
-          maxLength: 128,
-          minLength: 6,
-          type: 'string',
-        },
-        token: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['password', 'token'],
-      type: 'object',
-    },
-    AuthPasswordResetRequestInput: {
-      additionalProperties: false,
-      properties: {
-        email: {
-          format: 'email',
-          maxLength: 320,
-          type: 'string',
-        },
-      },
-      required: ['email'],
-      type: 'object',
-    },
-    AuthPasswordUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        currentPassword: {
-          maxLength: 128,
-          minLength: 1,
-          type: 'string',
-        },
-        password: {
-          maxLength: 128,
-          minLength: 6,
-          type: 'string',
-        },
-      },
-      required: ['currentPassword', 'password'],
-      type: 'object',
-    },
-    AuthSignOutInput: {
-      additionalProperties: false,
-      properties: {
-        refreshToken: {
-          description:
-            'Optional for browser clients that use the HttpOnly refresh cookie.',
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      type: 'object',
-    },
-    ...createPlannerPeripheralContractSchemas(),
-    ChaosInboxConvertToTaskRecordResponseList: genericJsonArraySchema(
-      'ChaosInboxConvertToTaskRecordResponse',
+>
+
+export function createComponentSchemas(): ComponentSchemas {
+  const schemas = Object.fromEntries([
+    ...Object.entries(openApiInputContracts).map(
+      ([name, schema]) => [name, contractSchema(schema, 'input')] as const,
     ),
-    ...createCleaningContractSchemas(),
-    ...createHabitContractSchemas(),
-    IdListInput: {
-      additionalProperties: false,
-      properties: {
-        ids: {
-          items: {
-            minLength: 1,
-            type: 'string',
-          },
-          maxItems: 200,
-          minItems: 1,
-          type: 'array',
-        },
-      },
-      required: ['ids'],
-      type: 'object',
-    },
-    ...createSelfCareContractSchemas(),
-    ...createUserBackupContractSchemas(),
-    LifeSphereListResponse: genericJsonArraySchema('LifeSphereRecord'),
-    LifeSphereRecord: genericJsonObjectSchema(),
-    LifeSphereUpdateInput: genericJsonObjectSchema(),
-    NewLifeSphereInput: genericJsonObjectSchema(),
-    UpdateSharedWorkspaceInput: {
-      additionalProperties: false,
-      properties: {
-        name: {
-          maxLength: 80,
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['name'],
-      type: 'object',
-    },
-    UpdateUserProfileInput: genericJsonObjectSchema(),
-    UserProfile: genericJsonObjectSchema(),
-    WeeklySphereStatsRecordResponse: genericJsonObjectSchema(),
-    AuthRefreshInput: {
-      additionalProperties: false,
-      properties: {
-        refreshToken: {
-          description:
-            'Optional for browser clients that use the HttpOnly refresh cookie.',
-          minLength: 1,
-          type: 'string',
-        },
-        rotationRequestId: {
-          description:
-            'A client-persisted UUIDv7 that makes native refresh rotation crash-safe.',
-          format: 'uuid',
-          type: 'string',
-        },
-      },
-      type: 'object',
-    },
-    AuthSignInInput: {
-      additionalProperties: false,
-      properties: {
-        email: {
-          format: 'email',
-          type: 'string',
-        },
-        password: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['email', 'password'],
-      type: 'object',
-    },
-    AuthSignUpInput: {
-      additionalProperties: false,
-      properties: {
-        displayName: {
-          maxLength: 80,
-          minLength: 1,
-          type: 'string',
-        },
-        email: {
-          format: 'email',
-          type: 'string',
-        },
-        password: {
-          maxLength: 128,
-          minLength: 6,
-          type: 'string',
-        },
-      },
-      required: ['email', 'password'],
-      type: 'object',
-    },
-    AuthTokenResponse: {
-      additionalProperties: false,
-      properties: {
-        accessToken: {
-          minLength: 1,
-          type: 'string',
-        },
-        expiresAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        refreshToken: {
-          description:
-            'Returned only for native clients that request body token transport.',
-          minLength: 1,
-          type: 'string',
-        },
-        user: {
-          additionalProperties: false,
-          properties: {
-            email: {
-              format: 'email',
-              type: 'string',
-            },
-            id: {
-              format: 'uuid',
-              type: 'string',
-            },
-          },
-          required: ['email', 'id'],
-          type: 'object',
-        },
-      },
-      required: ['accessToken', 'expiresAt', 'user'],
-      type: 'object',
-    },
-    HealthResponse: {
-      additionalProperties: false,
-      properties: {
-        appEnv: {
-          type: 'string',
-        },
-        databaseStatus: {
-          enum: ['disabled', 'down', 'up'],
-          type: 'string',
-        },
-        status: {
-          enum: ['ok', 'unavailable'],
-          type: 'string',
-        },
-        storageDriver: {
-          enum: ['memory', 'postgres'],
-          type: 'string',
-        },
-        timestamp: {
-          format: 'date-time',
-          type: 'string',
-        },
-      },
-      required: [
-        'appEnv',
-        'databaseStatus',
-        'status',
-        'storageDriver',
-        'timestamp',
-      ],
-      type: 'object',
-    },
-    NewEmojiAssetInput: {
-      additionalProperties: false,
-      properties: {
-        id: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        kind: {
-          $ref: '#/components/schemas/EmojiAssetKind',
-        },
-        keywords: {
-          items: {
-            type: 'string',
-          },
-          type: 'array',
-        },
-        label: {
-          minLength: 1,
-          type: 'string',
-        },
-        shortcode: {
-          minLength: 1,
-          type: 'string',
-        },
-        value: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['label', 'value'],
-      type: 'object',
-    },
-    NewEmojiSetInput: {
-      additionalProperties: false,
-      properties: {
-        description: {
-          type: 'string',
-        },
-        id: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        items: {
-          items: {
-            $ref: '#/components/schemas/NewEmojiAssetInput',
-          },
-          maxItems: 200,
-          minItems: 1,
-          type: 'array',
-        },
-        source: {
-          $ref: '#/components/schemas/EmojiSetSource',
-        },
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['description', 'items', 'title'],
-      type: 'object',
-    },
-    AddEmojiSetItemsInput: {
-      additionalProperties: false,
-      properties: {
-        items: {
-          items: {
-            $ref: '#/components/schemas/NewEmojiAssetInput',
-          },
-          maxItems: 200,
-          minItems: 1,
-          type: 'array',
-        },
-      },
-      required: ['items'],
-      type: 'object',
-    },
-    NewTaskInput: {
-      additionalProperties: false,
-      properties: {
-        assigneeUserId: nullableStringSchema(),
-        dueDate: nullableStringSchema(),
-        id: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        icon: {
-          type: 'string',
-        },
-        importance: {
-          $ref: '#/components/schemas/TaskImportance',
-        },
-        linkedTask: {
-          nullable: true,
-          properties: {
-            id: {
-              type: 'string',
-            },
-            workspaceId: {
-              type: 'string',
-            },
-          },
-          required: ['id', 'workspaceId'],
-          type: 'object',
-        },
-        note: {
-          type: 'string',
-        },
-        plannedDate: nullableStringSchema(),
-        plannedEndTime: nullableStringSchema(),
-        plannedStartTime: nullableStringSchema(),
-        project: {
-          type: 'string',
-        },
-        projectId: nullableStringSchema(),
-        remindBeforeStart: {
-          type: 'boolean',
-        },
-        reminderOffsets: {
-          items: {
-            enum: [15, 30, 60],
-            type: 'integer',
-          },
-          type: 'array',
-        },
-        reminderTimeZone: {
-          type: 'string',
-        },
-        resource: {
-          $ref: '#/components/schemas/TaskResource',
-        },
-        requiresConfirmation: {
-          type: 'boolean',
-        },
-        sphereId: nullableStringSchema(),
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-        urgency: {
-          $ref: '#/components/schemas/TaskUrgency',
-        },
-      },
-      required: [
-        'assigneeUserId',
-        'dueDate',
-        'note',
-        'plannedDate',
-        'plannedEndTime',
-        'plannedStartTime',
-        'project',
-        'projectId',
-        'requiresConfirmation',
-        'title',
-      ],
-      type: 'object',
-    },
-    NewTaskTemplateInput: {
-      additionalProperties: false,
-      properties: {
-        dueDate: nullableStringSchema(),
-        id: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        icon: {
-          type: 'string',
-        },
-        importance: {
-          $ref: '#/components/schemas/TaskImportance',
-        },
-        note: {
-          type: 'string',
-        },
-        plannedDate: nullableStringSchema(),
-        plannedEndTime: nullableStringSchema(),
-        plannedStartTime: nullableStringSchema(),
-        project: {
-          type: 'string',
-        },
-        projectId: nullableStringSchema(),
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-        urgency: {
-          $ref: '#/components/schemas/TaskUrgency',
-        },
-      },
-      required: [
-        'dueDate',
-        'note',
-        'plannedDate',
-        'plannedEndTime',
-        'plannedStartTime',
-        'project',
-        'projectId',
-        'title',
-      ],
-      type: 'object',
-    },
-    EmojiAssetKind: {
-      enum: ['image'],
-      type: 'string',
-    },
-    EmojiAssetRecord: {
-      additionalProperties: false,
-      properties: {
-        createdAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        deletedAt: nullableStringSchema(),
-        emojiSetId: {
-          type: 'string',
-        },
-        id: {
-          type: 'string',
-        },
-        keywords: {
-          items: {
-            type: 'string',
-          },
-          type: 'array',
-        },
-        kind: {
-          $ref: '#/components/schemas/EmojiAssetKind',
-        },
-        label: {
-          minLength: 1,
-          type: 'string',
-        },
-        shortcode: {
-          minLength: 1,
-          type: 'string',
-        },
-        sortOrder: {
-          minimum: 0,
-          type: 'integer',
-        },
-        updatedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        value: {
-          minLength: 1,
-          type: 'string',
-        },
-        version: positiveIntegerSchema(),
-        workspaceId: {
-          type: 'string',
-        },
-      },
-      required: [
-        'createdAt',
-        'deletedAt',
-        'emojiSetId',
-        'id',
-        'keywords',
-        'kind',
-        'label',
-        'shortcode',
-        'sortOrder',
-        'updatedAt',
-        'value',
-        'version',
-        'workspaceId',
-      ],
-      type: 'object',
-    },
-    EmojiSetListResponse: {
-      items: {
-        $ref: '#/components/schemas/EmojiSetRecord',
-      },
-      type: 'array',
-    },
-    EmojiSetRecord: {
-      additionalProperties: false,
-      properties: {
-        createdAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        deletedAt: nullableStringSchema(),
-        description: {
-          type: 'string',
-        },
-        id: {
-          type: 'string',
-        },
-        items: {
-          items: {
-            $ref: '#/components/schemas/EmojiAssetRecord',
-          },
-          type: 'array',
-        },
-        source: {
-          $ref: '#/components/schemas/EmojiSetSource',
-        },
-        status: {
-          enum: ['active', 'archived'],
-          type: 'string',
-        },
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-        updatedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        version: positiveIntegerSchema(),
-        workspaceId: {
-          type: 'string',
-        },
-      },
-      required: [
-        'createdAt',
-        'deletedAt',
-        'description',
-        'id',
-        'items',
-        'source',
-        'status',
-        'title',
-        'updatedAt',
-        'version',
-        'workspaceId',
-      ],
-      type: 'object',
-    },
-    EmojiSetSource: {
-      enum: ['custom'],
-      type: 'string',
-    },
-    SessionActor: {
-      additionalProperties: false,
-      properties: {
-        displayName: {
-          type: 'string',
-        },
-        email: {
-          type: 'string',
-        },
-        id: {
-          type: 'string',
-        },
-      },
-      required: ['displayName', 'email', 'id'],
-      type: 'object',
-    },
-    SessionResponse: {
-      additionalProperties: false,
-      properties: {
-        actor: {
-          $ref: '#/components/schemas/SessionActor',
-        },
-        actorUserId: {
-          type: 'string',
-        },
-        appRole: {
-          $ref: '#/components/schemas/AppRole',
-        },
-        groupRole: nullableRefSchema('WorkspaceGroupRole'),
-        role: {
-          $ref: '#/components/schemas/WorkspaceRole',
-        },
-        source: {
-          enum: ['access_token', 'default', 'headers'],
-          type: 'string',
-        },
-        userPreferences: {
-          $ref: '#/components/schemas/UserPreferences',
-        },
-        workspace: {
-          $ref: '#/components/schemas/SessionWorkspace',
-        },
-        workspaceId: {
-          type: 'string',
-        },
-        workspaceSettings: {
-          $ref: '#/components/schemas/WorkspaceSettings',
-        },
-        workspaces: {
-          items: {
-            $ref: '#/components/schemas/SessionWorkspaceMembership',
-          },
-          type: 'array',
-        },
-      },
-      required: [
-        'actor',
-        'actorUserId',
-        'appRole',
-        'groupRole',
-        'role',
-        'source',
-        'userPreferences',
-        'workspace',
-        'workspaceId',
-        'workspaceSettings',
-        'workspaces',
-      ],
-      type: 'object',
-    },
-    SessionWorkspace: {
-      additionalProperties: false,
-      properties: {
-        id: {
-          type: 'string',
-        },
-        kind: {
-          $ref: '#/components/schemas/WorkspaceKind',
-        },
-        name: {
-          type: 'string',
-        },
-        slug: {
-          type: 'string',
-        },
-      },
-      required: ['id', 'kind', 'name', 'slug'],
-      type: 'object',
-    },
-    SessionWorkspaceMembership: {
-      allOf: [
-        {
-          $ref: '#/components/schemas/SessionWorkspace',
-        },
-        {
-          additionalProperties: false,
-          properties: {
-            groupRole: nullableRefSchema('WorkspaceGroupRole'),
-            role: {
-              $ref: '#/components/schemas/WorkspaceRole',
-            },
-          },
-          required: ['groupRole', 'role'],
-          type: 'object',
-        },
-      ],
-    },
-    WorkspaceGroupRole: {
-      enum: ['group_admin', 'member', 'senior_member'],
-      type: 'string',
-    },
-    WorkspaceKind: {
-      enum: ['personal', 'shared'],
-      type: 'string',
-    },
-    WorkspaceSettings: {
-      additionalProperties: false,
-      properties: {
-        taskCompletionConfettiEnabled: {
-          type: 'boolean',
-        },
-        wakeWordTrainingModeEnabled: {
-          deprecated: true,
-          enum: [false],
-          description:
-            'Legacy compatibility only; always false in responses and ignored in updates.',
-          type: 'boolean',
-        },
-      },
-      required: [
-        'taskCompletionConfettiEnabled',
-        'wakeWordTrainingModeEnabled',
-      ],
-      type: 'object',
-    },
-    CalendarViewMode: {
-      enum: ['day', 'month', 'schedule', 'week'],
-      type: 'string',
-    },
-    EnergyMode: {
-      enum: ['maximum', 'minimum', 'normal'],
-      type: 'string',
-    },
-    UserPreferences: {
-      additionalProperties: false,
-      properties: {
-        calendarViewMode: {
-          $ref: '#/components/schemas/CalendarViewMode',
-        },
-        energyMode: {
-          $ref: '#/components/schemas/EnergyMode',
-        },
-        sharedTaskAssignedNotificationsEnabled: {
-          type: 'boolean',
-        },
-        sharedTaskCreatedNotificationsEnabled: {
-          type: 'boolean',
-        },
-        sharedTaskReadyForReviewNotificationsEnabled: {
-          type: 'boolean',
-        },
-        voiceAssistantEnabled: {
-          deprecated: true,
-          enum: [false],
-          description:
-            'Legacy compatibility only; always false in responses and ignored in updates.',
-          type: 'boolean',
-        },
-      },
-      required: ['calendarViewMode', 'energyMode', 'voiceAssistantEnabled'],
-      type: 'object',
-    },
-    WorkspaceRole: {
-      enum: ['admin', 'guest', 'owner', 'user'],
-      type: 'string',
-    },
-    AppRole: {
-      enum: ['admin', 'guest', 'owner', 'test', 'user'],
-      type: 'string',
-    },
-    AssignableAppRole: {
-      enum: ['admin', 'guest', 'test', 'user'],
-      type: 'string',
-    },
-    AssignableWorkspaceGroupRole: {
-      enum: ['group_admin', 'member', 'senior_member'],
-      type: 'string',
-    },
-    CreateSharedWorkspaceInput: {
-      additionalProperties: false,
-      properties: {
-        name: {
-          maxLength: 80,
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      type: 'object',
-    },
-    AdminUserListResponse: {
-      additionalProperties: false,
-      properties: {
-        users: {
-          items: {
-            $ref: '#/components/schemas/AdminUserRecord',
-          },
-          type: 'array',
-        },
-      },
-      required: ['users'],
-      type: 'object',
-    },
-    AdminUserRecord: {
-      additionalProperties: false,
-      properties: {
-        appRole: {
-          $ref: '#/components/schemas/AppRole',
-        },
-        displayName: {
-          type: 'string',
-        },
-        email: {
-          type: 'string',
-        },
-        id: {
-          type: 'string',
-        },
-        lastSeenAt: {
-          format: 'date-time',
-          nullable: true,
-          type: 'string',
-        },
-        taskCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        updatedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-      },
-      required: [
-        'appRole',
-        'displayName',
-        'email',
-        'id',
-        'lastSeenAt',
-        'taskCount',
-        'updatedAt',
-      ],
-      type: 'object',
-    },
-    AdminUserRoleUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        role: {
-          $ref: '#/components/schemas/AssignableAppRole',
-        },
-      },
-      required: ['role'],
-      type: 'object',
-    },
-    WorkspaceSettingsUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        taskCompletionConfettiEnabled: {
-          type: 'boolean',
-        },
-        wakeWordTrainingModeEnabled: {
-          deprecated: true,
-          description:
-            'Legacy compatibility only; always false in responses and ignored in updates.',
-          type: 'boolean',
-        },
-      },
-      required: ['taskCompletionConfettiEnabled'],
-      type: 'object',
-    },
-    UserPreferencesUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        calendarViewMode: {
-          $ref: '#/components/schemas/CalendarViewMode',
-        },
-        energyMode: {
-          $ref: '#/components/schemas/EnergyMode',
-        },
-        sharedTaskAssignedNotificationsEnabled: {
-          type: 'boolean',
-        },
-        sharedTaskCreatedNotificationsEnabled: {
-          type: 'boolean',
-        },
-        sharedTaskReadyForReviewNotificationsEnabled: {
-          type: 'boolean',
-        },
-        voiceAssistantEnabled: {
-          deprecated: true,
-          description:
-            'Legacy compatibility only; always false in responses and ignored in updates.',
-          type: 'boolean',
-        },
-      },
-      type: 'object',
-    },
-    WorkspaceUserListResponse: {
-      additionalProperties: false,
-      properties: {
-        users: {
-          items: {
-            $ref: '#/components/schemas/WorkspaceUserRecord',
-          },
-          type: 'array',
-        },
-      },
-      required: ['users'],
-      type: 'object',
-    },
-    WorkspaceUserRecord: {
-      additionalProperties: false,
-      properties: {
-        displayName: {
-          type: 'string',
-        },
-        email: {
-          type: 'string',
-        },
-        groupRole: nullableRefSchema('WorkspaceGroupRole'),
-        id: {
-          type: 'string',
-        },
-        isOwner: {
-          type: 'boolean',
-        },
-        joinedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        membershipId: {
-          type: 'string',
-        },
-        updatedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-      },
-      required: [
-        'displayName',
-        'email',
-        'groupRole',
-        'id',
-        'isOwner',
-        'joinedAt',
-        'membershipId',
-        'updatedAt',
-      ],
-      type: 'object',
-    },
-    WorkspaceUserGroupRoleUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        groupRole: {
-          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
-        },
-      },
-      required: ['groupRole'],
-      type: 'object',
-    },
-    WorkspaceInvitationListResponse: {
-      additionalProperties: false,
-      properties: {
-        invitations: {
-          items: {
-            $ref: '#/components/schemas/WorkspaceInvitationRecord',
-          },
-          type: 'array',
-        },
-      },
-      required: ['invitations'],
-      type: 'object',
-    },
-    WorkspaceInvitationStatus: {
-      enum: ['accepted', 'declined', 'pending'],
-      type: 'string',
-    },
-    WorkspaceInvitationRecord: {
-      additionalProperties: false,
-      properties: {
-        email: {
-          type: 'string',
-        },
-        groupRole: {
-          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
-        },
-        id: {
-          type: 'string',
-        },
-        invitedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        status: {
-          $ref: '#/components/schemas/WorkspaceInvitationStatus',
-        },
-        updatedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-      },
-      required: [
-        'email',
-        'groupRole',
-        'id',
-        'invitedAt',
-        'status',
-        'updatedAt',
-      ],
-      type: 'object',
-    },
-    ReceivedWorkspaceInvitationListResponse: {
-      additionalProperties: false,
-      properties: {
-        invitations: {
-          items: {
-            $ref: '#/components/schemas/ReceivedWorkspaceInvitationRecord',
-          },
-          type: 'array',
-        },
-      },
-      required: ['invitations'],
-      type: 'object',
-    },
-    ReceivedWorkspaceInvitationRecord: {
-      additionalProperties: false,
-      properties: {
-        groupRole: {
-          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
-        },
-        id: {
-          type: 'string',
-        },
-        invitedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        status: {
-          enum: ['pending'],
-          type: 'string',
-        },
-        updatedAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        workspace: {
-          $ref: '#/components/schemas/SessionWorkspace',
-        },
-      },
-      required: [
-        'groupRole',
-        'id',
-        'invitedAt',
-        'status',
-        'updatedAt',
-        'workspace',
-      ],
-      type: 'object',
-    },
-    WorkspaceInvitationCreateInput: {
-      additionalProperties: false,
-      properties: {
-        email: {
-          format: 'email',
-          maxLength: 320,
-          type: 'string',
-        },
-        groupRole: {
-          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
-        },
-      },
-      required: ['email'],
-      type: 'object',
-    },
-    TaskListResponse: {
-      items: {
-        $ref: '#/components/schemas/TaskRecord',
-      },
-      type: 'array',
-    },
-    TaskListPageResponse: {
-      additionalProperties: false,
-      properties: {
-        hasMore: {
-          type: 'boolean',
-        },
-        items: {
-          items: {
-            $ref: '#/components/schemas/TaskRecord',
-          },
-          type: 'array',
-        },
-        limit: {
-          maximum: 100,
-          minimum: 1,
-          type: 'integer',
-        },
-        nextOffset: {
-          minimum: 0,
-          nullable: true,
-          type: 'integer',
-        },
-        offset: {
-          minimum: 0,
-          type: 'integer',
-        },
-      },
-      required: ['hasMore', 'items', 'limit', 'nextOffset', 'offset'],
-      type: 'object',
-    },
-    TaskCursorListResponse: {
-      additionalProperties: false,
-      properties: {
-        hasMore: {
-          type: 'boolean',
-        },
-        items: {
-          items: {
-            $ref: '#/components/schemas/TaskRecord',
-          },
-          type: 'array',
-        },
-        limit: {
-          maximum: 500,
-          minimum: 1,
-          type: 'integer',
-        },
-        nextCursor: nullableStringSchema(),
-        returnedCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        totalCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        truncated: {
-          type: 'boolean',
-        },
-      },
-      required: [
-        'hasMore',
-        'items',
-        'limit',
-        'nextCursor',
-        'returnedCount',
-        'totalCount',
-        'truncated',
-      ],
-      type: 'object',
-    },
-    TaskReadModelSource: {
-      additionalProperties: false,
-      properties: {
-        returnedCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        totalCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        truncated: {
-          type: 'boolean',
-        },
-      },
-      required: ['returnedCount', 'totalCount', 'truncated'],
-      type: 'object',
-    },
-    TaskReadModelResponse: {
-      additionalProperties: false,
-      properties: {
-        eventCursor: {
-          minimum: 0,
-          type: 'integer',
-        },
-        historyNextCursor: {
-          nullable: true,
-          type: 'string',
-        },
-        items: {
-          items: {
-            $ref: '#/components/schemas/TaskRecord',
-          },
-          type: 'array',
-        },
-        returnedCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        sources: {
-          additionalProperties: false,
-          properties: {
-            active: {
-              $ref: '#/components/schemas/TaskReadModelSource',
-            },
-            history: {
-              $ref: '#/components/schemas/TaskReadModelSource',
-            },
-            range: {
-              $ref: '#/components/schemas/TaskReadModelSource',
-            },
-          },
-          required: ['active', 'history', 'range'],
-          type: 'object',
-        },
-        totalCount: {
-          minimum: 0,
-          type: 'integer',
-        },
-        truncated: {
-          type: 'boolean',
-        },
-      },
-      required: [
-        'eventCursor',
-        'historyNextCursor',
-        'items',
-        'returnedCount',
-        'sources',
-        'totalCount',
-        'truncated',
-      ],
-      type: 'object',
-    },
-    TaskTemplateListResponse: {
-      items: {
-        $ref: '#/components/schemas/TaskTemplateRecord',
-      },
-      type: 'array',
-    },
-    TaskEventListResponse: {
-      additionalProperties: false,
-      properties: {
-        events: {
-          items: {
-            $ref: '#/components/schemas/TaskEventRecord',
-          },
-          type: 'array',
-        },
-        nextEventId: {
-          minimum: 0,
-          type: 'integer',
-        },
-      },
-      required: ['events', 'nextEventId'],
-      type: 'object',
-    },
-    TaskEventRecord: {
-      additionalProperties: false,
-      properties: {
-        actorUserId: nullableStringSchema(),
-        eventId: {
-          type: 'string',
-        },
-        eventType: {
-          type: 'string',
-        },
-        id: {
-          minimum: 0,
-          type: 'integer',
-        },
-        occurredAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        payload: {
-          additionalProperties: true,
-          type: 'object',
-        },
-        taskId: nullableStringSchema(),
-        workspaceId: {
-          type: 'string',
-        },
-      },
-      required: [
-        'actorUserId',
-        'eventId',
-        'eventType',
-        'id',
-        'occurredAt',
-        'payload',
-        'taskId',
-        'workspaceId',
-      ],
-      type: 'object',
-    },
-    TaskRecord: {
-      allOf: [
-        {
-          $ref: '#/components/schemas/Task',
-        },
-        {
-          additionalProperties: false,
-          properties: {
-            deletedAt: nullableStringSchema(),
-            updatedAt: {
-              format: 'date-time',
-              type: 'string',
-            },
-            version: positiveIntegerSchema(),
-            workspaceId: {
-              type: 'string',
-            },
-          },
-          required: ['deletedAt', 'updatedAt', 'version', 'workspaceId'],
-          type: 'object',
-        },
-      ],
-    },
-    TaskTemplateRecord: {
-      allOf: [
-        {
-          $ref: '#/components/schemas/TaskTemplate',
-        },
-        {
-          additionalProperties: false,
-          properties: {
-            deletedAt: nullableStringSchema(),
-            updatedAt: {
-              format: 'date-time',
-              type: 'string',
-            },
-            version: positiveIntegerSchema(),
-            workspaceId: {
-              type: 'string',
-            },
-          },
-          required: ['deletedAt', 'updatedAt', 'version', 'workspaceId'],
-          type: 'object',
-        },
-      ],
-    },
-    TaskTemplate: {
-      additionalProperties: false,
-      properties: {
-        createdAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        dueDate: nullableStringSchema(),
-        id: {
-          type: 'string',
-        },
-        icon: {
-          type: 'string',
-        },
-        importance: {
-          $ref: '#/components/schemas/TaskImportance',
-        },
-        note: {
-          type: 'string',
-        },
-        plannedDate: nullableStringSchema(),
-        plannedEndTime: nullableStringSchema(),
-        plannedStartTime: nullableStringSchema(),
-        project: {
-          type: 'string',
-        },
-        projectId: nullableStringSchema(),
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-        urgency: {
-          $ref: '#/components/schemas/TaskUrgency',
-        },
-      },
-      required: [
-        'createdAt',
-        'dueDate',
-        'id',
-        'icon',
-        'importance',
-        'note',
-        'plannedDate',
-        'plannedEndTime',
-        'plannedStartTime',
-        'project',
-        'projectId',
-        'title',
-        'urgency',
-      ],
-      type: 'object',
-    },
-    Task: {
-      additionalProperties: false,
-      properties: {
-        assigneeDisplayName: nullableStringSchema(),
-        assigneeUserId: nullableStringSchema(),
-        authorDisplayName: nullableStringSchema(),
-        authorUserId: nullableStringSchema(),
-        completedAt: nullableStringSchema(),
-        chainId: nullableStringSchema(),
-        completionType: {
-          enum: ['advanced', 'completed'],
-          nullable: true,
-          type: 'string',
-        },
-        createdAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        dueDate: nullableStringSchema(),
-        id: {
-          type: 'string',
-        },
-        icon: {
-          type: 'string',
-        },
-        importance: {
-          $ref: '#/components/schemas/TaskImportance',
-        },
-        note: {
-          type: 'string',
-        },
-        plannedDate: nullableStringSchema(),
-        plannedEndTime: nullableStringSchema(),
-        plannedStartTime: nullableStringSchema(),
-        previousTaskId: nullableStringSchema(),
-        project: {
-          type: 'string',
-        },
-        projectId: nullableStringSchema(),
-        remindBeforeStart: {
-          type: 'boolean',
-        },
-        reminderOffsets: {
-          items: {
-            enum: [15, 30, 60],
-            type: 'integer',
-          },
-          type: 'array',
-        },
-        resource: {
-          $ref: '#/components/schemas/TaskResource',
-        },
-        requiresConfirmation: {
-          type: 'boolean',
-        },
-        sphereId: nullableStringSchema(),
-        sourceWorkspace: {
-          nullable: true,
-          properties: {
-            id: {
-              type: 'string',
-            },
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['id', 'name'],
-          type: 'object',
-        },
-        stageIndex: {
-          minimum: 1,
-          nullable: true,
-          type: 'integer',
-        },
-        stageType: {
-          enum: ['parallel', 'task', 'template', 'waiting'],
-          nullable: true,
-          type: 'string',
-        },
-        status: {
-          $ref: '#/components/schemas/TaskStatus',
-        },
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-        urgency: {
-          $ref: '#/components/schemas/TaskUrgency',
-        },
-      },
-      required: [
-        'assigneeDisplayName',
-        'assigneeUserId',
-        'authorDisplayName',
-        'authorUserId',
-        'completedAt',
-        'createdAt',
-        'dueDate',
-        'id',
-        'icon',
-        'importance',
-        'note',
-        'plannedDate',
-        'plannedEndTime',
-        'plannedStartTime',
-        'project',
-        'projectId',
-        'resource',
-        'requiresConfirmation',
-        'sphereId',
-        'status',
-        'title',
-        'urgency',
-      ],
-      type: 'object',
-    },
-    TaskImportance: {
-      enum: ['important', 'not_important'],
-      type: 'string',
-    },
-    TaskResource: {
-      maximum: 5,
-      minimum: -5,
-      nullable: true,
-      type: 'integer',
-    },
-    TaskDetailsUpdateInput: {
-      allOf: [
-        {
-          $ref: '#/components/schemas/NewTaskInput',
-        },
-        {
-          additionalProperties: false,
-          properties: {
-            expectedVersion: positiveIntegerSchema(),
-          },
-          type: 'object',
-        },
-      ],
-    },
-    TaskScheduleInput: {
-      additionalProperties: false,
-      properties: {
-        plannedDate: nullableStringSchema(),
-        plannedEndTime: nullableStringSchema(),
-        plannedStartTime: nullableStringSchema(),
-      },
-      required: ['plannedDate', 'plannedEndTime', 'plannedStartTime'],
-      type: 'object',
-    },
-    TaskPersonalTransferInput: {
-      additionalProperties: false,
-      properties: {
-        expectedVersion: positiveIntegerSchema(),
-      },
-      type: 'object',
-    },
-    TaskChainDetachInput: {
-      additionalProperties: false,
-      properties: {
-        expectedVersion: positiveIntegerSchema(),
-      },
-      type: 'object',
-    },
-    TaskChainCloseInput: {
-      additionalProperties: false,
-      properties: {
-        expectedVersion: positiveIntegerSchema(),
-      },
-      type: 'object',
-    },
-    TaskNextStageInput: {
-      additionalProperties: false,
-      properties: {
-        chainId: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        completeCurrent: {
-          default: false,
-          type: 'boolean',
-        },
-        expectedVersion: positiveIntegerSchema(),
-        nextTaskId: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        note: {
-          maxLength: 2000,
-          type: 'string',
-        },
-        plannedDate: nullableStringSchema(),
-        stageType: {
-          enum: ['task', 'waiting', 'parallel', 'template'],
-          type: 'string',
-        },
-        title: {
-          maxLength: 240,
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      type: 'object',
-    },
-    TaskNextStageUndoInput: {
-      additionalProperties: false,
-      properties: {
-        createdTaskExpectedVersion: positiveIntegerSchema(),
-        createdTaskId: {
-          minLength: 1,
-          type: 'string',
-        },
-        previousChainId: nullableStringSchema(),
-        previousCompletedAt: nullableStringSchema(),
-        previousCompletionType: {
-          enum: ['advanced', 'completed'],
-          nullable: true,
-          type: 'string',
-        },
-        previousPreviousTaskId: nullableStringSchema(),
-        previousStageIndex: {
-          minimum: 1,
-          nullable: true,
-          type: 'integer',
-        },
-        previousStageType: {
-          enum: ['parallel', 'task', 'template', 'waiting'],
-          nullable: true,
-          type: 'string',
-        },
-        previousStatus: {
-          $ref: '#/components/schemas/TaskStatus',
-        },
-        previousTaskExpectedVersion: positiveIntegerSchema(),
-      },
-      required: [
-        'createdTaskId',
-        'previousChainId',
-        'previousCompletedAt',
-        'previousPreviousTaskId',
-        'previousStageIndex',
-        'previousStageType',
-        'previousStatus',
-      ],
-      type: 'object',
-    },
-    TaskNextStageResponse: {
-      additionalProperties: false,
-      properties: {
-        currentTask: {
-          $ref: '#/components/schemas/TaskRecord',
-        },
-        nextTask: {
-          $ref: '#/components/schemas/TaskRecord',
-        },
-        undo: {
-          $ref: '#/components/schemas/TaskNextStageUndoInput',
-        },
-      },
-      required: ['currentTask', 'nextTask', 'undo'],
-      type: 'object',
-    },
-    TaskNextStageUndoResponse: {
-      additionalProperties: false,
-      properties: {
-        currentTask: {
-          $ref: '#/components/schemas/TaskRecord',
-        },
-        removedTaskId: {
-          type: 'string',
-        },
-      },
-      required: ['currentTask', 'removedTaskId'],
-      type: 'object',
-    },
-    TaskScheduleUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        expectedVersion: positiveIntegerSchema(),
-        schedule: {
-          $ref: '#/components/schemas/TaskScheduleInput',
-        },
-      },
-      required: ['schedule'],
-      type: 'object',
-    },
-    TaskStatus: {
-      enum: ['archived', 'done', 'in_progress', 'ready_for_review', 'todo'],
-      type: 'string',
-    },
-    TaskStatusUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        expectedVersion: positiveIntegerSchema(),
-        status: {
-          $ref: '#/components/schemas/TaskStatus',
-        },
-      },
-      required: ['status'],
-      type: 'object',
-    },
-    TaskUrgency: {
-      enum: ['not_urgent', 'urgent'],
-      type: 'string',
-    },
+    ...Object.entries(openApiOutputContracts).map(
+      ([name, schema]) => [name, contractSchema(schema, 'output')] as const,
+    ),
+  ]) as ComponentSchemas
+  // OpenAPI 3.0 cannot express unconstrained nullable JSON as precisely as Zod.
+  const error = schemas.ApiError.properties!.error as OpenAPIV3.SchemaObject
+  error.properties!.details = { nullable: true }
+  schemas.PublicTaskUpdate.minProperties = 2
+  schemas.PublicShoppingUpdate.minProperties = 1
+  for (const [name, field] of [
+    ['UserPreferencesUpdateInput', 'voiceAssistantEnabled'],
+    ['WorkspaceSettingsUpdateInput', 'wakeWordTrainingModeEnabled'],
+  ] as const) {
+    const property = schemas[name].properties![field] as OpenAPIV3.SchemaObject
+    property.deprecated = true
+    property.description =
+      'Retired compatibility field. Accepted and ignored; the response value is always false.'
   }
+  return schemas
 }

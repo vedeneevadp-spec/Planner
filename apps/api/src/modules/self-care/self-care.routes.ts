@@ -47,10 +47,10 @@ const itemParamsSchema = z.object({ itemId: z.string().min(1) })
 const completionParamsSchema = z.object({ completionId: z.string().min(1) })
 const occurrenceParamsSchema = z.object({ occurrenceId: z.string().min(1) })
 const templateParamsSchema = z.object({ templateId: z.string().min(1) })
-const stepsInputSchema = z.object({
+export const stepsInputSchema = z.object({
   steps: z.array(selfCareRitualStepInputSchema),
 })
-const ritualStepDraftDeleteQuerySchema = z.object({
+export const ritualStepDraftDeleteQuerySchema = z.object({
   date: z.string().min(1),
   itemId: z.string().min(1),
   occurrenceId: z.string().min(1).optional(),

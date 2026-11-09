@@ -1,5 +1,10 @@
+import * as contracts from '@planner/contracts'
 import type { OpenAPIV3 } from 'openapi-types'
 
+import { authorizationQuerySchema } from '../modules/auth/oauth.routes.js'
+import { dailyPlanQuerySchema } from '../modules/daily-plans/daily-plan.routes.js'
+import { weeklyStatsQuerySchema } from '../modules/life-spheres/life-sphere.routes.js'
+import { ritualStepDraftDeleteQuerySchema } from '../modules/self-care/self-care.routes.js'
 import {
   datePathParameter,
   emojiSetIdParameter,
@@ -14,11 +19,8 @@ import {
   jsonRequestBody,
   jsonResponse,
   membershipIdParameter,
-  optionalIntegerQueryParameter,
-  optionalStringQueryParameter,
   parameter,
   positiveIntegerSchema,
-  requiredStringQueryParameter,
   sphereIdParameter,
   taskIdParameter,
   taskTemplateIdParameter,
@@ -26,6 +28,7 @@ import {
   zoneIdParameter,
 } from './openapi-helpers.js'
 import { createIntegrationPaths } from './openapi-integrations.js'
+import { contractQueryParameters } from './openapi-schema.js'
 
 export function createPaths(): OpenAPIV3.PathsObject {
   return {
@@ -73,8 +76,12 @@ export function createPaths(): OpenAPIV3.PathsObject {
     '/api/v1/auth/sign-in': {
       post: {
         operationId: 'signIn',
+        parameters: authTokenParameters(),
+        description:
+          'By default the refresh token is sent in an HttpOnly cookie. Native clients request x-auth-token-transport: body and persist refreshToken plus rotationRequestId. Cookie refresh and sign-out may omit the JSON body.',
         requestBody: jsonRequestBody('AuthSignInInput'),
         responses: {
+          401: errorResponse(),
           200: jsonResponse('AuthTokenResponse'),
           400: errorResponse(),
           429: errorResponse(),
@@ -86,6 +93,9 @@ export function createPaths(): OpenAPIV3.PathsObject {
     '/api/v1/auth/sign-up': {
       post: {
         operationId: 'signUp',
+        parameters: authTokenParameters(),
+        description:
+          'By default the refresh token is sent in an HttpOnly cookie. Native clients request x-auth-token-transport: body and persist refreshToken plus rotationRequestId. Cookie refresh and sign-out may omit the JSON body.',
         requestBody: jsonRequestBody('AuthSignUpInput'),
         responses: {
           201: jsonResponse('AuthTokenResponse'),
@@ -100,6 +110,9 @@ export function createPaths(): OpenAPIV3.PathsObject {
     '/api/v1/auth/refresh': {
       post: {
         operationId: 'refreshAuthToken',
+        parameters: authTokenParameters(),
+        description:
+          'By default the refresh token is sent in an HttpOnly cookie. Native clients request x-auth-token-transport: body and persist refreshToken plus rotationRequestId. Cookie refresh and sign-out may omit the JSON body.',
         requestBody: jsonRequestBody('AuthRefreshInput'),
         responses: {
           200: jsonResponse('AuthTokenResponse'),
@@ -124,7 +137,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Resolve current planner session',
         tags: ['session'],
       },
@@ -149,7 +162,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
       post: {
         operationId: 'previewUserBackupImport',
         parameters: workspaceWriteParameters(),
-        requestBody: jsonRequestBody('UserBackupArchive'),
+        requestBody: jsonRequestBody('UserBackupArchiveInput'),
         responses: {
           200: jsonResponse('UserBackupPreviewResponse'),
           400: errorResponse(),
@@ -228,7 +241,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Create a shared workspace for the current actor',
         tags: ['session'],
       },
@@ -256,7 +269,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List application users',
         tags: ['session'],
       },
@@ -276,7 +289,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Permanently delete an application user account',
         tags: ['session'],
       },
@@ -297,7 +310,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Update application user role',
         tags: ['session'],
       },
@@ -317,7 +330,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Update admin-configurable settings for the current workspace',
         tags: ['session'],
       },
@@ -335,7 +348,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List active participants in the current workspace',
         tags: ['session'],
       },
@@ -356,7 +369,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Update an active workspace participant group role',
         tags: ['session'],
       },
@@ -378,7 +391,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Remove an active participant from the current workspace',
         tags: ['session'],
       },
@@ -396,7 +409,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List pending invitations for the current workspace',
         tags: ['session'],
       },
@@ -414,7 +427,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Invite a participant to the current shared workspace',
         tags: ['session'],
       },
@@ -449,7 +462,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Revoke a pending workspace invitation',
         tags: ['session'],
       },
@@ -493,7 +506,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List global icon sets',
         tags: ['emojiSets'],
       },
@@ -512,7 +525,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           409: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Create an icon set',
         tags: ['emojiSets'],
       },
@@ -533,7 +546,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Delete an icon set',
         tags: ['emojiSets'],
       },
@@ -551,7 +564,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Get an icon set',
         tags: ['emojiSets'],
       },
@@ -574,7 +587,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           409: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Add icons to an icon set',
         tags: ['emojiSets'],
       },
@@ -596,7 +609,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Delete an icon from an icon set',
         tags: ['emojiSets'],
       },
@@ -605,39 +618,8 @@ export function createPaths(): OpenAPIV3.PathsObject {
       get: {
         operationId: 'listTasks',
         parameters: [
-          parameter('requiredWorkspaceIdHeader'),
-          {
-            in: 'query',
-            name: 'plannedDate',
-            required: false,
-            schema: {
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'projectId',
-            required: false,
-            schema: {
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'project',
-            required: false,
-            schema: {
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'status',
-            required: false,
-            schema: {
-              $ref: '#/components/schemas/TaskStatus',
-            },
-          },
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.taskListFiltersSchema),
         ],
         responses: {
           200: jsonResponse('TaskListResponse'),
@@ -645,7 +627,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List tasks in a workspace',
         tags: ['tasks'],
       },
@@ -662,7 +644,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Create a task',
         tags: ['tasks'],
       },
@@ -671,58 +653,8 @@ export function createPaths(): OpenAPIV3.PathsObject {
       get: {
         operationId: 'listTasksPage',
         parameters: [
-          parameter('requiredWorkspaceIdHeader'),
-          {
-            in: 'query',
-            name: 'limit',
-            required: false,
-            schema: {
-              maximum: 100,
-              minimum: 1,
-              type: 'integer',
-            },
-          },
-          {
-            in: 'query',
-            name: 'offset',
-            required: false,
-            schema: {
-              minimum: 0,
-              type: 'integer',
-            },
-          },
-          {
-            in: 'query',
-            name: 'plannedDate',
-            required: false,
-            schema: {
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'projectId',
-            required: false,
-            schema: {
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'sphereId',
-            required: false,
-            schema: {
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'status',
-            required: false,
-            schema: {
-              $ref: '#/components/schemas/TaskStatus',
-            },
-          },
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.taskListFiltersSchema),
         ],
         responses: {
           200: jsonResponse('TaskListPageResponse'),
@@ -730,7 +662,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List tasks in a workspace with pagination metadata',
         tags: ['tasks'],
       },
@@ -739,76 +671,8 @@ export function createPaths(): OpenAPIV3.PathsObject {
       get: {
         operationId: 'listTasksCursor',
         parameters: [
-          parameter('requiredWorkspaceIdHeader'),
-          {
-            in: 'query',
-            name: 'cursor',
-            required: false,
-            schema: {
-              maxLength: 2048,
-              minLength: 1,
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'dateFrom',
-            required: false,
-            schema: {
-              format: 'date',
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'dateMode',
-            required: false,
-            schema: {
-              default: 'relevant',
-              enum: ['planned', 'relevant'],
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'dateTo',
-            required: false,
-            schema: {
-              format: 'date',
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'direction',
-            required: false,
-            schema: {
-              default: 'asc',
-              enum: ['asc', 'desc'],
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'limit',
-            required: false,
-            schema: {
-              default: 100,
-              maximum: 500,
-              minimum: 1,
-              type: 'integer',
-            },
-          },
-          {
-            in: 'query',
-            name: 'scope',
-            required: false,
-            schema: {
-              default: 'all',
-              enum: ['active', 'all', 'closed'],
-              type: 'string',
-            },
-          },
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.taskCursorListFiltersSchema),
         ],
         responses: {
           200: jsonResponse('TaskCursorListResponse'),
@@ -816,7 +680,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List a bounded task page using a stable keyset cursor',
         tags: ['tasks'],
       },
@@ -825,58 +689,8 @@ export function createPaths(): OpenAPIV3.PathsObject {
       get: {
         operationId: 'getTaskReadModel',
         parameters: [
-          parameter('requiredWorkspaceIdHeader'),
-          {
-            in: 'query',
-            name: 'dateFrom',
-            required: true,
-            schema: {
-              format: 'date',
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'dateTo',
-            required: true,
-            schema: {
-              format: 'date',
-              type: 'string',
-            },
-          },
-          {
-            in: 'query',
-            name: 'activeLimit',
-            required: false,
-            schema: {
-              default: 500,
-              maximum: 500,
-              minimum: 1,
-              type: 'integer',
-            },
-          },
-          {
-            in: 'query',
-            name: 'rangeLimit',
-            required: false,
-            schema: {
-              default: 250,
-              maximum: 500,
-              minimum: 1,
-              type: 'integer',
-            },
-          },
-          {
-            in: 'query',
-            name: 'historyLimit',
-            required: false,
-            schema: {
-              default: 100,
-              maximum: 250,
-              minimum: 0,
-              type: 'integer',
-            },
-          },
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.taskReadModelFiltersSchema),
         ],
         responses: {
           200: jsonResponse('TaskReadModelResponse'),
@@ -884,7 +698,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Load a bounded task snapshot for planner surfaces',
         tags: ['tasks'],
       },
@@ -893,26 +707,8 @@ export function createPaths(): OpenAPIV3.PathsObject {
       get: {
         operationId: 'listTaskEvents',
         parameters: [
-          parameter('requiredWorkspaceIdHeader'),
-          {
-            in: 'query',
-            name: 'afterEventId',
-            required: false,
-            schema: {
-              minimum: 0,
-              type: 'integer',
-            },
-          },
-          {
-            in: 'query',
-            name: 'limit',
-            required: false,
-            schema: {
-              maximum: 500,
-              minimum: 1,
-              type: 'integer',
-            },
-          },
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.taskEventListFiltersSchema),
         ],
         responses: {
           200: jsonResponse('TaskEventListResponse'),
@@ -920,7 +716,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List task events for cursor-based sync',
         tags: ['tasks'],
       },
@@ -935,7 +731,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'List task templates in a workspace',
         tags: ['taskTemplates'],
       },
@@ -952,7 +748,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Create a task template',
         tags: ['taskTemplates'],
       },
@@ -974,7 +770,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Soft-delete a task template',
         tags: ['taskTemplates'],
       },
@@ -990,7 +786,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           403: errorResponse(),
           404: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Get a task by id',
         tags: ['tasks'],
       },
@@ -1010,7 +806,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Update task details',
         tags: ['tasks'],
       },
@@ -1037,7 +833,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Soft-delete a task',
         tags: ['tasks'],
       },
@@ -1059,7 +855,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Create a linked personal copy of a shared task',
         tags: ['tasks'],
       },
@@ -1081,7 +877,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Move an authored shared task to personal workspace',
         tags: ['tasks'],
       },
@@ -1103,7 +899,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Create the next task stage in a task chain',
         tags: ['tasks'],
       },
@@ -1125,7 +921,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Undo creation of the next task stage',
         tags: ['tasks'],
       },
@@ -1147,7 +943,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Detach a task from its task chain',
         tags: ['tasks'],
       },
@@ -1169,7 +965,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Mark a task chain as completed',
         tags: ['tasks'],
       },
@@ -1191,7 +987,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Update task schedule',
         tags: ['tasks'],
       },
@@ -1213,7 +1009,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           404: errorResponse(),
           409: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary: 'Update task status',
         tags: ['tasks'],
       },
@@ -1225,6 +1021,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
 type ApiParameter = OpenAPIV3.ParameterObject | OpenAPIV3.ReferenceObject
 
 interface JsonOperationInput {
+  description?: string
   noContentDescription?: string
   operationId: string
   parameters?: ApiParameter[]
@@ -1250,6 +1047,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
     '/api/v1/auth/password': {
       patch: createJsonOperation({
         operationId: 'updatePassword',
+        parameters: authTokenParameters(),
+        description:
+          'By default the refresh token is sent in an HttpOnly cookie. Native clients request x-auth-token-transport: body and persist refreshToken plus rotationRequestId. Cookie refresh and sign-out may omit the JSON body.',
         requestSchema: 'AuthPasswordUpdateInput',
         responseSchema: 'AuthTokenResponse',
         security: authenticatedSecurity(),
@@ -1260,6 +1060,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
     '/api/v1/auth/password-reset/confirm': {
       post: createJsonOperation({
         operationId: 'confirmPasswordReset',
+        parameters: authTokenParameters(),
+        description:
+          'By default the refresh token is sent in an HttpOnly cookie. Native clients request x-auth-token-transport: body and persist refreshToken plus rotationRequestId. Cookie refresh and sign-out may omit the JSON body.',
         requestSchema: 'AuthPasswordResetConfirmInput',
         responseSchema: 'AuthTokenResponse',
         summary: 'Complete password reset and issue a new session',
@@ -1288,29 +1091,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'searchPlanner',
         parameters: [
-          ...workspaceReadParameters(),
-          {
-            in: 'query',
-            name: 'query',
-            required: true,
-            schema: { type: 'string', minLength: 1, maxLength: 200 },
-          },
-          {
-            in: 'query',
-            name: 'source',
-            schema: {
-              type: 'string',
-              enum: ['all', 'tasks', 'shopping', 'cleaning', 'care'],
-              default: 'all',
-            },
-          },
-          {
-            in: 'query',
-            name: 'includeCompleted',
-            schema: { type: 'boolean', default: true },
-          },
-          optionalIntegerQueryParameter('page', 1, 10000),
-          optionalIntegerQueryParameter('limit', 1, 50),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.plannerSearchQuerySchema),
         ],
         responseSchema: 'PlannerSearchResponse',
         security: authenticatedSecurity(),
@@ -1323,12 +1105,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'listChaosInboxItems',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('status'),
-          optionalStringQueryParameter('kind'),
-          optionalStringQueryParameter('sphereId'),
-          optionalIntegerQueryParameter('page', 1),
-          optionalIntegerQueryParameter('limit', 1, 200),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.chaosInboxListFiltersSchema),
         ],
         responseSchema: 'ChaosInboxListRecordResponse',
         security: authenticatedSecurity(),
@@ -1422,8 +1200,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getCleaningToday',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.cleaningTodayQuerySchema),
         ],
         responseSchema: 'CleaningTodayResponse',
         security: authenticatedSecurity(),
@@ -1520,8 +1298,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getDailyPlan',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(dailyPlanQuerySchema),
         ],
         responseSchema: 'DailyPlanRecord',
         security: authenticatedSecurity(),
@@ -1531,8 +1309,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       put: createJsonOperation({
         operationId: 'saveDailyPlan',
         parameters: [
-          ...workspaceWriteParameters(),
-          requiredStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          { $ref: '#/components/parameters/actorUserIdHeader' },
+          ...contractQueryParameters(dailyPlanQuerySchema),
         ],
         requestSchema: 'DailyPlanUpsertInput',
         responseSchema: 'DailyPlanRecord',
@@ -1587,9 +1366,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getHabitStats',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('from'),
-          requiredStringQueryParameter('to'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.habitStatsQuerySchema),
         ],
         responseSchema: 'HabitStatsResponse',
         security: authenticatedSecurity(),
@@ -1601,8 +1379,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getHabitsToday',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.habitTodayQuerySchema),
         ],
         responseSchema: 'HabitTodayResponse',
         security: authenticatedSecurity(),
@@ -1661,10 +1439,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'listSelfCareItems',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('type'),
-          optionalStringQueryParameter('category'),
-          optionalStringQueryParameter('status'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareListQuerySchema),
         ],
         responseSchema: 'SelfCareListResponse',
         security: authenticatedSecurity(),
@@ -1697,8 +1473,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCareDashboard',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareDateQuerySchema),
         ],
         responseSchema: 'SelfCareDashboardResponse',
         security: authenticatedSecurity(),
@@ -1710,9 +1486,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCarePlan',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('from'),
-          requiredStringQueryParameter('to'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareRangeQuerySchema),
         ],
         responseSchema: 'SelfCarePlanResponse',
         security: authenticatedSecurity(),
@@ -1724,9 +1499,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCareOccurrences',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('from'),
-          requiredStringQueryParameter('to'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareRangeQuerySchema),
         ],
         responseSchema: 'SelfCareOccurrenceListResponse',
         security: authenticatedSecurity(),
@@ -1738,8 +1512,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCareRitualStepDrafts',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareDateQuerySchema),
         ],
         responseSchema: 'SelfCareRitualStepDraftListResponse',
         security: authenticatedSecurity(),
@@ -1758,10 +1532,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       delete: createJsonOperation({
         operationId: 'deleteSelfCareRitualStepDraft',
         parameters: [
-          ...workspaceWriteParameters(),
-          requiredStringQueryParameter('date'),
-          requiredStringQueryParameter('itemId'),
-          optionalStringQueryParameter('occurrenceId'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          { $ref: '#/components/parameters/actorUserIdHeader' },
+          ...contractQueryParameters(ritualStepDraftDeleteQuerySchema),
         ],
         responseSchema: 'SelfCareRitualStepDraftListResponse',
         security: authenticatedSecurity(),
@@ -1773,9 +1546,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCareHistory',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('from'),
-          requiredStringQueryParameter('to'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareRangeQuerySchema),
         ],
         responseSchema: 'SelfCareHistoryResponse',
         security: authenticatedSecurity(),
@@ -1787,9 +1559,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCareAnalytics',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('from'),
-          requiredStringQueryParameter('to'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareRangeQuerySchema),
         ],
         responseSchema: 'SelfCareAnalyticsResponse',
         security: authenticatedSecurity(),
@@ -1801,8 +1572,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getSelfCareDailyState',
         parameters: [
-          ...workspaceReadParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(contracts.selfCareDateQuerySchema),
         ],
         responseSchema: 'SelfCareDailyState',
         security: authenticatedSecurity(),
@@ -1812,8 +1583,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       put: createJsonOperation({
         operationId: 'upsertSelfCareDailyState',
         parameters: [
-          ...workspaceWriteParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          { $ref: '#/components/parameters/actorUserIdHeader' },
+          ...contractQueryParameters(contracts.selfCareDateQuerySchema),
         ],
         requestSchema: 'SelfCareDailyStateInput',
         responseSchema: 'SelfCareDailyState',
@@ -2029,8 +1801,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       post: createJsonOperation({
         operationId: 'enableSelfCareGentleMode',
         parameters: [
-          ...workspaceWriteParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          { $ref: '#/components/parameters/actorUserIdHeader' },
+          ...contractQueryParameters(contracts.selfCareDateQuerySchema),
         ],
         responseSchema: 'SelfCareSettingsResponse',
         security: authenticatedSecurity(),
@@ -2042,8 +1815,9 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       post: createJsonOperation({
         operationId: 'disableSelfCareGentleMode',
         parameters: [
-          ...workspaceWriteParameters(),
-          optionalStringQueryParameter('date'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          { $ref: '#/components/parameters/actorUserIdHeader' },
+          ...contractQueryParameters(contracts.selfCareDateQuerySchema),
         ],
         responseSchema: 'SelfCareSettingsResponse',
         security: authenticatedSecurity(),
@@ -2134,9 +1908,8 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createJsonOperation({
         operationId: 'getLifeSphereWeeklyStats',
         parameters: [
-          ...workspaceReadParameters(),
-          requiredStringQueryParameter('from'),
-          requiredStringQueryParameter('to'),
+          { $ref: '#/components/parameters/requiredWorkspaceIdHeader' },
+          ...contractQueryParameters(weeklyStatsQuerySchema),
         ],
         responseSchema: 'WeeklySphereStatsRecordResponse',
         security: authenticatedSecurity(),
@@ -2148,6 +1921,7 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       get: createHtmlOperation(
         'getAliceOAuthAuthorizePage',
         'Render Alice OAuth authorization page',
+        { parameters: contractQueryParameters(authorizationQuerySchema) },
       ),
       post: createHtmlOperation(
         'submitAliceOAuthAuthorizePage',
@@ -2158,13 +1932,30 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       ),
     },
     '/api/v1/oauth/alice/token': {
-      post: createJsonOperation({
+      post: {
         operationId: 'exchangeAliceOAuthToken',
-        requestSchema: 'AliceOAuthTokenRequest',
-        responseSchema: 'AliceOAuthTokenResponse',
+        description:
+          'Client credentials use HTTP Basic or client_id/client_secret in the body. Authorization-code grants also require code and redirect_uri; refresh grants require refresh_token.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: { $ref: '#/components/schemas/AliceOAuthTokenRequest' },
+            },
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AliceOAuthTokenRequest' },
+            },
+          },
+        },
+        responses: {
+          200: jsonResponse('AliceOAuthTokenResponse'),
+          400: jsonResponse('OAuthError'),
+          401: jsonResponse('OAuthError'),
+          503: jsonResponse('OAuthError'),
+        },
         summary: 'Exchange Alice OAuth authorization code or refresh token',
         tags: ['alice'],
-      }),
+      },
     },
     '/api/v1/profile': {
       delete: createJsonOperation({
@@ -2253,6 +2044,7 @@ function createJsonOperation(
 
   return {
     operationId: input.operationId,
+    ...(input.description ? { description: input.description } : {}),
     ...(input.parameters ? { parameters: input.parameters } : {}),
     ...(input.requestSchema
       ? { requestBody: jsonRequestBody(input.requestSchema) }
@@ -2276,12 +2068,25 @@ function createJsonOperation(
 function createHtmlOperation(
   operationId: string,
   summary: string,
-  input: { requestSchema?: string } = {},
+  input: {
+    requestSchema?: string
+    parameters?: OpenAPIV3.ParameterObject[]
+  } = {},
 ): OpenAPIV3.OperationObject {
   return {
     operationId,
+    ...(input.parameters ? { parameters: input.parameters } : {}),
     ...(input.requestSchema
-      ? { requestBody: jsonRequestBody(input.requestSchema) }
+      ? {
+          requestBody: {
+            required: true,
+            content: {
+              'application/x-www-form-urlencoded': {
+                schema: { $ref: `#/components/schemas/${input.requestSchema}` },
+              },
+            },
+          },
+        }
       : {}),
     responses: {
       200: {
@@ -2374,7 +2179,7 @@ function cleaningTaskActionOperation(
 }
 
 function authenticatedSecurity(): OpenAPIV3.SecurityRequirementObject[] {
-  return [{ bearerAuth: [] }, {}]
+  return [{ bearerAuth: [] }]
 }
 
 function workspaceReadParameters(): ApiParameter[] {
@@ -2401,6 +2206,32 @@ function cleaningWriteParameters(): ApiParameter[] {
         format: 'uuid',
         type: 'string',
       },
+    },
+  ]
+}
+
+function authTokenParameters(): OpenAPIV3.ParameterObject[] {
+  return [
+    {
+      in: 'header',
+      name: 'x-auth-token-transport',
+      required: false,
+      schema: { type: 'string', enum: ['body'] },
+      description:
+        'Return refreshToken in the JSON response for native clients; otherwise use the HttpOnly cookie.',
+    },
+    {
+      in: 'header',
+      name: 'x-auth-session-persistence',
+      required: false,
+      schema: { type: 'string', enum: ['session'] },
+      description: 'Use a session cookie; omit for a persistent cookie.',
+    },
+    {
+      in: 'header',
+      name: 'x-auth-device-id',
+      required: false,
+      schema: { type: 'string', maxLength: 128 },
     },
   ]
 }

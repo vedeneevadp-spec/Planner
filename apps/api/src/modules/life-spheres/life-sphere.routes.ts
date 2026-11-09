@@ -20,7 +20,7 @@ const sphereParamsSchema = z.object({
   sphereId: z.string().min(1),
 })
 
-const weeklyStatsQuerySchema = z.object({
+export const weeklyStatsQuerySchema = z.object({
   from: z.string().min(1),
   to: z.string().min(1),
 })
