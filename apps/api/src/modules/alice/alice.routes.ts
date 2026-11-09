@@ -40,7 +40,7 @@ const aliceNluEntitySchema = z
   })
   .passthrough()
 
-const aliceWebhookRequestSchema = z
+export const aliceWebhookRequestSchema = z
   .object({
     account_linking_complete_event: z.unknown().optional(),
     meta: z

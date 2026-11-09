@@ -11,7 +11,7 @@ import {
 import type { AuthRequestMetadata } from './auth.model.js'
 import type { AuthService } from './auth.service.js'
 
-const authorizationQuerySchema = z.object({
+export const authorizationQuerySchema = z.object({
   client_id: z.string().min(1),
   redirect_uri: z.string().url(),
   response_type: z.literal('code'),
@@ -19,14 +19,14 @@ const authorizationQuerySchema = z.object({
   state: z.string().optional().default(''),
 })
 
-const authorizationFormSchema = authorizationQuerySchema.extend({
+export const authorizationFormSchema = authorizationQuerySchema.extend({
   displayName: z.string().trim().max(80).optional().default(''),
   email: z.string().trim().email().max(320),
   mode: z.enum(['login', 'register']).optional().default('login'),
   password: z.string().min(1).max(128),
 })
 
-const tokenRequestSchema = z.object({
+export const tokenRequestSchema = z.object({
   client_id: z.string().optional(),
   client_secret: z.string().optional(),
   code: z.string().optional(),

@@ -16,7 +16,7 @@ import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from '../session/index.js'
 import type { DailyPlanService } from './daily-plan.service.js'
 
-const dailyPlanQuerySchema = z.object({
+export const dailyPlanQuerySchema = z.object({
   date: z.string().min(1),
 })
 

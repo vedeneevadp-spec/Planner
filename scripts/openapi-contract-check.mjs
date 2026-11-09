@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { assertRouteContracts } from './openapi-route-contracts.mjs'
 
 import {
   cleaningFrequencyTypeSchema,
@@ -22,26 +23,9 @@ const DOCUMENTATION_ROUTES = new Set([routeKey('get', '/api/openapi.json')])
 
 const DOCUMENTATION_ROUTE_PREFIXES = ['get /api/docs']
 
-const OPTIONAL_DOCUMENTED_ROUTES = new Set([
-  routeKey('get', '/api/v1/backups/export'),
-  routeKey('post', '/api/v1/backups/import/preview'),
-  routeKey('post', '/api/v1/backups/import/restore'),
-  routeKey('patch', '/api/v1/auth/password'),
-  routeKey('post', '/api/v1/auth/password-reset/confirm'),
-  routeKey('post', '/api/v1/auth/password-reset/request'),
-  routeKey('post', '/api/v1/auth/refresh'),
-  routeKey('post', '/api/v1/auth/sign-in'),
-  routeKey('post', '/api/v1/auth/sign-out'),
-  routeKey('post', '/api/v1/auth/sign-up'),
-  routeKey('get', '/api/v1/oauth/alice/authorize'),
-  routeKey('post', '/api/v1/oauth/alice/authorize'),
-  routeKey('post', '/api/v1/oauth/alice/token'),
-])
-
-const OPENAPI_DOCUMENTATION_BACKLOG = new Set([
-  // Follow-up: document the ChatGPT MCP/OAuth root endpoints once public API docs
-  // include non-/api integration surfaces. Current MCP docs live in
-  // docs/mcp-haotika-chatgpt.md and /docs/mcp-haotika.
+const SEPARATE_MCP_DOCUMENTATION_ROUTES = new Set([
+  // The ChatGPT MCP/OAuth protocol has its own documentation in
+  // docs/mcp-haotika-chatgpt.md and /docs/mcp-haotika, separate from REST.
   routeKey('get', '/.well-known/oauth-authorization-server'),
   routeKey('get', '/.well-known/oauth-protected-resource'),
   routeKey('get', '/docs/mcp-haotika'),
@@ -53,8 +37,10 @@ const OPENAPI_DOCUMENTATION_BACKLOG = new Set([
 ])
 
 const kernel = createApiKernel({
-  API_AUTH_MODE: 'disabled',
-  API_STORAGE_DRIVER: 'memory',
+  API_AUTH_MODE: 'jwt',
+  API_STORAGE_DRIVER: 'postgres',
+  DATABASE_URL: 'postgres://openapi:openapi@127.0.0.1:1/openapi',
+  AUTH_JWT_SECRET: 'openapi-check-only-secret-at-least-32-characters',
   NODE_ENV: 'test',
 })
 
@@ -65,7 +51,28 @@ try {
   })
   assert.equal(response.statusCode, 200)
 
-  const document = response.json()
+  const publicDocument = response.json()
+  const document = kernel.app.swagger()
+  assert.deepEqual(
+    [...collectDocumentedRouteKeys(publicDocument)].sort(),
+    [...collectDocumentedRouteKeys(document)]
+      .filter((key) => key.includes(' /api/public/v1/'))
+      .sort(),
+  )
+  assert.equal(collectDocumentedRouteKeys(publicDocument).size, 9)
+  assert.deepEqual(Object.keys(publicDocument.components.securitySchemes), [
+    'apiKeyAuth',
+  ])
+  for (const schema of [
+    'UserProfile',
+    'SessionResponse',
+    'UserBackupArchive',
+    'CreateApiKeyInput',
+  ]) {
+    assert.equal(publicDocument.components.schemas[schema], undefined)
+  }
+  for (const spec of [document, publicDocument]) assertReferences(spec, spec)
+  const routeContractCounts = await assertRouteContracts(document)
   const registeredRoutes = getRegisteredApiRoutes(kernel.app)
   const actualRouteKeys = new Set(
     registeredRoutes.map((route) => routeKey(route.method, route.path)),
@@ -348,7 +355,7 @@ try {
         !DOCUMENTATION_ROUTE_PREFIXES.some((prefix) =>
           key.startsWith(prefix),
         ) &&
-        !OPENAPI_DOCUMENTATION_BACKLOG.has(key) &&
+        !SEPARATE_MCP_DOCUMENTATION_ROUTES.has(key) &&
         !documentedRouteKeys.has(key),
     )
     .sort()
@@ -358,15 +365,12 @@ try {
     [],
     [
       'Fastify routes are missing from OpenAPI.',
-      'Document the route in apps/api/src/bootstrap/openapi.ts, or add a temporary entry to OPENAPI_DOCUMENTATION_BACKLOG with an explicit follow-up.',
+      'Document the REST route in apps/api/src/bootstrap/openapi-paths.ts.',
     ].join(' '),
   )
 
   const staleOpenApiRoutes = [...documentedRouteKeys]
-    .filter(
-      (key) =>
-        !actualRouteKeys.has(key) && !OPTIONAL_DOCUMENTED_ROUTES.has(key),
-    )
+    .filter((key) => !actualRouteKeys.has(key))
     .sort()
 
   assert.deepEqual(
@@ -382,7 +386,11 @@ try {
     'ApiError.details must remain documented for diagnostic metadata.',
   )
 
-  console.log('OpenAPI contract check passed.')
+  console.log('OpenAPI contract check passed.', {
+    operations: documentedRouteKeys.size,
+    publicOperations: collectDocumentedRouteKeys(publicDocument).size,
+    ...routeContractCounts,
+  })
 } finally {
   await destroyApiKernel(kernel)
 }
@@ -448,4 +456,20 @@ function assertSchemaPropertyEnumMatches(
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function assertReferences(document, value) {
+  if (!value || typeof value !== 'object') return
+  if (typeof value.$ref === 'string') {
+    assert.ok(
+      value.$ref.startsWith('#/'),
+      'External schema references must be checked explicitly',
+    )
+    const target = value.$ref
+      .split('/')
+      .slice(1)
+      .reduce((current, key) => current?.[key], document)
+    assert.ok(target, 'Unresolved OpenAPI reference: ' + value.$ref)
+  }
+  for (const child of Object.values(value)) assertReferences(document, child)
 }

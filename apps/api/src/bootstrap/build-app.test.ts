@@ -3650,41 +3650,25 @@ void describe('buildApiApp', () => {
         `${origin}/`,
       )
     }
-    assert.ok(body.paths?.['/api/v1/emoji-sets'])
-    assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}'])
-    assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}/items'])
+    assert.ok(body.paths?.['/api/public/v1/tasks'])
+    assert.ok(body.paths?.['/api/public/v1/shopping'])
     assert.ok(
-      body.paths?.['/api/v1/emoji-sets/{emojiSetId}/items/{iconAssetId}'],
+      Object.keys(body.paths ?? {}).every((path) =>
+        path.startsWith('/api/public/v1/'),
+      ),
     )
-    assert.ok(body.paths?.['/api/v1/life-spheres'])
-    assert.ok(body.paths?.['/api/v1/life-spheres/{sphereId}'])
-    assert.ok(body.paths?.['/api/v1/life-spheres/weekly-stats'])
-    assert.ok(body.paths?.['/api/v1/task-events'])
-    assert.ok(body.paths?.['/api/v1/task-templates'])
-    assert.ok(body.paths?.['/api/v1/task-templates/{templateId}'])
-    assert.ok(body.paths?.['/api/v1/tasks'])
-    assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
-    assert.ok(body.paths?.['/api/v1/workspace-invitations'])
-    assert.ok(body.paths?.['/api/v1/workspace-invitations/{invitationId}'])
-    assert.ok(body.paths?.['/api/v1/workspace-users'])
-    assert.ok(body.paths?.['/api/v1/workspace-users/{membershipId}'])
-    assert.ok(body.paths?.['/api/v1/workspace-users/{membershipId}/group-role'])
-    assert.ok(body.paths?.['/api/v1/workspaces/shared'])
-    assert.ok(
-      body.components?.schemas?.PushDeviceRecord?.properties?.workspaceId,
-    )
-    assert.ok(
-      body.components?.schemas?.UserPreferences?.properties
-        ?.sharedTaskCreatedNotificationsEnabled,
-    )
-    assert.ok(
-      body.components?.schemas?.UserPreferencesUpdateInput?.properties
-        ?.sharedTaskAssignedNotificationsEnabled,
-    )
-    assert.ok(
-      body.components?.schemas?.UserPreferencesUpdateInput?.properties
-        ?.sharedTaskReadyForReviewNotificationsEnabled,
-    )
+    assert.equal(body.components?.schemas?.UserPreferences, undefined)
+    assert.equal(body.components?.schemas?.PushDeviceRecord, undefined)
+    for (const url of ['/api/docs/json', '/api/docs/yaml']) {
+      const swaggerDocument: { statusCode: number; body: string } =
+        await app.inject({ method: 'GET', url })
+      assert.equal(swaggerDocument.statusCode, 200)
+      assert.ok(swaggerDocument.body.includes('/api/public/v1/tasks'))
+      assert.ok(!swaggerDocument.body.includes('/api/v1/'))
+      assert.ok(!swaggerDocument.body.includes('UserPreferences'))
+    }
+    // The complete catalog remains available to development tools and CI.
+    assert.ok(app.swagger().paths?.['/api/v1/tasks'])
   })
 
   void it('serves the Swagger UI with its static security policy', async () => {
