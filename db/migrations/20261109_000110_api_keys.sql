@@ -19,6 +19,10 @@ create index api_keys_user_id on app.api_keys(user_id, created_at desc);
 alter table app.api_keys enable row level security;
 revoke all on app.api_keys from public, authenticated;
 
+-- The isolated backup login must include the new table in logical backups.
+create policy planner_backup_select_all on app.api_keys for select to public
+  using (session_user = 'planner_backup');
+
 -- Management runs with the signed-in user's RLS claims. Hash lookup is the only
 -- pre-authentication operation; it also checks live user/workspace membership.
 create function app.api_keys_create(
@@ -87,3 +91,16 @@ grant execute on function app.api_keys_create(uuid, uuid, text, text, text, text
 grant execute on function app.api_keys_list() to authenticated;
 grant execute on function app.api_keys_revoke(uuid) to authenticated;
 grant execute on function app.api_keys_authenticate(text) to authenticated;
+
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'planner_backup') then
+    revoke all on app.api_keys from planner_backup;
+    grant select on app.api_keys to planner_backup;
+    revoke execute on function app.api_keys_create(uuid, uuid, text, text, text, text[], timestamptz) from planner_backup;
+    revoke execute on function app.api_keys_list() from planner_backup;
+    revoke execute on function app.api_keys_revoke(uuid) from planner_backup;
+    revoke execute on function app.api_keys_authenticate(text) from planner_backup;
+  end if;
+end;
+$$;
