@@ -449,7 +449,7 @@ async function withRepositoryErrorMapping<T>(
 }
 
 function getAuthSessionCacheKey(context: SessionContext): string | null {
-  if (!context.auth) {
+  if (!context.auth || context.auth.claims.payload.api_key_id) {
     return null
   }
 

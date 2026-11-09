@@ -2,6 +2,7 @@ type WorkspaceKind = 'personal' | 'shared'
 
 export type AppRouteId =
   | 'admin'
+  | 'apiKeys'
   | 'calendar'
   | 'cleaning'
   | 'cleaningSettingsGeneral'
@@ -54,6 +55,11 @@ const allWorkspaceKinds = ['personal', 'shared'] as const
 const personalOnlyWorkspaceKinds = ['personal'] as const
 
 export const appRouteDefinitions = [
+  {
+    id: 'apiKeys',
+    path: '/integrations/api',
+    workspaceKinds: allWorkspaceKinds,
+  },
   {
     id: 'today',
     path: '/today',

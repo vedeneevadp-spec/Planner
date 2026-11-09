@@ -13,6 +13,7 @@ const contractsPath = fileURLToPath(
 )
 const shouldAnalyzeBundle = process.env.ANALYZE_BUNDLE === '1'
 const shoppingContractsPath = path.join(contractsPath, 'chaos-inbox.ts')
+const integrationContractsPath = path.join(contractsPath, 'integrations.ts')
 
 export default defineConfig({
   root: appRoot,
@@ -36,10 +37,12 @@ export default defineConfig({
     },
     rollupOptions: {
       treeshake: {
-        // The barrel re-exports shopping schemas. They only need to be
-        // initialized when a consumer such as shopping or backup is loaded.
+        // The barrel re-exports feature schemas. Initialize them only when
+        // a consumer such as shopping, backup, or API settings is loaded.
         moduleSideEffects: (id) =>
-          id === shoppingContractsPath ? false : undefined,
+          id === shoppingContractsPath || id === integrationContractsPath
+            ? false
+            : undefined,
       },
       output: {
         codeSplitting: {
@@ -49,6 +52,12 @@ export default defineConfig({
               name: 'shopping-contracts',
               priority: 100,
               test: (id) => id === shoppingContractsPath,
+            },
+            {
+              includeDependenciesRecursively: false,
+              name: 'integration-contracts',
+              priority: 100,
+              test: (id) => id === integrationContractsPath,
             },
             {
               includeDependenciesRecursively: false,

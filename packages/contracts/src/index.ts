@@ -363,6 +363,7 @@ export {
   isoWeekdaySchema,
   newHabitInputSchema,
 } from './habit.js'
+export * from './integrations.js'
 export type {
   LifeSphere,
   LifeSphereUpdateInput,

@@ -2,6 +2,7 @@ import type { OpenAPIV3 } from 'openapi-types'
 
 import type { ApiConfig } from './config.js'
 import { createComponentSchemas } from './openapi-components.js'
+import { INTEGRATIONS_DESCRIPTION } from './openapi-integrations.js'
 import { createPaths } from './openapi-paths.js'
 
 export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
@@ -40,6 +41,12 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
       },
       schemas: createComponentSchemas(),
       securitySchemes: {
+        apiKeyAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'hkt_…',
+          description: 'Персональный API-ключ из настроек интеграций.',
+        },
         bearerAuth: {
           bearerFormat: 'JWT',
           scheme: 'bearer',
@@ -62,6 +69,12 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
       },
     ],
     tags: [
+      { name: 'integrations', description: INTEGRATIONS_DESCRIPTION },
+      {
+        name: 'apiKeys',
+        description:
+          'Управление ключами через обычную сессию аккаунта. API-ключ не может создавать или отзывать другие ключи.',
+      },
       {
         description: 'Runtime and dependency status.',
         name: 'health',

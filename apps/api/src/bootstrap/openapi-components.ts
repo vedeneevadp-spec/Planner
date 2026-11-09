@@ -14,12 +14,14 @@ import {
   nullableStringSchema,
   positiveIntegerSchema,
 } from './openapi-helpers.js'
+import { createIntegrationSchemas } from './openapi-integrations.js'
 
 export function createComponentSchemas(): Record<
   string,
   OpenAPIV3.SchemaObject
 > {
   return {
+    ...createIntegrationSchemas(),
     ApiError: {
       additionalProperties: false,
       properties: {

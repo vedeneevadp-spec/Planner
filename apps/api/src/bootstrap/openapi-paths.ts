@@ -25,9 +25,11 @@ import {
   userIdParameter,
   zoneIdParameter,
 } from './openapi-helpers.js'
+import { createIntegrationPaths } from './openapi-integrations.js'
 
 export function createPaths(): OpenAPIV3.PathsObject {
   return {
+    ...createIntegrationPaths(),
     '/api/health': {
       get: {
         operationId: 'getHealth',

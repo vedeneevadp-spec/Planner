@@ -17,6 +17,9 @@ import {
   createAliceCommandParser,
   registerAliceRoutes,
 } from '../modules/alice/index.js'
+import { registerApiKeyRoutes } from '../modules/api-keys/api-key.routes.js'
+import type { ApiKeyService } from '../modules/api-keys/api-key.service.js'
+import { registerPublicApiRoutes } from '../modules/api-keys/public-api.routes.js'
 import type { AuthService } from '../modules/auth/index.js'
 import {
   registerAuthRoutes,
@@ -89,6 +92,7 @@ export interface BuildApiAppOptions {
   requestAuthenticator?: RequestAuthenticator
   authService?: AuthService
   aiContextService?: AiContextService
+  apiKeyService?: ApiKeyService
   chaosInboxService?: ChaosInboxService
   cleaningService?: CleaningService
   dailyPlanService?: DailyPlanService
@@ -116,6 +120,7 @@ export function buildApiApp({
   requestAuthenticator = new NoopRequestAuthenticator(),
   authService,
   aiContextService,
+  apiKeyService,
   chaosInboxService,
   cleaningService,
   dailyPlanService,
@@ -149,6 +154,15 @@ export function buildApiApp({
   registerApiRouteRegistry(app)
   registerApiObservability(app)
   registerOpenApi(app, config)
+  if (apiKeyService && chaosInboxService) {
+    registerPublicApiRoutes(app, {
+      keys: apiKeyService,
+      sessions: sessionService,
+      tasks: taskService,
+      shopping: chaosInboxService,
+      rateLimiter,
+    })
+  }
   if (aiContextService && mcpOAuthService && mcpAuditRepository) {
     app.register(async (instance) => {
       instance.register(fastifyRateLimit, {
@@ -245,6 +259,9 @@ export function buildApiApp({
       return payload
     })
 
+    if (apiKeyService)
+      registerApiKeyRoutes(instance, apiKeyService, sessionService)
+
     if (authService) {
       registerAuthRoutes(instance, authService, {
         isSecureCookie: config.appEnv === 'production',
@@ -335,6 +352,16 @@ export function buildApiApp({
       },
     }
 
+    if (
+      httpError.statusCode === 429 &&
+      isRecord(httpError.details) &&
+      typeof httpError.details.retryAfterSeconds === 'number'
+    ) {
+      reply.header(
+        'Retry-After',
+        Math.max(1, Math.ceil(httpError.details.retryAfterSeconds)),
+      )
+    }
     reply.status(httpError.statusCode).send(payload)
   })
 
@@ -410,6 +437,27 @@ function createFastifyHttpError(error: unknown): HttpError | null {
 
   if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE' && error.statusCode === 413) {
     return new HttpError(413, 'payload_too_large', 'Request body is too large.')
+  }
+  if (
+    error.statusCode === 400 &&
+    (error.code === 'FST_ERR_CTP_INVALID_JSON_BODY' ||
+      error.code === 'FST_ERR_CTP_EMPTY_JSON_BODY')
+  ) {
+    return new HttpError(
+      400,
+      'invalid_body',
+      'Request body must be valid JSON.',
+    )
+  }
+  if (
+    error.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE' &&
+    error.statusCode === 415
+  ) {
+    return new HttpError(
+      415,
+      'unsupported_media_type',
+      'Use Content-Type: application/json.',
+    )
   }
 
   return null

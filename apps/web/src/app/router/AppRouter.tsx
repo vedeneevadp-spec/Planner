@@ -40,6 +40,11 @@ const ContactsPage = lazy(() =>
 const MorePage = lazy(() =>
   import('@/pages/more').then((module) => ({ default: module.MorePage })),
 )
+const ApiKeysPage = lazy(() =>
+  import('@/pages/api-keys').then((module) => ({
+    default: module.ApiKeysPage,
+  })),
+)
 const NotificationsSettingsPage = lazy(() =>
   import('@/pages/notifications-settings').then((module) => ({
     default: module.NotificationsSettingsPage,
@@ -115,6 +120,7 @@ function HabitsRedirect() {
 
 const routeElements = {
   admin: <AdminPage />,
+  apiKeys: <ApiKeysPage />,
   calendar: <CalendarPage />,
   cleaning: <CleaningPage />,
   cleaningSettings: <CleaningSettingsPage />,

@@ -43,7 +43,10 @@ export interface CreateChaosInboxItemsCommand {
 export interface ListChaosInboxItemsCommand {
   context: ChaosInboxReadContext
   filters?:
-    | (ChaosInboxListFilters & { search?: string; includeCompleted?: boolean })
+    | (ChaosInboxListFilters & {
+        search?: string | undefined
+        includeCompleted?: boolean
+      })
     | undefined
 }
 
@@ -51,6 +54,7 @@ export interface UpdateChaosInboxItemCommand {
   context: ChaosInboxWriteContext
   id: string
   input: ChaosInboxItemUpdateInput
+  requiredKind?: 'shopping'
 }
 
 export interface BulkUpdateChaosInboxItemsCommand {
