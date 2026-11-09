@@ -449,9 +449,11 @@ export async function assertFutureScheduleReconciles(
     from: today,
     to: movedDate,
   })
-  const auto = actual.filter(
-    (entry) => entry.generatedAt !== null && entry.status === 'scheduled',
-  )
+  const auto = actual
+    .filter(
+      (entry) => entry.generatedAt !== null && entry.status === 'scheduled',
+    )
+    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor))
   assert.deepEqual(
     auto.map((entry) => [entry.scheduledFor, entry.dueAt]),
     [

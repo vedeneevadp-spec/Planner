@@ -2,17 +2,20 @@ import { addDateDays, getTodayDate } from '@planner/contracts'
 import { expect, test } from '@playwright/test'
 
 test.use({
-  extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.11' },
   timezoneId: 'UTC',
 })
 
 for (const viewport of [
-  { name: 'desktop', width: 1360, height: 900 },
-  { name: 'mobile', width: 390, height: 844 },
+  { name: 'desktop', width: 1360, height: 900, clientAddress: '192.0.2.16' },
+  { name: 'mobile', width: 390, height: 844, clientAddress: '192.0.2.17' },
 ]) {
   test(`creates and edits flexible and dated tasks with all settings on ${viewport.name}`, async ({
     page,
   }, testInfo) => {
+    // Keep each viewport separate from the accessibility test's rate limit.
+    await page.setExtraHTTPHeaders({
+      'x-forwarded-for': viewport.clientAddress,
+    })
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto('/today')
