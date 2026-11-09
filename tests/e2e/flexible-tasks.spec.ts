@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { addDateDays, getTodayDate } from '@planner/contracts'
 import { expect, test } from '@playwright/test'
 
@@ -6,15 +8,15 @@ test.use({
 })
 
 for (const viewport of [
-  { name: 'desktop', width: 1360, height: 900, clientAddress: '192.0.2.16' },
-  { name: 'mobile', width: 390, height: 844, clientAddress: '192.0.2.17' },
+  { name: 'desktop', width: 1360, height: 900, clientAddress: 16 },
+  { name: 'mobile', width: 390, height: 844, clientAddress: 17 },
 ]) {
   test(`creates and edits flexible and dated tasks with all settings on ${viewport.name}`, async ({
     page,
   }, testInfo) => {
-    // Keep each viewport separate from the accessibility test's rate limit.
+    // Keep viewports and repeated runs in separate rate-limit buckets.
     await page.setExtraHTTPHeaders({
-      'x-forwarded-for': viewport.clientAddress,
+      'x-forwarded-for': `192.0.2.${viewport.clientAddress + testInfo.repeatEachIndex * 2}`,
     })
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
@@ -23,7 +25,7 @@ for (const viewport of [
     await page.getByLabel('Имя').fill('Гибкие задачи')
     await page
       .getByLabel('Email')
-      .fill(`flexible-${viewport.name}-${Date.now()}@example.test`)
+      .fill(`flexible-${viewport.name}-${randomUUID()}@example.test`)
     await page.getByLabel('Пароль', { exact: true }).fill('e2e-password')
     await page.getByLabel('Подтвердите пароль').fill('e2e-password')
     await page.getByRole('button', { name: 'Создать аккаунт' }).click()
@@ -45,14 +47,14 @@ for (const viewport of [
       const created = page.waitForResponse(
         (response) =>
           response.request().method() === 'POST' &&
-          new URL(response.url()).pathname === '/api/v1/tasks' &&
-          response.status() === 201,
+          new URL(response.url()).pathname === '/api/v1/tasks',
       )
       await composer
         .getByRole('button', { name: 'Добавить задачу' })
         .last()
         .click()
       const response = await created
+      expect(response.status(), await response.text()).toBe(201)
       await expect(composer).toBeHidden()
       const input = response.request().postDataJSON() as {
         plannedDate: string | null
@@ -168,8 +170,7 @@ for (const viewport of [
       const updated = page.waitForResponse(
         (response) =>
           response.request().method() === 'PATCH' &&
-          /^\/api\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname) &&
-          response.status() === 200,
+          /^\/api\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname),
       )
       await editor
         .getByRole('button', { name: 'Сохранить', exact: true })
@@ -177,6 +178,7 @@ for (const viewport of [
         .first()
         .click()
       const response = await updated
+      expect(response.status(), await response.text()).toBe(200)
       await expect(editor).toBeHidden()
       const input = response.request().postDataJSON() as {
         plannedDate: string | null
