@@ -23,7 +23,7 @@ Google Play, RuStore или в сообщение пользователям.
 
 ## v1.1.34 - 2026-11-09
 
-Каналы: Web, PWA, API
+Каналы: Web, PWA, API, Android (APK)
 
 ### API для своих скриптов и ботов
 
