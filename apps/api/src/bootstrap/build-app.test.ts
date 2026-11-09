@@ -3639,9 +3639,17 @@ void describe('buildApiApp', () => {
       }
       openapi?: string
       paths?: Record<string, unknown>
+      servers?: Array<{ url: string }>
     } = response.json()
 
     assert.equal(body.openapi, '3.0.3')
+    for (const origin of ['https://chaotika.ru', 'http://127.0.0.1:3001']) {
+      assert.equal(
+        new URL(body.servers?.[0]?.url ?? '', `${origin}/api/openapi.json`)
+          .href,
+        `${origin}/`,
+      )
+    }
     assert.ok(body.paths?.['/api/v1/emoji-sets'])
     assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}'])
     assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}/items'])

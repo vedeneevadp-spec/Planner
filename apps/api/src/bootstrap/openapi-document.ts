@@ -65,7 +65,8 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
     servers: [
       {
         description: `${config.appEnv} runtime`,
-        url: `http://127.0.0.1:${config.port}`,
+        // Resolve against the origin serving the spec, including HTTPS proxies.
+        url: '/',
       },
     ],
     tags: [
