@@ -23,7 +23,9 @@ await writeCoverageLog(logPath, output)
 assertCoverageHotspots(output, [
   { file: 'mcp-haotika.server.ts', minLines: 45 },
   { file: 'openapi-components.ts', minLines: 95 },
-  { file: 'openapi-contract-schemas.ts', minLines: 95 },
+  // The handwritten contract module was replaced by generation and public filtering.
+  { file: 'openapi-schema.ts', minLines: 95 },
+  { file: 'openapi-public.ts', minLines: 95 },
   { file: 'openapi-paths.ts', minLines: 95 },
   { file: 'self-care.shared.ts', minLines: 90 },
 ])
