@@ -17,6 +17,7 @@ import {
   taskRecordSchema,
 } from '@planner/contracts'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
+import fastifyRateLimit from 'fastify-rate-limit'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -43,7 +44,22 @@ export function registerPublicApiRoutes(
     rateLimiter: RateLimiter
   },
 ) {
-  app.register((instance, _options, done) => {
+  app.register(async (instance) => {
+    instance.register(fastifyRateLimit, {
+      errorResponseBuilder: (_request, context) =>
+        new HttpError(
+          429,
+          'rate_limit_exceeded',
+          'Too many requests. Please try again later.',
+          {
+            retryAfterSeconds: Math.max(1, Math.ceil(context.ttl / 1000)),
+          },
+        ),
+      keyGenerator: getClientAddress,
+      max: 300,
+      timeWindow: 60_000,
+    })
+    await instance.after()
     instance.addHook('onRequest', async (request, reply) => {
       reply.header('Cache-Control', 'no-store')
       await options.rateLimiter.consume({
@@ -260,6 +276,5 @@ export function registerPublicApiRoutes(
         await options.shopping.updateShoppingItem(ctx, id, input),
       )
     })
-    done()
   })
 }

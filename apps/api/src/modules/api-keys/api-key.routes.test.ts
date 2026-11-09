@@ -677,3 +677,25 @@ void test('public API returns Retry-After when a key exceeds its limit', async (
   assert.equal(limited.statusCode, 429)
   assert.ok(Number(limited.headers['retry-after']) > 0)
 })
+
+void test('public API limits unauthenticated requests before key lookup', async (t) => {
+  const h = harness()
+  t.after(() => h.app.close())
+  let lookups = 0
+  h.repository.authenticate = () => {
+    lookups++
+    return Promise.resolve(null)
+  }
+  const headers = { authorization: `Bearer hkt_${'a'.repeat(43)}` }
+  for (let index = 0; index < 300; index++) {
+    const response = await h.app.inject({
+      url: '/api/public/v1/tasks',
+      headers,
+    })
+    assert.equal(response.statusCode, 401)
+  }
+  const limited = await h.app.inject({ url: '/api/public/v1/tasks', headers })
+  assert.equal(limited.statusCode, 429)
+  assert.ok(Number(limited.headers['retry-after']) > 0)
+  assert.equal(lookups, 300)
+})
