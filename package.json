@@ -165,7 +165,7 @@
     "globals": "^17.14.0",
     "husky": "^9.1.7",
     "jsdom": "^27.4.0",
-    "knip": "^6.44.1",
+    "knip": "^6.44.2",
     "lint-staged": "^17.6.0",
     "prettier": "^3.9.10",
     "rollup-plugin-visualizer": "^7.1.2",
