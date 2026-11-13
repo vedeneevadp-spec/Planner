@@ -25,7 +25,7 @@ async function registerTestAdmin(page: Page) {
   await page.getByLabel('Подтвердите пароль').fill('e2e-password')
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
   await expect(
-    page.getByRole('button', { name: /^(Создать задачу|Новая задача)$/ }),
+    page.getByRole('button', { name: 'Новая задача', exact: true }),
   ).toBeVisible()
 
   const client = new Client({ connectionString: databaseUrl })
@@ -58,11 +58,11 @@ async function registerTestAdmin(page: Page) {
   ).toBeVisible()
   await page.goto('/today')
   await expect(
-    page.getByRole('button', { name: /^(Создать задачу|Новая задача)$/ }),
+    page.getByRole('button', { name: 'Новая задача', exact: true }),
   ).toBeVisible()
   await page.reload()
   await expect(
-    page.getByRole('button', { name: /^(Создать задачу|Новая задача)$/ }),
+    page.getByRole('button', { name: 'Новая задача', exact: true }),
   ).toBeVisible()
 }
 
@@ -186,7 +186,8 @@ for (const viewport of viewports) {
         } else {
           await expect(
             page.getByRole('button', {
-              name: /^(Создать задачу|Новая задача)$/,
+              name: 'Новая задача',
+              exact: true,
             }),
           ).toBeVisible()
           await expect(
