@@ -29,10 +29,12 @@ import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
 
 export function PersonalTodayPage({
+  emptyState,
   isTaskDataComplete,
   openTaskId,
   status,
 }: {
+  emptyState?: ReactNode
   isTaskDataComplete: boolean
   openTaskId?: string | null | undefined
   status?: ReactNode
@@ -183,6 +185,7 @@ export function PersonalTodayPage({
       />
 
       <TodayTaskSections
+        emptyState={emptyState}
         actions={{
           copyTaskToPersonal,
           createNextTaskStage,

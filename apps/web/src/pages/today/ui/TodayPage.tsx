@@ -18,6 +18,7 @@ import { PersonalTodayPage } from './PersonalTodayPage'
 import { SharedTodayPage } from './SharedTodayPage'
 import { TodayPageStateLayout } from './TodayPageLayout'
 import { TodayStatusNotice } from './TodayStatusNotice'
+import { TodayWelcomeScreen } from './TodayWelcomeScreen'
 
 type TodayBlockingState = 'error' | 'loading' | 'offline' | null
 
@@ -177,10 +178,22 @@ function TodayPageContent() {
       message="Не удалось обновить задачи · показываем сохранённые данные"
     />
   ) : undefined
+  const emptyState =
+    !isReadPending && !hasAccessIssue && !hasTaskReadError && !isOffline ? (
+      <TodayWelcomeScreen
+        isSharedWorkspace={session?.workspace.kind === 'shared'}
+      />
+    ) : null
+
   return session?.workspace.kind === 'shared' ? (
-    <SharedTodayPage openTaskId={openTaskId} status={status} />
+    <SharedTodayPage
+      emptyState={emptyState}
+      openTaskId={openTaskId}
+      status={status}
+    />
   ) : (
     <PersonalTodayPage
+      emptyState={emptyState}
       isTaskDataComplete={isTaskDataComplete}
       openTaskId={openTaskId}
       status={status}

@@ -21,9 +21,11 @@ import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
 
 export function SharedTodayPage({
+  emptyState,
   openTaskId,
   status,
 }: {
+  emptyState?: ReactNode
   openTaskId?: string | null | undefined
   status?: ReactNode
 }) {
@@ -75,6 +77,7 @@ export function SharedTodayPage({
       status={<TodayRoutineStatus status={status} summary={routineSummary} />}
     >
       <TodayTaskSections
+        emptyState={emptyState}
         actions={{
           copyTaskToPersonal,
           createNextTaskStage,

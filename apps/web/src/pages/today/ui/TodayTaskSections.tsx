@@ -69,6 +69,7 @@ export interface TodayTaskActions {
 interface TodayTaskSectionsProps {
   actions: TodayTaskActions
   closedTaskPagination?: ReactNode
+  emptyState?: ReactNode
   extras?: TodayTaskSectionExtras
   model: TodayTaskModel
   openTaskId?: string | null | undefined
@@ -234,6 +235,7 @@ function renderTaskSection({
 export function TodayTaskSections({
   actions,
   closedTaskPagination,
+  emptyState,
   extras = {},
   model,
   openTaskId,
@@ -271,6 +273,13 @@ export function TodayTaskSections({
 
   return (
     <>
+      {tasks.length === 0 &&
+      !extras.overdue?.itemCount &&
+      !extras.routine?.itemCount &&
+      !extras.tomorrow?.itemCount
+        ? emptyState
+        : null}
+
       {renderTaskSectionGroup(
         [
           renderTaskSection({

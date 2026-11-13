@@ -7,8 +7,16 @@
 использовать копию существующего app signing key; upload key можно отделить.
 Не менять applicationId ради карточки магазина с другим именем пакета.
 
+Канал `googlePlay` использует отдельный ключ загрузки из
+`android/keystore/google-play-upload/keystore.properties` или переменных
+`GOOGLE_PLAY_UPLOAD_KEYSTORE_PATH`, `GOOGLE_PLAY_UPLOAD_KEYSTORE_PASSWORD`,
+`GOOGLE_PLAY_UPLOAD_KEY_ALIAS`, `GOOGLE_PLAY_UPLOAD_KEY_PASSWORD`.
+Канал `direct` сохраняет прежние `android/keystore.properties` и `ANDROID_*`.
+Ключи и пароли не включаются в Git или пакет публикации. Подпись приложения
+в Play App Signing остаётся прежней; отдельный upload key подписывает AAB.
+
 ```bash
-npm run mobile:release:google-play -- --api-url=https://chaotika.ru --version=1.1.36 --build=44
+npm run mobile:release:google-play -- --api-url=https://chaotika.ru --version=1.1.39 --build=46
 ```
 
 Команда собирает подписанный AAB с каналом `googlePlay`, проверяет production
