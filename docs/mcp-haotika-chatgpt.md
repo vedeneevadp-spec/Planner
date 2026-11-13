@@ -1,8 +1,56 @@
-# Haotika MCP Connector для ChatGPT Developer Mode
+# Haotika MCP Connector для ChatGPT
 
-Документ описывает первый private/draft-подключаемый вариант Haotika App для
-ChatGPT Developer Mode. Коннектор read-only: он не создает, не меняет и не
-удаляет данные планера.
+Коннектор предоставляет обзоры личного планера и действия с задачами и покупками.
+Создание, изменение и завершение требуют отдельных OAuth-разрешений
+`haotika:tasks.write` и `haotika:shopping.write`. Старые токены остаются только
+для чтения; обновление токена не добавляет разрешений. Удаление и управление
+аккаунтом через MCP не поддерживаются.
+
+## Обновление существующего подключения
+
+После выпуска сервера откройте ChatGPT → Плагины → Chaotika → Управлять →
+**Обновить инструменты**. В каталоге должно быть 15 инструментов: 9 чтения и
+6 записи. У `search_planner` должны присутствовать `timezone` и `taskCursor`.
+Сервер сообщает версию `0.2.0`; одно обновление страницы чата не обновляет
+сохранённый каталог инструментов.
+
+Для записи повторно авторизуйте подключение с нужными write-разрешениями.
+При недостатке прав сервер возвращает `insufficient_scope` в HTTP-заголовке
+и массиве `_meta["mcp/www_authenticate"]`, сохраняя уже выданные scopes в
+запросе дополнительных разрешений. Экран согласия показывает именно
+запрошенные разделы и действия. Пустой scope по-прежнему означает только чтение.
+
+## Действия с задачами и покупками
+
+| Раздел  | Чтение                               | Создание               | Изменение              | Завершение               |
+| ------- | ------------------------------------ | ---------------------- | ---------------------- | ------------------------ |
+| Задачи  | `list_tasks`, `get_task`             | `create_task`          | `update_task`          | `complete_task`          |
+| Покупки | `list_shopping`, `get_shopping_item` | `create_shopping_item` | `update_shopping_item` | `complete_shopping_item` |
+
+- Все действия используют личное пространство владельца OAuth-токена.
+  Аргументы не позволяют подменить пользователя или пространство.
+- Перед изменением нужно найти точную запись через list и перечитать её через
+  get. Эти инструменты возвращают ID и версии; аналитические обзоры остаются
+  сокращёнными. При нескольких совпадениях нужно уточнить запись у пользователя.
+- Поля создания и изменения соответствуют public API задач и покупок. Создание
+  через MCP требует новый `id` в формате UUIDv7; повтор отправляется с тем же ID
+  и теми же полями. ID нельзя переиспользовать для другого содержимого.
+- Изменение и завершение задачи требуют `expectedVersion` из последнего чтения.
+  При `CONFLICT` нужно перечитать задачу. Неуказанные поля сохраняются; `null`
+  очищает дату. Снятие даты плана снимает время и напоминания. Повторы и часовой
+  пояс существующей задачи сохраняются; завершение учитывает её правило повтора.
+- Создание/изменение времени, напоминаний и правил повтора пока не выставлены
+  в схемах MCP. Для дат без явного пояса используются настройки планера.
+- Покупки сохраняют последнее изменение переданных полей, без CAS-проверки
+  версии. После неоднозначного сетевого результата нужно перечитать запись.
+  Повтор `complete_shopping_item` уже купленной записи не меняет дату выполнения.
+- Создание покупки добавляет строку списка; оно не оформляет заказ и не тратит деньги.
+- `list_tasks`: до 100 записей, `offset=nextOffset` до `hasMore=false`.
+  `list_shopping`: до 100 записей, страницы с 1 до `page*limit >= total`.
+  Оба списка по умолчанию возвращают 30 записей. Текст покупки в списке может
+  сокращаться до 500 символов (`textTruncated`); get возвращает полный текст.
+- Тексты задач, заметок и покупок не сохраняются в журнале MCP-вызовов.
+  Сбой журнала после успешной записи не превращает её в ошибку для клиента.
 
 ## MCP transport
 
@@ -105,7 +153,9 @@ Protected resource metadata:
     "haotika:cleaning.read",
     "haotika:selfcare.read",
     "haotika:habits.read",
-    "haotika:stats.read"
+    "haotika:stats.read",
+    "haotika:tasks.write",
+    "haotika:shopping.write"
   ],
   "resource_documentation": "https://chaotika.ru/docs/mcp-haotika"
 }
@@ -153,7 +203,7 @@ CIMD/DCR пока не объявляются.
    `https://chatgpt.com/connector/oauth/{callback_id}`.
 6. Добавить этот URI в `HAOTIKA_OAUTH_ALLOWED_REDIRECT_URIS` и перезапустить API.
 7. Refresh app/tools в ChatGPT.
-8. Нажать Connect OAuth и пройти форму Haotika: логин, read-only consent,
+8. Нажать Connect OAuth и пройти форму Haotika: логин, согласие на показанные права,
    redirect обратно в ChatGPT.
 
 После подключения `tools/list` должен показать:
@@ -254,8 +304,16 @@ get_selfcare_context
 MCP_SMOKE_BASE_URL=http://127.0.0.1:3001 \
 MCP_SMOKE_REDIRECT_URI=http://127.0.0.1:4173/mcp-smoke/callback \
 MCP_SMOKE_CREATE_USER=true \
+MCP_SMOKE_WRITES=true \
 npm run smoke:mcp
 ```
+
+`MCP_SMOKE_WRITES=true` проверяет создание, чтение, изменение и завершение
+задачи и покупки, повтор создания/завершения и отказ записи со старым
+read-only токеном. Этот режим работает только с новым одноразовым пользователем
+(`MCP_SMOKE_CREATE_USER=true`), которого скрипт удаляет вместе с тестовыми данными
+после проверки. Передача существующих логина и пароля для write smoke запрещена.
+Без `MCP_SMOKE_WRITES` выполняется только проверка чтения.
 
 Против staging/production с существующим тестовым пользователем:
 
@@ -342,6 +400,6 @@ Streaming/proxy проблемы:
 - Calendar context currently uses timed tasks if no separate calendar module exists.
 - Authorization codes are in-memory in MVP mode and short-lived.
 - Connector is intended for owner/private testing first.
-- All tools are read-only.
-- No write actions, OpenAI API key, OpenAI SDK or in-app AI chat are included.
+- Other planner sections remain read-only; only personal workspaces are supported.
+- No OpenAI API key, OpenAI SDK or in-app AI chat is required.
 ```

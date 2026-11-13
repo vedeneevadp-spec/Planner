@@ -7,6 +7,7 @@ import { sql } from 'kysely'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import {
   HAOTIKA_MCP_READ_SCOPES,
+  HAOTIKA_MCP_SCOPES,
   type HaotikaMcpScope,
 } from '../ai-context/index.js'
 import type { AuthRequestMetadata, AuthService } from '../auth/index.js'
@@ -228,7 +229,11 @@ export class McpOAuthService {
     const accessToken = readBearerToken(authorizationHeader)
 
     if (!accessToken) {
-      throw this.createUnauthorizedError('Authentication required')
+      throw this.createUnauthorizedError(
+        'Authentication required',
+        'UNAUTHORIZED',
+        requiredScopes,
+      )
     }
 
     const token = await this.repository.findByAccessTokenHash(
@@ -236,13 +241,18 @@ export class McpOAuthService {
     )
 
     if (!token || token.revokedAt) {
-      throw this.createUnauthorizedError('Access token is invalid')
+      throw this.createUnauthorizedError(
+        'Access token is invalid',
+        'UNAUTHORIZED',
+        requiredScopes,
+      )
     }
 
     if (new Date(token.expiresAt).getTime() <= Date.now()) {
       throw this.createUnauthorizedError(
         'Access token expired',
         'TOKEN_EXPIRED',
+        requiredScopes,
       )
     }
 
@@ -250,7 +260,11 @@ export class McpOAuthService {
       token.issuer !== this.config.oauthIssuer ||
       token.resource !== createMcpResource(this.config.publicBaseUrl)
     ) {
-      throw this.createUnauthorizedError('Access token audience is invalid')
+      throw this.createUnauthorizedError(
+        'Access token audience is invalid',
+        'UNAUTHORIZED',
+        requiredScopes,
+      )
     }
 
     const missingScope = requiredScopes.find(
@@ -265,7 +279,7 @@ export class McpOAuthService {
         createWwwAuthenticate(this.config.publicBaseUrl, {
           description: `Missing required scope: ${missingScope}`,
           error: 'insufficient_scope',
-          scopes: requiredScopes,
+          scopes: [...new Set([...token.scopes, ...requiredScopes])],
         }),
       )
     }
@@ -282,6 +296,7 @@ export class McpOAuthService {
   createUnauthorizedError(
     message: string,
     code: 'TOKEN_EXPIRED' | 'UNAUTHORIZED' = 'UNAUTHORIZED',
+    scopes: readonly HaotikaMcpScope[] = HAOTIKA_MCP_READ_SCOPES,
   ): McpHaotikaError {
     return new McpHaotikaError(
       code,
@@ -290,7 +305,7 @@ export class McpOAuthService {
       createWwwAuthenticate(this.config.publicBaseUrl, {
         description: message,
         error: code === 'TOKEN_EXPIRED' ? 'invalid_token' : 'invalid_request',
-        scopes: HAOTIKA_MCP_READ_SCOPES,
+        scopes,
       }),
     )
   }
@@ -675,7 +690,7 @@ function cleanupExpiredAuthorizationCodes(
 }
 
 function isHaotikaMcpScope(scope: string): scope is HaotikaMcpScope {
-  return HAOTIKA_MCP_READ_SCOPES.includes(scope as HaotikaMcpScope)
+  return HAOTIKA_MCP_SCOPES.includes(scope as HaotikaMcpScope)
 }
 
 function escapeWwwAuthenticate(value: string): string {

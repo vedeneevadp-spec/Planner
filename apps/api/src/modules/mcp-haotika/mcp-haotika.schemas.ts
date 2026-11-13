@@ -7,6 +7,10 @@ import {
   TODAY_CONTEXT_INCLUDE_KEYS,
   WEEK_CONTEXT_INCLUDE_KEYS,
 } from '../ai-context/index.js'
+import {
+  plannerJsonSchemas,
+  plannerToolInputSchemas,
+} from './mcp-haotika.planner-schemas.js'
 
 export const mcpToolNameSchema = z.enum([
   'get_today_context',
@@ -14,6 +18,16 @@ export const mcpToolNameSchema = z.enum([
   'search_planner',
   'get_overload_context',
   'get_selfcare_context',
+  'list_tasks',
+  'get_task',
+  'create_task',
+  'update_task',
+  'complete_task',
+  'list_shopping',
+  'get_shopping_item',
+  'create_shopping_item',
+  'update_shopping_item',
+  'complete_shopping_item',
 ])
 
 export type McpToolName = z.infer<typeof mcpToolNameSchema>
@@ -110,6 +124,7 @@ export const getOverloadContextInputSchema = z
 export const getSelfCareContextInputSchema = getOverloadContextInputSchema
 
 export const toolInputSchemas = {
+  ...plannerToolInputSchemas,
   get_overload_context: getOverloadContextInputSchema,
   get_selfcare_context: getSelfCareContextInputSchema,
   get_today_context: getTodayContextInputSchema,
@@ -118,6 +133,7 @@ export const toolInputSchemas = {
 } satisfies Record<McpToolName, z.ZodTypeAny>
 
 export const jsonSchemas = {
+  ...plannerJsonSchemas,
   get_overload_context: {
     additionalProperties: false,
     description:

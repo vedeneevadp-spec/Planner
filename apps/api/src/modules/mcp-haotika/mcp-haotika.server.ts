@@ -8,12 +8,17 @@ import {
 import {
   type AiContextService,
   AiContextValidationError,
-  HAOTIKA_MCP_READ_SCOPES,
+  HAOTIKA_MCP_SCOPES,
   type HaotikaMcpScope,
 } from '../ai-context/index.js'
 import type { SessionService } from '../session/index.js'
 import { createToolOutputSummary, hashIpAddress } from './mcp-haotika.audit.js'
-import { createMcpResource, type McpOAuthService } from './mcp-haotika.auth.js'
+import {
+  createMcpResource,
+  type McpOAuthService,
+  parseRequestedScopes,
+} from './mcp-haotika.auth.js'
+import type { McpPlannerService } from './mcp-haotika.planner.js'
 import { mcpToolNameSchema } from './mcp-haotika.schemas.js'
 import {
   executeMcpTool,
@@ -36,16 +41,19 @@ const MCP_MAX_CONCURRENCY = 4
 const MCP_HAOTIKA_PUBLIC_DOCS = [
   'Haotika MCP Connector',
   '',
-  'Read-only remote MCP server for ChatGPT Developer Mode.',
+  'Personal planner MCP server with task and shopping actions for ChatGPT.',
   'Transport: Streamable HTTP-compatible JSON-RPC over POST /mcp.',
   'Auth: OAuth authorization-code flow with PKCE S256 and resource-bound tokens.',
-  'Tools: get_today_context, get_week_context, search_planner, get_overload_context, get_selfcare_context.',
+  `Tools: ${MCP_HAOTIKA_TOOLS.map((tool) => tool.name).join(', ')}.`,
   `Limits: ${MCP_REQUEST_BODY_LIMIT_BYTES / 1024} KiB per request, ${MCP_MAX_BATCH_SIZE} JSON-RPC messages per batch, ${MCP_MAX_CONCURRENCY} concurrent messages per request.`,
-  'No write tools are exposed.',
+  'Task and shopping writes require separate OAuth scopes: haotika:tasks.write and haotika:shopping.write. Existing read-only grants stay read-only.',
+  'Refresh the plugin tools after an update. search_planner supports timezone and taskCursor. Reauthorize to enable the requested write scopes.',
+  'Use list/get tools for exact IDs and current versions. Creates require a new UUIDv7 id reused for retries. No delete tools or access to other workspaces.',
 ].join('\n')
 
 interface RegisterMcpHaotikaRoutesOptions {
   aiContextService: AiContextService
+  plannerService?: McpPlannerService | undefined
   auditRepository: McpAuditLogRepository
   config: McpHaotikaRuntimeConfig
   oauthService: McpOAuthService
@@ -93,7 +101,7 @@ export function registerMcpHaotikaRoutes(
         options.config.publicBaseUrl,
       ).toString(),
       resource_name: 'Haotika MCP',
-      scopes_supported: HAOTIKA_MCP_READ_SCOPES,
+      scopes_supported: HAOTIKA_MCP_SCOPES,
     }
   })
 
@@ -394,7 +402,7 @@ async function handleJsonRpcMessage(
           protocolVersion: MCP_PROTOCOL_VERSION,
           serverInfo: {
             name: 'haotika-mcp',
-            version: '0.1.0',
+            version: '0.2.0',
           },
         },
       }
@@ -447,12 +455,13 @@ async function handleToolCall(
     await assertMcpRateLimit(options, auth, request)
     const output = await executeMcpTool({
       aiContextService: options.aiContextService,
+      plannerService: options.plannerService,
       arguments: toolArguments,
       name: toolName,
       userId: auth.userId,
     })
 
-    await options.auditRepository.createLog({
+    const audit = {
       input: toolArguments,
       ipHash: hashIpAddress(getClientAddress(request)),
       outputSummary: createToolOutputSummary(output),
@@ -460,10 +469,24 @@ async function handleToolCall(
       toolName,
       userAgent: readUserAgent(request),
       userId: auth.userId,
-    })
+    }
+    // A logging outage must not turn a successful mutation into a retryable failure.
+    try {
+      await options.auditRepository.createLog(audit)
+    } catch (error) {
+      request.log.error(
+        { err: error, toolName },
+        'MCP audit log failed after tool completion.',
+      )
+    }
 
     return createToolJsonRpcResult(id, {
-      content: [{ text: 'Returned Haotika planner context.', type: 'text' }],
+      content: [
+        {
+          text: 'Haotika tool completed. See the structured result.',
+          type: 'text',
+        },
+      ],
       structuredContent: output,
     })
   } catch (error) {
@@ -494,8 +517,13 @@ function applyToolHttpErrorHeaders(
   reply: FastifyReply,
   error: McpHaotikaError,
 ): void {
-  if (error.statusCode === 401 && error.wwwAuthenticate) {
-    reply.code(401).header('WWW-Authenticate', error.wwwAuthenticate)
+  if (
+    error.wwwAuthenticate &&
+    (error.statusCode === 401 || error.statusCode === 403)
+  ) {
+    reply
+      .code(error.statusCode)
+      .header('WWW-Authenticate', error.wwwAuthenticate)
   }
 }
 
@@ -517,7 +545,7 @@ async function resolveMcpAuth(
     })
 
     return {
-      scopes: [...HAOTIKA_MCP_READ_SCOPES],
+      scopes: [...HAOTIKA_MCP_SCOPES],
       tokenId: null,
       userId: session.actorUserId,
     }
@@ -617,7 +645,7 @@ function createToolError(
 ) {
   return {
     _meta: {
-      ...(wwwAuthenticate ? { 'mcp/www_authenticate': wwwAuthenticate } : {}),
+      ...(wwwAuthenticate ? { 'mcp/www_authenticate': [wwwAuthenticate] } : {}),
     },
     content: [{ text: message, type: 'text' }],
     isError: true,
@@ -654,6 +682,20 @@ function mapToolError(error: unknown): McpHaotikaError {
     return new McpHaotikaError('VALIDATION_ERROR', error.message, 400)
   }
 
+  if (error instanceof HttpError && error.statusCode < 500) {
+    const code =
+      error.statusCode === 409
+        ? 'CONFLICT'
+        : error.statusCode === 404
+          ? 'NOT_FOUND'
+          : error.statusCode === 403
+            ? 'FORBIDDEN'
+            : error.statusCode === 429
+              ? 'RATE_LIMIT_EXCEEDED'
+              : 'VALIDATION_ERROR'
+    return new McpHaotikaError(code, error.message, error.statusCode)
+  }
+
   return new McpHaotikaError('INTERNAL_ERROR', 'Internal MCP tool error.', 500)
 }
 
@@ -671,7 +713,7 @@ function createAuthorizationServerMetadata(config: McpHaotikaRuntimeConfig) {
       '/oauth/revoke',
       config.oauthIssuer,
     ).toString(),
-    scopes_supported: HAOTIKA_MCP_READ_SCOPES,
+    scopes_supported: HAOTIKA_MCP_SCOPES,
     token_endpoint: new URL('/oauth/token', config.oauthIssuer).toString(),
     token_endpoint_auth_methods_supported: ['none'],
   }
@@ -715,6 +757,12 @@ function validateAuthorizeQuery(
 
   if (query.code_challenge_method !== 'S256') {
     return 'Поддерживается только PKCE S256.'
+  }
+
+  try {
+    parseRequestedScopes(query.scope)
+  } catch {
+    return 'Запрошены неподдерживаемые разрешения.'
   }
 
   return undefined
@@ -795,6 +843,28 @@ function renderAuthorizePage({
   query: Record<string, string>
   values?: Record<string, string> | undefined
 }): string {
+  let scopes: HaotikaMcpScope[] = []
+  try {
+    scopes = parseRequestedScopes(query.scope)
+  } catch {
+    // Invalid scopes are explained by validateAuthorizeQuery and cannot be granted.
+  }
+  const scopeLabels: Record<HaotikaMcpScope, string> = {
+    'haotika:tasks.read': 'чтение задач',
+    'haotika:calendar.read': 'чтение календаря',
+    'haotika:shopping.read': 'чтение списка покупок',
+    'haotika:cleaning.read': 'чтение уборки',
+    'haotika:selfcare.read': 'чтение заботы о себе',
+    'haotika:habits.read': 'чтение привычек',
+    'haotika:stats.read': 'чтение статистики нагрузки',
+    'haotika:tasks.write': 'создание, изменение и завершение задач',
+    'haotika:shopping.write':
+      'добавление, изменение и отметка купленных товаров в списке',
+  }
+  const canWrite = scopes.some((scope) => scope.endsWith('.write'))
+  const permissions = scopes
+    .map((scope) => `<li>${scopeLabels[scope]}</li>`)
+    .join('\n')
   const hiddenFieldEntries = [
     'response_type',
     'client_id',
@@ -837,16 +907,9 @@ function renderAuthorizePage({
 <body>
   <main>
     <h1>Связать Haotika с ChatGPT</h1>
-    <p>ChatGPT запрашивает доступ только на чтение:</p>
-    <ul>
-      <li>задачи</li>
-      <li>календарь</li>
-      <li>покупки</li>
-      <li>уборка</li>
-      <li>забота о себе</li>
-      <li>привычки</li>
-      <li>статистика нагрузки</li>
-    </ul>
+    <p>${canWrite ? 'ChatGPT запрашивает доступ к вашему личному планеру:' : 'ChatGPT запрашивает доступ только на чтение:'}</p>
+    <ul>${permissions}</ul>
+    ${canWrite ? '<p>Изменения задач и списка покупок сохраняются в Хаотике. Доступ действует только для вашего личного пространства.</p>' : ''}
     ${errorBlock}
     <form method="post" action="/oauth/authorize">
       ${hiddenFields}
@@ -856,7 +919,7 @@ function renderAuthorizePage({
       <label>Пароль
         <input type="password" name="password" autocomplete="current-password" required>
       </label>
-      <button type="submit">Разрешить доступ на чтение</button>
+      <button type="submit">${canWrite ? 'Разрешить указанный доступ' : 'Разрешить доступ на чтение'}</button>
     </form>
   </main>
 </body>

@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import process from 'node:process'
 
+import { generateUuidV7 } from '@planner/contracts'
+
 const READ_SCOPES = [
   'haotika:tasks.read',
   'haotika:calendar.read',
@@ -17,6 +19,16 @@ const REQUIRED_TOOLS = [
   'search_planner',
   'get_overload_context',
   'get_selfcare_context',
+  'list_tasks',
+  'get_task',
+  'create_task',
+  'update_task',
+  'complete_task',
+  'list_shopping',
+  'get_shopping_item',
+  'create_shopping_item',
+  'update_shopping_item',
+  'complete_shopping_item',
 ] as const
 
 type JsonObject = Record<string, unknown>
@@ -33,8 +45,18 @@ const redirectUri =
   'http://127.0.0.1:4173/mcp-smoke/callback'
 const clientId = process.env.MCP_SMOKE_CLIENT_ID ?? 'chatgpt-smoke'
 const scope = process.env.MCP_SMOKE_SCOPE ?? READ_SCOPES.join(' ')
+const checkWrites = process.env.MCP_SMOKE_WRITES === 'true'
+let disposableAccessToken: string | undefined
 
 try {
+  if (
+    checkWrites &&
+    (process.env.MCP_SMOKE_CREATE_USER !== 'true' ||
+      process.env.MCP_SMOKE_EMAIL ||
+      process.env.MCP_SMOKE_PASSWORD)
+  ) {
+    throw new Error('Write smoke requires a newly created disposable user.')
+  }
   const credentials = await resolveSmokeCredentials()
 
   const protectedResource = await getJson(
@@ -64,13 +86,22 @@ try {
 
   await mcpRequest('initialize', {
     capabilities: {},
-    clientInfo: { name: 'haotika-smoke', version: '0.1.0' },
+    clientInfo: { name: 'haotika-smoke', version: '0.2.0' },
     protocolVersion: '2025-11-25',
   })
 
   const listToolsResponse = await mcpRequest('tools/list')
   const toolNames = readToolNames(listToolsResponse)
   assertArrayIncludesAll(toolNames, REQUIRED_TOOLS, 'MCP tools/list')
+  const tools = readRecord(listToolsResponse.body.result, 'tools/list result')
+    .tools as JsonObject[]
+  const search = tools.find((tool) => tool.name === 'search_planner')
+  const properties = readRecord(
+    readRecord(search?.inputSchema, 'search schema').properties,
+    'search properties',
+  )
+  if (!properties.taskCursor || !properties.timezone)
+    throw new Error('Search pagination/timezone schema is outdated.')
 
   const unauthorizedResponse = await mcpRequest(
     'tools/call',
@@ -109,6 +140,10 @@ try {
   assertString(todayDate, 'TodayContext.date')
   assertString(todayContext.generatedAt, 'TodayContext.generatedAt')
 
+  if (checkWrites) {
+    await checkPlannerWrites(credentials, accessToken)
+  }
+
   await revokeToken(accessToken)
 
   const revokedResponse = await mcpRequest(
@@ -126,11 +161,177 @@ try {
       `issuer=${issuer}`,
       `tools=${toolNames.join(',')}`,
       `todayDate=${todayDate}`,
+      `writes=${checkWrites ? 'passed' : 'not requested'}`,
     ].join(' '),
   )
 } catch (error) {
   console.error(formatError(error))
   process.exitCode = 1
+} finally {
+  if (disposableAccessToken) {
+    const session = await requestJson('/api/v1/session', {
+      headers: { authorization: `Bearer ${disposableAccessToken}` },
+    })
+    const workspaceId = session.workspaceId
+    assertString(workspaceId, 'cleanup workspaceId')
+    const response = await fetch(new URL('/api/v1/profile', baseUrl), {
+      method: 'DELETE',
+      headers: {
+        authorization: `Bearer ${disposableAccessToken}`,
+        'x-workspace-id': workspaceId,
+      },
+    })
+    if (response.status !== 204) {
+      console.error(
+        `Disposable user cleanup failed: HTTP ${response.status} ${await response.text()}`,
+      )
+      process.exitCode = 1
+    } else {
+      console.log('Disposable smoke user removed.')
+    }
+  }
+}
+
+async function checkPlannerWrites(
+  credentials: { email: string; password: string },
+  readToken: string,
+): Promise<void> {
+  const denied = await mcpRequest(
+    'tools/call',
+    {
+      name: 'create_task',
+      arguments: { id: generateUuidV7(), title: 'Denied smoke task' },
+    },
+    { accessToken: readToken, expectStatus: 403 },
+  )
+  assertToolAuthChallenge(denied.body)
+  assertHeaderIncludes(
+    denied.headers,
+    'www-authenticate',
+    'haotika:tasks.write',
+  )
+  const grant = await completeOAuthFlow(
+    credentials,
+    [...READ_SCOPES, 'haotika:tasks.write', 'haotika:shopping.write'].join(' '),
+  )
+  const accessToken = grant.access_token
+  assertString(accessToken, 'write access_token')
+  async function call(name: string, args: JsonObject): Promise<JsonObject> {
+    const response = await mcpRequest(
+      'tools/call',
+      { name, arguments: args },
+      { accessToken },
+    )
+    const result = readRecord(response.body.result, name)
+    if (result.isError)
+      throw new Error(`${name} failed: ${JSON.stringify(result)}`)
+    return readRecord(result.structuredContent, `${name} result`)
+  }
+  try {
+    const taskInput = {
+      id: generateUuidV7(),
+      title: 'MCP disposable task',
+      note: 'Synthetic verification',
+    }
+    let task = readRecord(
+      (await call('create_task', taskInput)).task,
+      'created task',
+    )
+    assertEqual(task.id, taskInput.id, 'created task ID')
+    const replay = readRecord(
+      (await call('create_task', taskInput)).task,
+      'replayed task',
+    )
+    assertEqual(replay.version, task.version, 'task creation replay')
+    task = readRecord(
+      (await call('get_task', { id: task.id })).task,
+      'task detail',
+    )
+    task = readRecord(
+      (
+        await call('update_task', {
+          id: task.id,
+          expectedVersion: task.version,
+          title: 'MCP disposable task updated',
+          plannedDate: '2026-11-14',
+        })
+      ).task,
+      'updated task',
+    )
+    assertEqual(task.title, 'MCP disposable task updated', 'updated task title')
+    task = readRecord(
+      (
+        await call('complete_task', {
+          id: task.id,
+          expectedVersion: task.version,
+        })
+      ).task,
+      'completed task',
+    )
+    assertEqual(task.status, 'done', 'task completion')
+    const listedTasks = await call('list_tasks', {
+      search: 'MCP disposable task',
+      status: 'done',
+      limit: 1,
+    })
+    if (!Array.isArray(listedTasks.items) || listedTasks.items.length !== 1)
+      throw new Error('Completed task missing from list.')
+
+    const shoppingInput = {
+      id: generateUuidV7(),
+      text: 'MCP disposable shopping',
+    }
+    let item = readRecord(
+      (await call('create_shopping_item', shoppingInput)).item,
+      'created shopping item',
+    )
+    assertEqual(item.id, shoppingInput.id, 'created shopping ID')
+    item = readRecord(
+      (await call('get_shopping_item', { id: item.id })).item,
+      'shopping detail',
+    )
+    item = readRecord(
+      (
+        await call('update_shopping_item', {
+          id: item.id,
+          text: 'MCP disposable shopping updated',
+        })
+      ).item,
+      'updated shopping',
+    )
+    assertEqual(
+      item.text,
+      'MCP disposable shopping updated',
+      'updated shopping text',
+    )
+    item = readRecord(
+      (await call('complete_shopping_item', { id: item.id })).item,
+      'completed shopping',
+    )
+    assertEqual(item.status, 'archived', 'shopping completion')
+    const repeated = readRecord(
+      (await call('complete_shopping_item', { id: item.id })).item,
+      'repeated shopping completion',
+    )
+    assertEqual(repeated.version, item.version, 'shopping completion replay')
+    assertEqual(
+      repeated.completedAt,
+      item.completedAt,
+      'shopping completion timestamp',
+    )
+    const listedShopping = await call('list_shopping', {
+      search: 'MCP disposable shopping',
+      status: 'archived',
+      limit: 1,
+    })
+    if (
+      !Array.isArray(listedShopping.items) ||
+      listedShopping.items.length !== 1
+    )
+      throw new Error('Completed shopping missing from list.')
+  } finally {
+    await revokeToken(accessToken)
+  }
 }
 
 async function resolveSmokeCredentials(): Promise<{
@@ -165,6 +366,7 @@ async function resolveSmokeCredentials(): Promise<{
   const accessToken = signupResponse.accessToken
 
   assertString(accessToken, 'signup accessToken')
+  disposableAccessToken = accessToken
 
   await requestJson('/api/v1/workspaces/shared', {
     body: {
@@ -181,10 +383,13 @@ async function resolveSmokeCredentials(): Promise<{
   return { email, password }
 }
 
-async function completeOAuthFlow(credentials: {
-  email: string
-  password: string
-}): Promise<JsonObject> {
+async function completeOAuthFlow(
+  credentials: {
+    email: string
+    password: string
+  },
+  requestedScope = scope,
+): Promise<JsonObject> {
   const codeVerifier = randomBytes(48).toString('base64url')
   const codeChallenge = createHash('sha256')
     .update(codeVerifier)
@@ -199,7 +404,7 @@ async function completeOAuthFlow(credentials: {
     redirect_uri: redirectUri,
     resource,
     response_type: 'code',
-    scope,
+    scope: requestedScope,
     state,
   })
 
@@ -374,7 +579,14 @@ function assertToolAuthChallenge(body: JsonObject): void {
   const meta = readRecord(result._meta, 'MCP tool result _meta')
   const authChallenge = meta['mcp/www_authenticate']
 
-  if (typeof authChallenge !== 'string' || !authChallenge.includes('Bearer')) {
+  const challenges = Array.isArray(authChallenge)
+    ? authChallenge
+    : [authChallenge]
+  if (
+    !challenges.some(
+      (value) => typeof value === 'string' && value.includes('Bearer'),
+    )
+  ) {
     throw new Error(`Missing mcp/www_authenticate: ${JSON.stringify(body)}`)
   }
 }

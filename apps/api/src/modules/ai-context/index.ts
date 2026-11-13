@@ -3,6 +3,8 @@ export {
   getScopesForInclude,
   getScopesForSearchTypes,
   HAOTIKA_MCP_READ_SCOPES,
+  HAOTIKA_MCP_SCOPES,
+  HAOTIKA_MCP_WRITE_SCOPES,
   type HaotikaMcpScope,
   PLANNER_SEARCH_TYPES,
   type PlannerSearchType,

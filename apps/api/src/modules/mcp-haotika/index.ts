@@ -10,6 +10,7 @@ export {
   parseRequestedScopes,
   PostgresMcpOAuthTokenRepository,
 } from './mcp-haotika.auth.js'
+export { McpPlannerService } from './mcp-haotika.planner.js'
 export { mcpToolNameSchema } from './mcp-haotika.schemas.js'
 export { registerMcpHaotikaRoutes } from './mcp-haotika.server.js'
 export {

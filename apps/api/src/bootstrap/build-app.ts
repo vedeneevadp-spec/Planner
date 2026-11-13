@@ -45,6 +45,7 @@ import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
 import {
   type McpAuditLogRepository,
   type McpOAuthService,
+  McpPlannerService,
   registerMcpHaotikaRoutes,
 } from '../modules/mcp-haotika/index.js'
 import { registerPlannerSearchRoutes } from '../modules/planner-search/planner-search.routes.js'
@@ -183,6 +184,11 @@ export function buildApiApp({
       await instance.after()
       registerMcpHaotikaRoutes(instance, {
         aiContextService,
+        plannerService: new McpPlannerService({
+          sessionService,
+          taskService,
+          shoppingService: chaosInboxService,
+        }),
         auditRepository: mcpAuditRepository,
         config: config.mcpHaotika,
         oauthService: mcpOAuthService,

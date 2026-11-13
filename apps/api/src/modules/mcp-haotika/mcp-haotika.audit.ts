@@ -159,6 +159,13 @@ function redactAuditInput(input: unknown): unknown {
     const normalizedKey = key.toLowerCase()
 
     if (
+      ['title', 'note', 'text', 'project', 'producturl'].includes(normalizedKey)
+    ) {
+      result[key] = '[redacted]'
+      continue
+    }
+
+    if (
       normalizedKey.includes('token') ||
       normalizedKey.includes('authorization') ||
       normalizedKey.includes('password') ||
