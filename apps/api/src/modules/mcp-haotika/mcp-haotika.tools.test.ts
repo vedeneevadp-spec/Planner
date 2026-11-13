@@ -16,24 +16,60 @@ import {
 import { McpHaotikaError } from './mcp-haotika.types.js'
 
 void describe('MCP Haotika tools', () => {
-  void it('declares only read-only tools', () => {
-    assert.deepEqual(MCP_HAOTIKA_TOOLS.map((tool) => tool.name).sort(), [
-      'get_overload_context',
-      'get_selfcare_context',
-      'get_today_context',
-      'get_week_context',
-      'search_planner',
-    ])
+  void it('preserves read-only context and accurately declares six scoped write actions', () => {
+    const writeNames = [
+      'complete_shopping_item',
+      'complete_task',
+      'create_shopping_item',
+      'create_task',
+      'update_shopping_item',
+      'update_task',
+    ]
+    assert.deepEqual(
+      MCP_HAOTIKA_TOOLS.filter((tool) => !tool.annotations.readOnlyHint)
+        .map((tool) => tool.name)
+        .sort(),
+      writeNames,
+    )
+    assert.deepEqual(
+      MCP_HAOTIKA_TOOLS.filter((tool) => tool.annotations.readOnlyHint)
+        .map((tool) => tool.name)
+        .sort(),
+      [
+        'get_overload_context',
+        'get_selfcare_context',
+        'get_shopping_item',
+        'get_task',
+        'get_today_context',
+        'get_week_context',
+        'list_shopping',
+        'list_tasks',
+        'search_planner',
+      ],
+    )
 
     for (const tool of MCP_HAOTIKA_TOOLS) {
-      assert.equal(tool.annotations.readOnlyHint, true)
-      assert.equal(tool.annotations.destructiveHint, false)
+      assert.equal(
+        tool.annotations.destructiveHint,
+        tool.name === 'update_task' || tool.name === 'update_shopping_item',
+      )
       assert.equal(tool.annotations.openWorldHint, false)
       assert.equal(tool.securitySchemes[0]?.type, 'oauth2')
-      assert.equal(tool.name.includes('write'), false)
-      assert.equal(tool.name.includes('create'), false)
-      assert.equal(tool.name.includes('update'), false)
       assert.equal(tool.name.includes('delete'), false)
+      assert.equal(
+        tool.securitySchemes[0]?.scopes.some((scope) =>
+          scope.endsWith('.write'),
+        ),
+        !tool.annotations.readOnlyHint,
+      )
+    }
+  })
+
+  void it('publishes search pagination, timezone and the current write instructions', () => {
+    assert.ok(jsonSchemas.search_planner.properties.taskCursor)
+    assert.ok(jsonSchemas.search_planner.properties.timezone)
+    for (const name of ['create_task', 'create_shopping_item'] as const) {
+      assert.ok((jsonSchemas[name].required as string[]).includes('id'))
     }
   })
 

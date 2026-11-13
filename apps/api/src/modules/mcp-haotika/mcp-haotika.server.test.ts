@@ -55,7 +55,10 @@ void describe('MCP Haotika server', () => {
 
     assert.equal(body.result?.isError, true)
     assert.equal(body.result?.structuredContent.error.code, 'UNAUTHORIZED')
-    assert.equal(typeof body.result?._meta['mcp/www_authenticate'], 'string')
+    assert.equal(
+      Array.isArray(body.result?._meta['mcp/www_authenticate']),
+      true,
+    )
   })
 
   void it('rate limits tool calls per token or dev user', async () => {

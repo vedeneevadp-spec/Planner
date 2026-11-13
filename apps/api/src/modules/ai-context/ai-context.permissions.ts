@@ -8,7 +8,17 @@ export const HAOTIKA_MCP_READ_SCOPES = [
   'haotika:stats.read',
 ] as const
 
-export type HaotikaMcpScope = (typeof HAOTIKA_MCP_READ_SCOPES)[number]
+export const HAOTIKA_MCP_WRITE_SCOPES = [
+  'haotika:tasks.write',
+  'haotika:shopping.write',
+] as const
+
+export const HAOTIKA_MCP_SCOPES = [
+  ...HAOTIKA_MCP_READ_SCOPES,
+  ...HAOTIKA_MCP_WRITE_SCOPES,
+] as const
+
+export type HaotikaMcpScope = (typeof HAOTIKA_MCP_SCOPES)[number]
 
 export const TODAY_CONTEXT_INCLUDE_KEYS = [
   'tasks',

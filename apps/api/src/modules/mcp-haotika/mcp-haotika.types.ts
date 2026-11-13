@@ -1,9 +1,12 @@
 import type { HaotikaMcpScope } from '../ai-context/index.js'
 
 export type McpErrorCode =
+  | 'CONFLICT'
+  | 'FORBIDDEN'
   | 'FORBIDDEN_SCOPE'
   | 'INTERNAL_ERROR'
   | 'MCP_DISABLED'
+  | 'NOT_FOUND'
   | 'RATE_LIMIT_EXCEEDED'
   | 'TOKEN_EXPIRED'
   | 'UNAUTHORIZED'
@@ -102,10 +105,10 @@ export interface McpToolDescriptor {
     }>
   }
   annotations: {
-    destructiveHint: false
-    idempotentHint: true
+    destructiveHint: boolean
+    idempotentHint: boolean
     openWorldHint: false
-    readOnlyHint: true
+    readOnlyHint: boolean
   }
   description: string
   inputSchema: Record<string, unknown>
