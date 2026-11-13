@@ -10,6 +10,7 @@ export type AppRouteId =
   | 'cleaningSettingsZone'
   | 'cleaningZoneRedirect'
   | 'contacts'
+  | 'googlePlayTesting'
   | 'habitRedirect'
   | 'habitsRedirect'
   | 'more'
@@ -55,6 +56,11 @@ const allWorkspaceKinds = ['personal', 'shared'] as const
 const personalOnlyWorkspaceKinds = ['personal'] as const
 
 export const appRouteDefinitions = [
+  {
+    id: 'googlePlayTesting',
+    path: '/google-play-testing',
+    workspaceKinds: allWorkspaceKinds,
+  },
   {
     id: 'apiKeys',
     path: '/integrations/api',

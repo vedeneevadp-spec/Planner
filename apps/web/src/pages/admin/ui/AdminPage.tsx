@@ -20,6 +20,7 @@ import {
   useDeleteEmojiSetItem,
   useEmojiSets,
 } from '@/features/emoji-library'
+import { GooglePlayTestingAdmin } from '@/features/google-play-testing/ui/GooglePlayTestingAdmin'
 import {
   useAdminUsers,
   useDeleteAdminUserAccount,
@@ -52,12 +53,13 @@ interface DraftIconItem {
   value: string
 }
 
-type AdminSection = 'users' | 'icons' | 'settings'
+type AdminSection = 'users' | 'icons' | 'settings' | 'google-play'
 
 const ADMIN_SECTIONS: Array<{ id: AdminSection; label: string }> = [
   { id: 'users', label: 'Пользователи' },
   { id: 'icons', label: 'Иконки' },
   { id: 'settings', label: 'Настройки' },
+  { id: 'google-play', label: 'Google Play' },
 ]
 
 const DEFAULT_WORKSPACE_SETTINGS = {
@@ -476,6 +478,8 @@ export function AdminPage() {
           </button>
         ))}
       </div>
+
+      {activeSection === 'google-play' ? <GooglePlayTestingAdmin /> : null}
 
       {activeSection === 'users' ? (
         <section className={styles.section}>
