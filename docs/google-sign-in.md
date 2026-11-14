@@ -62,11 +62,14 @@ SHA-256 ключа подписи приложения в Google Play совпа
    фактически используемого сертификата: debug, direct/RuStore release и
    **App signing key certificate** из Google Play Console. Для установленного
    из Play приложения нужен ключ подписи Google Play, а не upload key.
-4. Применить миграции `20261114_000112_google_sign_in.sql` и
-   `20261114_000113_google_sign_in_backup.sql`, настроить runtime DB role.
-   Миграции выдают права существующему `planner_runtime` и разрешают чтение
-   существующей роли резервного копирования `planner_backup`;
-   `db:runtime-role:setup` поддерживает создание роли после миграции и другое имя.
+4. Применить миграции `20261114_000112_google_sign_in.sql`,
+   `20261114_000113_google_sign_in_backup.sql` и
+   `20261114_000114_google_sign_in_runtime_access.sql`.
+   Google-функции доступны API-роли `authenticated` и наследующим её runtime
+   логинам, как существующие функции входа по паролю. Прямой доступ к таблицам
+   идентификации у них отсутствует; `planner_backup` может только читать данные
+   для резервного копирования. Проверка `db:security:check` под non-owner ролью
+   проверяет привязку и поиск Google identity внутри откатываемой транзакции.
 5. Установить серверную переменную
    `AUTH_GOOGLE_CLIENT_ID=<web-client-id>.apps.googleusercontent.com` и
    перезапустить API. При пустом значении кнопка скрыта, попытки входа получают

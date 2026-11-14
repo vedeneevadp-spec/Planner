@@ -164,7 +164,7 @@ void describe('Postgres Google sign-in identities', () => {
     )
   })
 
-  void it('keeps identity mutations and tables inaccessible to the authenticated SQL role', async () => {
+  void it('supports Google sign-in through the non-owner auth role without direct table access', async () => {
     const access = await client.query(`select
       has_table_privilege('authenticated', 'app.auth_google_identities', 'SELECT') as can_read,
       has_table_privilege('authenticated', 'app.auth_google_nonce_uses', 'INSERT') as can_write,
@@ -172,7 +172,26 @@ void describe('Postgres Google sign-in identities', () => {
     assert.deepEqual(access.rows[0], {
       can_read: false,
       can_write: false,
-      can_sign_in: false,
+      can_sign_in: true,
     })
+
+    await client.query('begin')
+    try {
+      await client.query('set local role authenticated')
+      const values = command()
+      const created = await complete(values)
+      assert.equal(created.rows[0]?.id, values[3])
+      const found = await client.query<{ id: string }>(
+        'select id from app.auth_find_google_user($1)',
+        [values[0]],
+      )
+      assert.equal(found.rows[0]?.id, created.rows[0]?.id)
+      const again = await complete(
+        command({ subject: String(values[0]), email: String(values[1]) }),
+      )
+      assert.equal(again.rows[0]?.id, created.rows[0]?.id)
+    } finally {
+      await client.query('rollback')
+    }
   })
 })
