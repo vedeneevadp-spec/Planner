@@ -263,6 +263,8 @@ Webhook поддерживает команды создания задач:
 возвращает top-level `start_account_linking` без поля `response`, как требует
 авторизация навыков Алисы.
 
+Вход через Google на сайте и Android: [подключение и проверка](docs/google-sign-in.md).
+
 OAuth 2.0 связка аккаунтов для Яндекс Диалогов:
 
 - authorization URL: `https://chaotika.ru/api/v1/oauth/alice/authorize`

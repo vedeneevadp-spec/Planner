@@ -90,6 +90,48 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['auth'],
       },
     },
+    '/api/v1/auth/google/config': {
+      get: {
+        operationId: 'getGoogleAuthConfig',
+        summary: 'Get Google sign-in availability',
+        tags: ['auth'],
+        responses: { 200: jsonResponse('GoogleAuthConfig') },
+      },
+    },
+    '/api/v1/auth/google/challenge': {
+      post: {
+        operationId: 'createGoogleAuthChallenge',
+        summary: 'Create a device-bound Google sign-in nonce',
+        tags: ['auth'],
+        parameters: authTokenParameters(),
+        responses: {
+          200: jsonResponse('GoogleAuthChallenge'),
+          400: errorResponse(),
+          429: errorResponse(),
+          503: errorResponse(),
+        },
+      },
+    },
+    '/api/v1/auth/google/sign-in': {
+      post: {
+        operationId: 'signInWithGoogle',
+        summary: 'Verify Google identity and create a Planner session',
+        tags: ['auth'],
+        description:
+          'Requires a fresh device-bound challenge and a Google ID token with its nonce. Existing email accounts require currentPassword on the first link (auth_google_link_required). Uses the same cookie/native token transport as password sign-in.',
+        parameters: authTokenParameters(),
+        requestBody: jsonRequestBody('GoogleAuthSignInInput'),
+        responses: {
+          200: jsonResponse('AuthTokenResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          409: errorResponse(),
+          415: errorResponse(),
+          429: errorResponse(),
+          503: errorResponse(),
+        },
+      },
+    },
     '/api/v1/auth/sign-up': {
       post: {
         operationId: 'signUp',

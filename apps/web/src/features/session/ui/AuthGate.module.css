@@ -62,6 +62,12 @@
   background: var(--surface-strong);
 }
 
+.formCard > * {
+  width: 100%;
+  max-width: 400px;
+  justify-self: center;
+}
+
 .brandRow {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -636,4 +642,59 @@
   .mobileModeLink {
     display: inline-flex;
   }
+}
+.googleSection,
+.googleLinkForm {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.googleButtonHost {
+  min-height: 40px;
+  min-width: 0;
+  max-width: 100%;
+}
+.googleButtonHost[inert] {
+  opacity: 0.65;
+}
+.googleButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid #747775;
+  border-radius: 24px;
+  background: #fff;
+  color: #1f1f1f;
+  font:
+    500 14px/20px Arial,
+    sans-serif;
+  cursor: pointer;
+}
+.googleButton:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+:global([data-theme='dark']) .googleButton {
+  background: #131314;
+  border-color: #8e918f;
+  color: #fff;
+}
+.authDivider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+}
+.authDivider::before,
+.authDivider::after {
+  content: '';
+  height: 1px;
+  background: var(--line);
+  flex: 1;
 }

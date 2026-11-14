@@ -23,11 +23,12 @@ const publicIconsDirectory = path.join(
   'icons',
 )
 
-// 1.1.40 adds bounded auth/session requests and shared care template defaults.
-// Measured initial JS grows from 781.6 to 785.1 KiB (+0.45%); keep a narrow cap.
+// Google sign-in keeps its UI, SDK adapter, API and schemas in lazy chunks.
+// Shared session callbacks add ~3 KiB to 1.1.40's 785.1 KiB initial JS.
+// Keep a narrow cap for this measured change (below 0.5%).
 const initialJsMaxBytes = readBudgetKilobytes(
   'WEB_BUNDLE_INITIAL_JS_MAX_KB',
-  786,
+  790,
 )
 const entryJsMaxBytes = readBudgetKilobytes('WEB_BUNDLE_ENTRY_JS_MAX_KB', 155)
 const routeAssetBudgets = [

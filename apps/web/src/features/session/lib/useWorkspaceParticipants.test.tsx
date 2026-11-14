@@ -280,6 +280,8 @@ function createAuthState(
     authNotice: null,
     canUseProtectedApi: true,
     clearAuthNotice: vi.fn(),
+    createGoogleChallenge: vi.fn(),
+    signInWithGoogle: vi.fn(),
     cancelPasswordRecovery: vi.fn(),
     email: 'user@example.test',
     expireSession: vi.fn(() => Promise.resolve()),

@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readClientEvents } from '@/shared/lib/observability'
 
 const authApiMocks = vi.hoisted(() => ({
+  createGoogleAuthChallenge: vi.fn(),
+  signInWithGoogle: vi.fn(),
   confirmPasswordReset: vi.fn(),
   isUnauthorizedAuthApiError: vi.fn(),
   refreshAuthSession: vi.fn(),
@@ -53,6 +55,12 @@ vi.mock('@/shared/config/planner-api', () => ({
     apiBaseUrl: 'https://api.chaotika.test',
     authProvider: 'planner',
   },
+}))
+
+vi.mock('../lib/google-auth-api', () => ({
+  createGoogleAuthChallenge: authApiMocks.createGoogleAuthChallenge,
+  signInWithGoogle: authApiMocks.signInWithGoogle,
+  getGoogleAuthClientId: () => Promise.resolve(null),
 }))
 
 vi.mock('../lib/auth-api', () => ({
@@ -203,6 +211,55 @@ describe('SessionProvider', () => {
       },
     )
   })
+
+  it.each([false, true])(
+    'persists a Google session through the existing storage (native=%s)',
+    async (native) => {
+      nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(
+        native,
+      )
+      authStorageMocks.readStoredAuthSession.mockResolvedValue(null)
+      authApiMocks.refreshAuthSession.mockRejectedValue(
+        Object.assign(new Error('No session'), { status: 401 }),
+      )
+      authApiMocks.signInWithGoogle.mockResolvedValue(createTokenResponse())
+      render(
+        <SessionProvider>
+          <AuthSnapshotProbe />
+          <GoogleSignInProbe />
+        </SessionProvider>,
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+          'signed_out',
+        ),
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Google sign in' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+          'authenticated',
+        ),
+      )
+      expect(authApiMocks.signInWithGoogle).toHaveBeenCalledWith(
+        { challengeToken: 'challenge', idToken: 'google-token' },
+        expect.objectContaining({
+          tokenTransport: native ? 'body' : 'cookie',
+          rememberSession: true,
+        }),
+      )
+      expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: createTokenResponse().accessToken,
+          userId: createTokenResponse().user.id,
+        }),
+      )
+      const stored = authStorageMocks.writeStoredAuthSession.mock
+        .lastCall?.[0] as StoredAuthSession | undefined
+      expect(stored?.refreshToken).toBe(
+        native ? createTokenResponse().refreshToken : undefined,
+      )
+    },
+  )
 
   it('leaves password recovery and clears its URL token without signing out or clearing offline data', async () => {
     window.history.replaceState({}, '', '/today?reset_token=expired-token')
@@ -1254,4 +1311,21 @@ function createTokenResponse(): AuthTokenResponse {
       id: 'user-1',
     },
   }
+}
+
+function GoogleSignInProbe() {
+  const auth = useSessionAuth()
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        void auth.signInWithGoogle({
+          challengeToken: 'challenge',
+          idToken: 'google-token',
+        })
+      }
+    >
+      Google sign in
+    </button>
+  )
 }

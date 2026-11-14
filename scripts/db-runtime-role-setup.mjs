@@ -111,6 +111,22 @@ async function grantRuntimeAccess(client, { databaseName, runtimeRole }) {
   await client.query(`grant authenticated to ${roleIdentifier}`)
   await client.query('grant usage on schema app to authenticated')
   await client.query('grant usage on schema public to authenticated')
+  // These functions process pre-authentication identities and are restricted
+  // to the API runtime, including when the role is created after migrations.
+  for (const signature of [
+    'app.auth_find_google_user(text)',
+    'app.auth_complete_google_sign_in(text, public.citext, text, uuid, uuid, text, timestamptz)',
+  ]) {
+    const existing = await client.query(
+      'select to_regprocedure($1) as function',
+      [signature],
+    )
+    if (existing.rows[0]?.function) {
+      await client.query(
+        `grant execute on function ${signature} to ${roleIdentifier}`,
+      )
+    }
+  }
   await client.query(
     'grant usage, select on all sequences in schema app to authenticated',
   )

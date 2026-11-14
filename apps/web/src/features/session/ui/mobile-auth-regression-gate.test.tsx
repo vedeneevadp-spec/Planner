@@ -35,6 +35,8 @@ interface PlannerSessionQueryStub {
 }
 
 const authApiMocks = vi.hoisted(() => ({
+  createGoogleAuthChallenge: vi.fn(),
+  signInWithGoogle: vi.fn(),
   confirmPasswordReset: vi.fn(),
   isUnauthorizedAuthApiError: vi.fn(),
   refreshAuthSession: vi.fn(),
@@ -76,11 +78,21 @@ const plannerSessionMocks = vi.hoisted(() => ({
   usePlannerSession: vi.fn<() => PlannerSessionQueryStub>(),
 }))
 
+vi.mock('@/shared/lib/theme', () => ({
+  useColorTheme: () => ({ isDark: true }),
+}))
+
 vi.mock('@/shared/config/planner-api', () => ({
   plannerApiConfig: {
     apiBaseUrl: 'https://api.chaotika.test',
     authProvider: 'planner',
   },
+}))
+
+vi.mock('../lib/google-auth-api', () => ({
+  createGoogleAuthChallenge: authApiMocks.createGoogleAuthChallenge,
+  signInWithGoogle: authApiMocks.signInWithGoogle,
+  getGoogleAuthClientId: () => Promise.resolve(null),
 }))
 
 vi.mock('../lib/auth-api', () => ({

@@ -55,6 +55,7 @@ const aliceWebhookResponseSchema = z.union([
 // Names stay stable for clients. Shapes, required fields, defaults, enums and
 // limits come from the actual validators instead of a second handwritten model.
 export const openApiInputContracts = {
+  GoogleAuthSignInInput: contracts.googleAuthSignInInputSchema,
   UserBackupArchiveInput: backup.userBackupArchiveSchema,
   AddEmojiSetItemsInput: contracts.addEmojiSetItemsInputSchema,
   AdminUserRoleUpdateInput: contracts.adminUserRoleUpdateInputSchema,
@@ -168,6 +169,8 @@ export const openApiOutputContracts = {
   AssignableAppRole: contracts.assignableAppRoleSchema,
   AssignableWorkspaceGroupRole: contracts.assignableWorkspaceGroupRoleSchema,
   AuthTokenResponse: contracts.authTokenResponseSchema,
+  GoogleAuthConfig: contracts.googleAuthConfigSchema,
+  GoogleAuthChallenge: contracts.googleAuthChallengeSchema,
   CalendarViewMode: contracts.calendarViewModeSchema,
   ChaosInboxConvertToTaskRecordResponse:
     contracts.chaosInboxConvertToTaskRecordResponseSchema,

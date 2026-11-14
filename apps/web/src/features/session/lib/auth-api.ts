@@ -160,7 +160,7 @@ export async function updatePassword(
   return authTokenResponseSchema.parse(payload)
 }
 
-async function postAuthJson<TInput>(
+export async function postAuthJson<TInput>(
   path: string,
   input: TInput,
   options: AuthRequestOptions = {},
@@ -206,7 +206,7 @@ async function postAuthNoContent<TInput>(
   }
 }
 
-function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
+export function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
   }
@@ -226,7 +226,7 @@ function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
   return headers
 }
 
-async function fetchAuth(
+export async function fetchAuth(
   url: URL,
   init: RequestInit,
   context: {
@@ -307,7 +307,7 @@ function delay(delayMs: number): Promise<void> {
   })
 }
 
-function throwAuthApiError(
+export function throwAuthApiError(
   response: Response,
   payload: unknown,
   fallbackMessage: string,

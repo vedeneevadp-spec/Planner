@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         PlannerAppUpgradeCleanup.run(this);
         registerPlugin(PlannerAuthStoragePlugin.class);
+        registerPlugin(PlannerGoogleSignInPlugin.class);
         registerPlugin(PlannerBackupFilesPlugin.class);
         registerPlugin(PlannerWidgetPlugin.class);
         registerPlugin(PlannerAppSettingsPlugin.class);

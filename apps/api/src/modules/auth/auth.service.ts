@@ -259,7 +259,8 @@ export class AuthService {
     return this.createSession(credential, metadata)
   }
 
-  private async createSession(
+  /** Only call after the user's credentials or provider identity have been verified. */
+  async createSession(
     user: AuthUserRecord,
     metadata: AuthRequestMetadata,
   ): Promise<AuthTokenResponse> {

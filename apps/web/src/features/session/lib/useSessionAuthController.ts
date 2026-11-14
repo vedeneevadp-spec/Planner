@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, type GoogleAuthSignInInput } from '@planner/contracts'
 import {
   useCallback,
   useEffect,
@@ -809,6 +809,25 @@ export function useSessionAuthController(): SessionAuthState {
     [createAuthRequestOptions, persistAuthSession],
   )
 
+  const createGoogleChallenge = useCallback(async () => {
+    const { createGoogleAuthChallenge } = await import('./google-auth-api')
+    return createGoogleAuthChallenge(await createAuthRequestOptions())
+  }, [createAuthRequestOptions])
+
+  const signInWithGoogle = useCallback(
+    async (input: GoogleAuthSignInInput) => {
+      setAuthNotice(null)
+      const { signInWithGoogle: signInWithGoogleApi } =
+        await import('./google-auth-api')
+      const session = await signInWithGoogleApi(
+        input,
+        await createAuthRequestOptions(),
+      )
+      await persistAuthSession(session)
+    },
+    [createAuthRequestOptions, persistAuthSession],
+  )
+
   const signUpWithPassword = useCallback(
     async (input: PasswordSignUpInput) => {
       setAuthNotice(null)
@@ -829,6 +848,9 @@ export function useSessionAuthController(): SessionAuthState {
   const signOut = useCallback(async () => {
     cancelPasswordRecovery()
     await clearAuthSession(false)
+    await import('./google-identity')
+      .then(({ clearGoogleSignInState }) => clearGoogleSignInState())
+      .catch(() => undefined)
   }, [cancelPasswordRecovery, clearAuthSession])
 
   const updatePassword = useCallback(
@@ -881,6 +903,8 @@ export function useSessionAuthController(): SessionAuthState {
         isAuthEnabled,
       }),
       cancelPasswordRecovery,
+      createGoogleChallenge,
+      signInWithGoogle,
       clearAuthNotice,
       email: snapshot.email,
       expireSession,
@@ -902,6 +926,8 @@ export function useSessionAuthController(): SessionAuthState {
   }, [
     authNotice,
     cancelPasswordRecovery,
+    createGoogleChallenge,
+    signInWithGoogle,
     clearAuthNotice,
     expireSession,
     isAuthEnabled,

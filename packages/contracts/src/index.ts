@@ -333,6 +333,7 @@ export {
   newEmojiAssetInputSchema,
   newEmojiSetInputSchema,
 } from './emoji-set.js'
+export * from './google-auth.js'
 export type {
   Habit,
   HabitEntry,
