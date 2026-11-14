@@ -499,14 +499,6 @@ export function AuthGate({ children }: PropsWithChildren) {
   return (
     <AuthShell>
       <div className={styles.formCardHeader}>
-        {typeof window !== 'undefined' &&
-          window.location.pathname === '/google-play-testing' && (
-            <p className={styles.formCopy}>
-              Приглашаем в закрытый тест Хаотики для Android. Войдите или
-              создайте аккаунт — затем оставьте Google-почту в форме. Здесь же
-              появятся ссылки после добавления в тест.
-            </p>
-          )}
         {!isPasswordRecovery && !isRequestingPasswordReset ? (
           <div
             className={styles.modeSwitch}
