@@ -192,6 +192,24 @@ async function verifyRuntimeAuthBootstrapAccess(client) {
 
     await client.query(
       `
+        select *
+        from app.auth_complete_google_sign_in(
+          $1, $2::public.citext, 'DB Security Check',
+          $3::uuid, $3::uuid, $4, now() + interval '5 minutes'
+        )
+      `,
+      [`db-security-${userId}`, email, userId, `db-security-${randomUUID()}`],
+    )
+    const googleUser = await client.query(
+      'select id from app.auth_find_google_user($1)',
+      [`db-security-${userId}`],
+    )
+    if (googleUser.rows[0]?.id !== userId) {
+      throw new Error('Google identity did not resolve the bootstrap user.')
+    }
+
+    await client.query(
+      `
         select app.auth_insert_refresh_token(
           $1::uuid,
           $2::uuid,
@@ -231,7 +249,7 @@ async function verifyRuntimeAuthBootstrapAccess(client) {
     throw new Error(
       [
         'Runtime DB user cannot write auth/session bootstrap records.',
-        'A strict non-owner runtime must be able to create users, credentials, workspaces, memberships, and refresh tokens without table-owner bypass.',
+        'A strict non-owner runtime must be able to create users, credentials, Google identities, workspaces, memberships, and refresh tokens without table-owner bypass.',
         `Postgres error: ${formatPgError(error)}`,
       ].join(' '),
     )

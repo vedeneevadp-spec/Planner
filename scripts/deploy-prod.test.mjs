@@ -289,6 +289,7 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   )
 
   assert.match(apiEnvBlock, /DATABASE_URL/)
+  assert.match(apiEnvBlock, /AUTH_GOOGLE_CLIENT_ID/)
   assert.match(apiEnvBlock, /USER_BACKUP_RESTORE_HELPER_SECRET/)
   assert.doesNotMatch(apiEnvBlock, /MIGRATE_DATABASE_URL/)
   assert.doesNotMatch(apiEnvBlock, /USER_BACKUP_RESTORE_DATABASE_URL/)

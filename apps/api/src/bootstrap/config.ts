@@ -55,6 +55,7 @@ export interface ApiConfig {
   authMode: ApiAuthMode
   corsOrigin: string
   firebasePush: FirebasePushConfig | null
+  googleAuthClientId: string | null
   host: string
   iconAssetDirectory: string
   jwtAuth: JwtAuthRuntimeConfig | null
@@ -584,6 +585,7 @@ export function createApiConfig(
     authMode,
     corsOrigin,
     firebasePush: createFirebasePushConfig(env),
+    googleAuthClientId: parseGoogleAuthClientId(env.AUTH_GOOGLE_CLIENT_ID),
     host: env.API_HOST ?? '0.0.0.0',
     iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
     jwtAuth,
@@ -597,6 +599,17 @@ export function createApiConfig(
     trustedProxies: parseTrustedProxies(env),
     userBackupRestoreHelper,
   }
+}
+
+function parseGoogleAuthClientId(value: string | undefined): string | null {
+  const clientId = value?.trim()
+  if (!clientId) return null
+  if (!/^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(clientId)) {
+    throw new Error(
+      'AUTH_GOOGLE_CLIENT_ID must be a Google web OAuth client id.',
+    )
+  }
+  return clientId
 }
 
 function validateAuthModeForEnvironment(

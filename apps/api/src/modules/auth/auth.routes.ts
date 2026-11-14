@@ -7,6 +7,7 @@ import {
   authSignOutInputSchema,
   authSignUpInputSchema,
   authTokenResponseSchema,
+  googleAuthSignInInputSchema,
 } from '@planner/contracts'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
@@ -19,11 +20,13 @@ import { requireRequestAuth } from '../../bootstrap/request-auth.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { AuthRequestMetadata } from './auth.model.js'
 import type { AuthService } from './auth.service.js'
+import type { GoogleAuthService } from './google-auth.service.js'
 
 type AuthRateLimitedAction =
   'password-reset-confirm' | 'password-reset-request' | 'sign-in' | 'sign-up'
 
 interface AuthRouteOptions {
+  googleAuthService?: GoogleAuthService | undefined
   isSecureCookie: boolean
   rateLimiter: RateLimiter
   refreshCookieMaxAgeSeconds: number
@@ -62,6 +65,52 @@ export function registerAuthRoutes(
   service: AuthService,
   options: AuthRouteOptions,
 ): void {
+  app.get('/api/v1/auth/google/config', async (_request, reply) => {
+    reply.header('cache-control', 'no-store')
+    return { clientId: options.googleAuthService?.clientId ?? null }
+  })
+
+  app.post('/api/v1/auth/google/challenge', async (request, reply) => {
+    reply.header('cache-control', 'no-store')
+    const google = requireGoogleAuth(options)
+    await options.rateLimiter.consume({
+      key: `auth:google:challenge:${getClientAddress(request)}`,
+      limit: 30,
+      windowMs: 60_000,
+    })
+    return google.createChallenge(getRequestMetadata(request))
+  })
+
+  app.post('/api/v1/auth/google/sign-in', async (request, reply) => {
+    reply.header('cache-control', 'no-store')
+    const google = requireGoogleAuth(options)
+    // A JSON-only request requires a browser preflight and cannot be submitted
+    // as a cross-site form. Native clients use the same device-bound challenge.
+    if (
+      !request.headers['content-type']
+        ?.toLowerCase()
+        .startsWith('application/json')
+    ) {
+      throw new HttpError(
+        415,
+        'unsupported_media_type',
+        'Google sign-in requires JSON.',
+      )
+    }
+    const input = parseOrThrow(
+      googleAuthSignInInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    await options.rateLimiter.consume({
+      key: `auth:google:sign-in:${getClientAddress(request)}`,
+      limit: 20,
+      windowMs: 60_000,
+    })
+    const response = await google.signIn(input, getRequestMetadata(request))
+    return sendAuthTokenResponse(reply, request, response, options)
+  })
+
   app.post('/api/v1/auth/sign-in', async (request, reply) => {
     const input = parseOrThrow(
       authSignInInputSchema,
@@ -194,6 +243,16 @@ export function registerAuthRoutes(
 
     return sendAuthTokenResponse(reply, request, response, options)
   })
+}
+
+function requireGoogleAuth(options: AuthRouteOptions): GoogleAuthService {
+  if (!options.googleAuthService)
+    throw new HttpError(
+      503,
+      'auth_google_disabled',
+      'Google sign-in is not configured.',
+    )
+  return options.googleAuthService
 }
 
 function sendAuthTokenResponse(

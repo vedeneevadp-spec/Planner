@@ -17,6 +17,24 @@ const VALID_PRODUCTION_ENV = {
 } satisfies NodeJS.ProcessEnv
 
 void describe('createApiConfig', () => {
+  void it('enables Google only with an explicit web client id', () => {
+    assert.equal(createApiConfig(VALID_PRODUCTION_ENV).googleAuthClientId, null)
+    assert.equal(
+      createApiConfig({
+        ...VALID_PRODUCTION_ENV,
+        AUTH_GOOGLE_CLIENT_ID: '123-web.apps.googleusercontent.com',
+      }).googleAuthClientId,
+      '123-web.apps.googleusercontent.com',
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          AUTH_GOOGLE_CLIENT_ID: 'not-a-client',
+        }),
+      /AUTH_GOOGLE_CLIENT_ID/,
+    )
+  })
   void it('resolves the API port from API_PORT, PORT, or the local default', () => {
     const defaultConfig = createApiConfig({
       NODE_ENV: 'development',

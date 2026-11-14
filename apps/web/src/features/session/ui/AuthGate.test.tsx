@@ -51,6 +51,10 @@ const mocks = vi.hoisted(() => ({
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
 }))
 
+vi.mock('@/shared/lib/theme', () => ({
+  useColorTheme: () => ({ isDark: true }),
+}))
+
 vi.mock('@/shared/config/planner-api', () => ({
   plannerApiConfig: {
     apiBaseUrl: 'https://api.chaotika.test',

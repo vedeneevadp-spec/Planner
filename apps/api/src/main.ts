@@ -22,6 +22,8 @@ import {
   PostgresApiKeyRepository,
 } from './modules/api-keys/api-key.repository.js'
 import { ApiKeyService } from './modules/api-keys/api-key.service.js'
+import { PostgresGoogleAuthRepository } from './modules/auth/google-auth.repository.js'
+import { GoogleAuthService } from './modules/auth/google-auth.service.js'
 import {
   AuthService,
   NoopAuthEmailSender,
@@ -183,6 +185,21 @@ export function createApiKernel(
           rateLimiter,
         )
       : undefined
+  // Google uses our existing session issuance, refresh rotation and logout.
+  const googleAuthService =
+    database &&
+    authRepository &&
+    authService &&
+    config.plannerAuth &&
+    config.googleAuthClientId
+      ? new GoogleAuthService(
+          config.googleAuthClientId,
+          config.plannerAuth,
+          new PostgresGoogleAuthRepository(database.db),
+          authRepository,
+          authService,
+        )
+      : undefined
   const userBackupService = database
     ? new UserBackupService(
         new PostgresUserBackupRepository(
@@ -244,6 +261,7 @@ export function createApiKernel(
       ? new JwtRequestAuthenticator(config.jwtAuth, authRepository ?? undefined)
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
+    googleAuthService,
     aiContextService,
     apiKeyService: new ApiKeyService(
       database

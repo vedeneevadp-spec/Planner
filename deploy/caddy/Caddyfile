@@ -47,7 +47,8 @@ chaotika.ru {
     not path /oauth/*
   }
   header @not_oauth_flow {
-    Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self' https://social.yandex.net https://social.yandex.ru; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self' https://accounts.google.com/gsi/; font-src 'self' data:; form-action 'self' https://social.yandex.net https://social.yandex.ru; frame-ancestors 'none'; frame-src 'self' https://accounts.google.com/gsi/; img-src 'self' data: blob:; object-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style"
+    Cross-Origin-Opener-Policy same-origin-allow-popups
   }
 
   header {

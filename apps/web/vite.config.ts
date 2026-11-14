@@ -14,6 +14,7 @@ const contractsPath = fileURLToPath(
 const shouldAnalyzeBundle = process.env.ANALYZE_BUNDLE === '1'
 const shoppingContractsPath = path.join(contractsPath, 'chaos-inbox.ts')
 const integrationContractsPath = path.join(contractsPath, 'integrations.ts')
+const googleAuthContractsPath = path.join(contractsPath, 'google-auth.ts')
 
 export default defineConfig({
   root: appRoot,
@@ -40,13 +41,21 @@ export default defineConfig({
         // The barrel re-exports feature schemas. Initialize them only when
         // a consumer such as shopping, backup, or API settings is loaded.
         moduleSideEffects: (id) =>
-          id === shoppingContractsPath || id === integrationContractsPath
+          id === shoppingContractsPath ||
+          id === integrationContractsPath ||
+          id === googleAuthContractsPath
             ? false
             : undefined,
       },
       output: {
         codeSplitting: {
           groups: [
+            {
+              includeDependenciesRecursively: false,
+              name: 'google-auth-contracts',
+              priority: 100,
+              test: (id) => id === googleAuthContractsPath,
+            },
             {
               includeDependenciesRecursively: false,
               name: 'shopping-contracts',

@@ -1,3 +1,7 @@
+import type {
+  GoogleAuthChallenge,
+  GoogleAuthSignInInput,
+} from '@planner/contracts'
 import { createContext } from 'react'
 
 export interface PasswordSignUpInput {
@@ -19,6 +23,8 @@ export type SessionAuthLifecycleStatus =
   'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
 
 export interface SessionAuthState {
+  createGoogleChallenge: () => Promise<GoogleAuthChallenge>
+  signInWithGoogle: (input: GoogleAuthSignInInput) => Promise<void>
   accessToken: string | null
   authNotice: string | null
   canUseProtectedApi: boolean

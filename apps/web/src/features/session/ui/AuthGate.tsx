@@ -1,7 +1,9 @@
 import {
   type FormEvent,
+  lazy,
   type PropsWithChildren,
   type ReactNode,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -31,6 +33,10 @@ import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
 import { resolveAuthGateView } from './AuthGate.model'
 import styles from './AuthGate.module.css'
+
+const GoogleSignIn = lazy(() =>
+  import('./GoogleSignIn').then((module) => ({ default: module.GoogleSignIn })),
+)
 
 const AUTH_MODE_CONTENT: Record<
   AuthScreenMode,
@@ -531,6 +537,17 @@ export function AuthGate({ children }: PropsWithChildren) {
           {modeContent.copy}
         </p>
       </div>
+
+      {!isPasswordRecovery && !isRequestingPasswordReset && (
+        <Suspense fallback={null}>
+          <GoogleSignIn
+            key={mode}
+            disabled={isSubmitting}
+            onBusyChange={setIsSubmitting}
+            rememberSession={shouldShowRememberMe ? rememberMe : true}
+          />
+        </Suspense>
+      )}
 
       <form
         className={styles.form}

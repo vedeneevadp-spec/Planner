@@ -20,6 +20,7 @@ import {
 import { registerApiKeyRoutes } from '../modules/api-keys/api-key.routes.js'
 import type { ApiKeyService } from '../modules/api-keys/api-key.service.js'
 import { registerPublicApiRoutes } from '../modules/api-keys/public-api.routes.js'
+import type { GoogleAuthService } from '../modules/auth/google-auth.service.js'
 import type { AuthService } from '../modules/auth/index.js'
 import {
   registerAuthRoutes,
@@ -85,6 +86,7 @@ import { registerApiRouteRegistry } from './route-registry.js'
 const DEFAULT_API_BODY_LIMIT_BYTES = 1024 * 1024
 
 export interface BuildApiAppOptions {
+  googleAuthService?: GoogleAuthService | undefined
   config: ApiConfig
   database: DatabaseConnection | null
   databaseStatusResolver?: (
@@ -120,6 +122,7 @@ export function buildApiApp({
   databaseStatusResolver = getDatabaseStatus,
   requestAuthenticator = new NoopRequestAuthenticator(),
   authService,
+  googleAuthService,
   aiContextService,
   apiKeyService,
   chaosInboxService,
@@ -270,6 +273,7 @@ export function buildApiApp({
 
     if (authService) {
       registerAuthRoutes(instance, authService, {
+        googleAuthService,
         isSecureCookie: config.appEnv === 'production',
         rateLimiter,
         refreshCookieMaxAgeSeconds:
@@ -409,6 +413,9 @@ function isPublicRequest(method: string, url: string): boolean {
     path === '/api/ready' ||
     path === '/api/metrics' ||
     path === '/api/v1/auth/sign-in' ||
+    path === '/api/v1/auth/google/config' ||
+    path === '/api/v1/auth/google/challenge' ||
+    path === '/api/v1/auth/google/sign-in' ||
     path === '/api/v1/auth/sign-out' ||
     path === '/api/v1/auth/sign-up' ||
     path === '/api/v1/auth/refresh' ||
