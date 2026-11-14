@@ -334,19 +334,6 @@ export {
   newEmojiSetInputSchema,
 } from './emoji-set.js'
 export type {
-  GooglePlayTestingRequest,
-  GooglePlayTestingReview,
-  GooglePlayTestingState,
-} from './google-play-testing.js'
-export {
-  googlePlayTestingAdminSchema,
-  googlePlayTestingInputSchema,
-  googlePlayTestingRequestSchema,
-  googlePlayTestingReviewSchema,
-  googlePlayTestingSettingsSchema,
-  googlePlayTestingStateSchema,
-} from './google-play-testing.js'
-export type {
   Habit,
   HabitEntry,
   HabitEntryDeleteInput,

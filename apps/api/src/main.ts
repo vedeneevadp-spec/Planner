@@ -55,10 +55,6 @@ import {
   PostgresEmojiSetRepository,
 } from './modules/emoji-sets/index.js'
 import {
-  MemoryGooglePlayTestingRepository,
-  PostgresGooglePlayTestingRepository,
-} from './modules/google-play-testing/google-play-testing.repository.js'
-import {
   HabitService,
   MemoryHabitRepository,
   PostgresHabitRepository,
@@ -172,9 +168,6 @@ export function createApiKernel(
   const sessionRepository = database
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
-  const googlePlayTestingRepository = database
-    ? new PostgresGooglePlayTestingRepository(database.db)
-    : new MemoryGooglePlayTestingRepository()
   const authRepository =
     database && config.plannerAuth
       ? new PostgresAuthRepository(database.db)
@@ -251,7 +244,6 @@ export function createApiKernel(
       ? new JwtRequestAuthenticator(config.jwtAuth, authRepository ?? undefined)
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
-    googlePlayTestingRepository,
     aiContextService,
     apiKeyService: new ApiKeyService(
       database

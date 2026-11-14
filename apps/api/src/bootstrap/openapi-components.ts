@@ -55,9 +55,6 @@ const aliceWebhookResponseSchema = z.union([
 // Names stay stable for clients. Shapes, required fields, defaults, enums and
 // limits come from the actual validators instead of a second handwritten model.
 export const openApiInputContracts = {
-  GooglePlayTestingInput: contracts.googlePlayTestingInputSchema,
-  GooglePlayTestingReview: contracts.googlePlayTestingReviewSchema,
-  GooglePlayTestingSettingsInput: contracts.googlePlayTestingSettingsSchema,
   UserBackupArchiveInput: backup.userBackupArchiveSchema,
   AddEmojiSetItemsInput: contracts.addEmojiSetItemsInputSchema,
   AdminUserRoleUpdateInput: contracts.adminUserRoleUpdateInputSchema,
@@ -159,10 +156,6 @@ export const openApiInputContracts = {
 } satisfies Record<string, z.ZodType>
 
 export const openApiOutputContracts = {
-  GooglePlayTestingState: contracts.googlePlayTestingStateSchema,
-  GooglePlayTestingRequest: contracts.googlePlayTestingRequestSchema,
-  GooglePlayTestingAdmin: contracts.googlePlayTestingAdminSchema,
-  GooglePlayTestingSettings: contracts.googlePlayTestingSettingsSchema,
   OAuthError: z.object({ error: z.string(), error_description: z.string() }),
   AdminUserListResponse: contracts.adminUserListResponseSchema,
   AdminUserRecord: contracts.adminUserRecordSchema,

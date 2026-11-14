@@ -37,11 +37,6 @@ const ContactsPage = lazy(() =>
     default: module.ContactsPage,
   })),
 )
-const GooglePlayTestingPage = lazy(() =>
-  import('@/pages/google-play-testing').then((module) => ({
-    default: module.GooglePlayTestingPage,
-  })),
-)
 const MorePage = lazy(() =>
   import('@/pages/more').then((module) => ({ default: module.MorePage })),
 )
@@ -133,7 +128,6 @@ const routeElements = {
   cleaningSettingsZone: <CleaningSettingsPage />,
   cleaningZoneRedirect: <CleaningZoneRedirect />,
   contacts: <ContactsPage />,
-  googlePlayTesting: <GooglePlayTestingPage />,
   habitRedirect: <HabitsRedirect />,
   habitsRedirect: <HabitsRedirect />,
   more: <MorePage />,

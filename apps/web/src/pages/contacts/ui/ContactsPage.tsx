@@ -1,4 +1,3 @@
-import { GOOGLE_PLAY_TESTING_PATH } from '@/features/google-play-testing/lib/content'
 import { cx } from '@/shared/lib/classnames'
 import { ChatIcon, GlobeIcon, MailIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
@@ -7,14 +6,6 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 import styles from './ContactsPage.module.css'
 
 const CONTACT_LINKS = [
-  {
-    description:
-      'Оставить Google-почту, проверить заявку и получить ссылки для установки на Android.',
-    href: GOOGLE_PLAY_TESTING_PATH,
-    icon: <GlobeIcon size={20} strokeWidth={2} />,
-    isExternal: false,
-    label: 'Тестирование Google Play',
-  },
   {
     description: 'Как Chaotika обрабатывает и защищает ваши данные.',
     href: 'https://chaotika.ru/privacy.html',

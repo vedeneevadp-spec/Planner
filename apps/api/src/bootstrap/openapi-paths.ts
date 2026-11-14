@@ -5,7 +5,6 @@ import { authorizationQuerySchema } from '../modules/auth/oauth.routes.js'
 import { dailyPlanQuerySchema } from '../modules/daily-plans/daily-plan.routes.js'
 import { weeklyStatsQuerySchema } from '../modules/life-spheres/life-sphere.routes.js'
 import { ritualStepDraftDeleteQuerySchema } from '../modules/self-care/self-care.routes.js'
-import { createGooglePlayTestingPaths } from './openapi-google-play-testing.js'
 import {
   datePathParameter,
   emojiSetIdParameter,
@@ -34,7 +33,6 @@ import { contractQueryParameters } from './openapi-schema.js'
 export function createPaths(): OpenAPIV3.PathsObject {
   return {
     ...createIntegrationPaths(),
-    ...createGooglePlayTestingPaths(),
     '/api/health': {
       get: {
         operationId: 'getHealth',
