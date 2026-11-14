@@ -14,7 +14,7 @@ import {
 } from '@planner/contracts'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
-import { createApiRequester } from '@/shared/lib/api-client'
+import { createApiRequester, withRequestTimeout } from '@/shared/lib/api-client'
 
 export class SessionApiError extends Error {
   readonly code: string
@@ -55,13 +55,17 @@ export async function resolvePlannerSession(
   fetchFn: typeof fetch = fetch,
 ): Promise<SessionResponse> {
   const request = createSessionRequest(options, fetchFn)
-  const session = await request({
-    actorHeader: 'always',
-    fallbackErrorMessage: 'Failed to resolve planner session.',
-    path: '/api/v1/session',
-    responseSchema: sessionResponseSchema,
-    signal: options.signal,
-  })
+  const session = await withRequestTimeout(
+    (signal) =>
+      request({
+        actorHeader: 'always',
+        fallbackErrorMessage: 'Failed to resolve planner session.',
+        path: '/api/v1/session',
+        responseSchema: sessionResponseSchema,
+        signal,
+      }),
+    { signal: options.signal },
+  )
 
   return resolveSessionAssetUrls(session)
 }

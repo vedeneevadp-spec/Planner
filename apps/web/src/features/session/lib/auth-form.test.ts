@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { RequestTimeoutError } from '@/shared/lib/api-client'
+
 import {
   getFriendlyAuthErrorMessage,
   getFriendlyPlannerSessionErrorMessage,
@@ -136,8 +138,36 @@ describe('auth form helpers', () => {
       getFriendlyPlannerSessionErrorMessage(new Error('Raw failure')),
     ).toBe('Raw failure')
 
+    expect(
+      getFriendlyPlannerSessionErrorMessage(new TypeError('Failed to fetch')),
+    ).toBe(
+      'Не удалось связаться с сервером. Проверьте соединение и попробуйте еще раз.',
+    )
+
     expect(getFriendlyPlannerSessionErrorMessage(null)).toBe(
       'Не удалось открыть рабочее пространство.',
+    )
+  })
+
+  it.each([new RequestTimeoutError(), new TypeError('Failed to fetch')])(
+    'explains ambiguous registration after %s',
+    (error) => {
+      expect(getFriendlyAuthErrorMessage(error, 'register')).toBe(
+        'Не удалось получить ответ сервера. Проверьте соединение и попробуйте войти с тем же email и паролем: аккаунт мог быть создан.',
+      )
+    },
+  )
+
+  it('explains timed-out sign-in and workspace requests', () => {
+    expect(
+      getFriendlyAuthErrorMessage(new RequestTimeoutError(), 'login'),
+    ).toBe(
+      'Сервер не ответил вовремя. Проверьте соединение и попробуйте еще раз.',
+    )
+    expect(
+      getFriendlyPlannerSessionErrorMessage(new RequestTimeoutError()),
+    ).toBe(
+      'Сервер не ответил вовремя. Проверьте соединение и попробуйте еще раз.',
     )
   })
 })

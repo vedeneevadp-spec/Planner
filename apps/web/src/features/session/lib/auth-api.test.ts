@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import {
+  REQUEST_TIMEOUT_MS,
+  RequestTimeoutError,
+} from '@/shared/lib/api-client'
 import { readClientEvents } from '@/shared/lib/observability'
 
 import {
   refreshAuthSession,
   signInWithPassword,
   signOutAuthSession,
+  signUpWithPassword,
   updatePassword,
 } from './auth-api'
 
@@ -257,6 +262,81 @@ describe('auth-api', () => {
       errorName: 'TypeError',
       path: '/api/v1/auth/sign-in',
     })
+  })
+
+  it.each([
+    ['sign-in', signInWithPassword],
+    ['sign-up', signUpWithPassword],
+  ] as const)(
+    'bounds a stalled %s request without repeating it',
+    async (_name, request) => {
+      vi.useFakeTimers()
+      const fetchMock = vi.fn(
+        (_url: URL, _init: RequestInit) =>
+          new Promise<Response>(() => undefined),
+      )
+      vi.stubGlobal('fetch', fetchMock)
+      const result = request({
+        email: 'web@example.test',
+        password: 'password',
+      })
+      const rejection =
+        expect(result).rejects.toBeInstanceOf(RequestTimeoutError)
+
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS)
+
+      await rejection
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0]?.[1].signal?.aborted).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    },
+  )
+
+  it('keeps the auth deadline active while the response body is stalled', async () => {
+    vi.useFakeTimers()
+    const response = jsonResponse({})
+    vi.spyOn(response, 'text').mockImplementation(
+      () => new Promise<string>(() => undefined),
+    )
+    const fetchMock = vi.fn((_url: URL, _init: RequestInit) =>
+      Promise.resolve(response),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const result = signUpWithPassword({
+      email: 'web@example.test',
+      password: 'password',
+    })
+    const rejection = expect(result).rejects.toBeInstanceOf(RequestTimeoutError)
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS)
+
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[1].signal?.aborted).toBe(true)
+  })
+
+  it('bounds both safe refresh attempts and reuses the rotation request', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(
+      (_url: URL, _init: RequestInit) => new Promise<Response>(() => undefined),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const input = {
+      refreshToken: 'persisted-refresh-token',
+      rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+    }
+    const result = refreshAuthSession(input, { deviceId: 'native-device-1' })
+    const rejection = expect(result).rejects.toBeInstanceOf(RequestTimeoutError)
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS * 2 + 750)
+
+    await rejection
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init.body).toBe(JSON.stringify(input))
+      expect(init.signal?.aborted).toBe(true)
+    }
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
 

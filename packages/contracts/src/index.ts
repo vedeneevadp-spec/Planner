@@ -561,6 +561,7 @@ export {
   isSelfCarePausedOnDate,
   updateSelfCarePausePeriods,
 } from './self-care-pause.js'
+export { buildSelfCareItemInputFromTemplate } from './self-care-template.js'
 export type {
   DateOnlySchedule,
   FixedZoneDateTimeSchedule,

@@ -1,4 +1,5 @@
 import {
+  buildSelfCareItemInputFromTemplate,
   generateUuidV7,
   type HabitTodayResponse,
   type SelfCareAnalyticsResponse,
@@ -38,6 +39,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ZodError } from 'zod'
 
 import {
   usePlannerTimeZone,
@@ -716,6 +718,8 @@ export function useCreateSelfCareItem() {
 }
 
 export function useCreateSelfCareItemFromTemplate() {
+  const plannerTimeZone = usePlannerTimeZone()
+
   return useSelfCareCommandMutation({
     buildCommand: (
       { input, scheduleInput, templateId }: CreateFromTemplateVariables,
@@ -725,7 +729,16 @@ export function useCreateSelfCareItemFromTemplate() {
       const template = source.templates?.find(
         (candidate) => candidate.id === templateId,
       )
-      const overrides = input?.overrides ?? {}
+      if (!template) {
+        throw new SelfCareOfflineBaseUnavailableError()
+      }
+      // Persist the resolved defaults so optimistic reads and a later sync use
+      // the same schedule, goal, course details and visit date.
+      const overrides = buildSelfCareItemInputFromTemplate(
+        template,
+        input?.overrides,
+        { plannerTimeZone },
+      )
       return {
         ...(scheduleInput
           ? {
@@ -737,20 +750,7 @@ export function useCreateSelfCareItemFromTemplate() {
           : {}),
         itemId,
         overrides: normalizeSelfCareItemRelationIds(
-          {
-            ...overrides,
-            ...(overrides.steps
-              ? {}
-              : {
-                  steps: (template?.defaultSteps ?? []).map((title, order) => ({
-                    defaultChecked: false,
-                    id: generateUuidV7(),
-                    isOptional: false,
-                    order,
-                    title,
-                  })),
-                }),
-          },
+          overrides,
           source.list,
           itemId,
         ),
@@ -1119,6 +1119,10 @@ export function useUpdateSelfCareSettings() {
 export function getSelfCareErrorMessage(error: unknown): string {
   if (isSelfCareNetworkError(error)) {
     return SELF_CARE_NETWORK_ERROR_MESSAGE
+  }
+
+  if (error instanceof ZodError) {
+    return 'Не удалось подготовить заботу. Проверь настройки заботы и расписания и попробуй ещё раз.'
   }
 
   if (error instanceof SelfCareApiError) {

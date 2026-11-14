@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import {
+  REQUEST_TIMEOUT_MS,
+  RequestTimeoutError,
+} from '@/shared/lib/api-client'
 
 import {
   createSharedWorkspace,
@@ -58,6 +62,10 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
 }
 
 describe('sessionApi', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('loads the current session', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -74,25 +82,56 @@ describe('sessionApi', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('forwards abort signal when resolving session', async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
-      )
-    const signal = new AbortController().signal
+  it('cancels a pending session request when the caller aborts', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise(() => {}))
+    const controller = new AbortController()
+    const reason = new DOMException('Session query cancelled.', 'AbortError')
 
-    await resolvePlannerSession(
+    const pendingSession = resolvePlannerSession(
       {
-        signal,
+        signal: controller.signal,
       },
       fetchMock,
     )
+    const rejectedSession = expect(pendingSession).rejects.toBe(reason)
+    await Promise.resolve()
 
     const [, requestInit] = fetchMock.mock.calls[0]!
 
-    expect(requestInit?.signal).toBe(signal)
+    controller.abort(reason)
+
+    await rejectedSession
+    expect(requestInit?.signal?.aborted).toBe(true)
+    expect(requestInit?.signal?.reason).toBe(reason)
   })
+
+  it.each(['fetch', 'response body'] as const)(
+    'stops loading when the session %s never settles',
+    async (pendingStage) => {
+      vi.useFakeTimers()
+      const response = new Response(null, { status: 200 })
+      const readBody = vi
+        .spyOn(response, 'text')
+        .mockImplementation(() => new Promise(() => {}))
+      const fetchMock = vi.fn<typeof fetch>(() =>
+        pendingStage === 'fetch'
+          ? new Promise(() => {})
+          : Promise.resolve(response),
+      )
+      const pendingSession = resolvePlannerSession({}, fetchMock)
+      const rejectedSession =
+        expect(pendingSession).rejects.toBeInstanceOf(RequestTimeoutError)
+
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS)
+
+      await rejectedSession
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+      if (pendingStage === 'response body') {
+        expect(readBody).toHaveBeenCalledOnce()
+      }
+    },
+  )
 
   it('includes bearer authorization when access token is provided', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
