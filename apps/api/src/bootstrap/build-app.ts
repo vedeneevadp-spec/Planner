@@ -38,8 +38,6 @@ import {
   registerEmojiSetRoutes,
   registerIconAssetRoutes,
 } from '../modules/emoji-sets/index.js'
-import type { GooglePlayTestingRepository } from '../modules/google-play-testing/google-play-testing.repository.js'
-import { registerGooglePlayTestingRoutes } from '../modules/google-play-testing/google-play-testing.routes.js'
 import type { HabitService } from '../modules/habits/index.js'
 import { registerHabitRoutes } from '../modules/habits/index.js'
 import type { LifeSphereService } from '../modules/life-spheres/index.js'
@@ -101,7 +99,6 @@ export interface BuildApiAppOptions {
   dailyPlanService?: DailyPlanService
   emojiSetService?: EmojiSetService
   habitService?: HabitService
-  googlePlayTestingRepository?: GooglePlayTestingRepository
   lifeSphereService?: LifeSphereService
   mcpAuditRepository?: McpAuditLogRepository
   mcpOAuthService?: McpOAuthService
@@ -130,7 +127,6 @@ export function buildApiApp({
   dailyPlanService,
   emojiSetService,
   habitService,
-  googlePlayTestingRepository,
   lifeSphereService,
   mcpAuditRepository,
   mcpOAuthService,
@@ -286,13 +282,6 @@ export function buildApiApp({
       })
     }
     registerSessionRoutes(instance, sessionService)
-    if (googlePlayTestingRepository) {
-      registerGooglePlayTestingRoutes(
-        instance,
-        googlePlayTestingRepository,
-        sessionService,
-      )
-    }
     if (userBackupService) {
       registerUserBackupRoutes(instance, sessionService, userBackupService)
     }

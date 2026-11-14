@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { useState } from 'react'
 
 import { AppUpdatesProvider } from '@/features/app-update/provider'
 import {
@@ -13,18 +13,11 @@ import {
   TimeZoneChangeBanner,
 } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
-import { AsyncLoadErrorBoundary } from '@/shared/ui/AsyncLoadErrorBoundary'
 import { PlannerMobileHeader, PlannerTopTabs, Sidebar } from '@/widgets/sidebar'
 
 import { AndroidImports } from './android-import/AndroidImports'
 import styles from './App.module.css'
 import { AppRouter } from './router'
-
-const GooglePlayTestingBanner = lazy(() =>
-  import('@/features/google-play-testing/ui/GooglePlayTestingBanner').then(
-    (module) => ({ default: module.GooglePlayTestingBanner }),
-  ),
-)
 
 function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -55,11 +48,6 @@ function App() {
                   <main className={styles.main}>
                     <PlannerMobileHeader />
                     <div className={styles.routeSlot}>
-                      <AsyncLoadErrorBoundary fallback={null}>
-                        <Suspense fallback={null}>
-                          <GooglePlayTestingBanner />
-                        </Suspense>
-                      </AsyncLoadErrorBoundary>
                       <AppRouter />
                     </div>
                   </main>
