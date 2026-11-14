@@ -8,6 +8,7 @@ import {
   type SelfCareHistoryResponse,
   type SelfCareItem,
   type SelfCareItemInput,
+  selfCareItemInputSchema,
   type SelfCareItemScheduleInput,
   type SelfCareListResponse,
   type SelfCareOccurrence,
@@ -1445,6 +1446,152 @@ describe('self-care persistent reads and offline commands', () => {
     expect(getSelfCareErrorMessage(new TypeError('Failed to fetch'))).toBe(
       SELF_CARE_NETWORK_ERROR_MESSAGE,
     )
+  })
+
+  it('does not show raw schema errors when preparing a care fails', () => {
+    const result = selfCareItemInputSchema.safeParse({
+      category: 'movement',
+      title: 'Йога',
+      type: 'flexible_goal',
+    })
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(getSelfCareErrorMessage(result.error)).toBe(
+      'Не удалось подготовить заботу. Проверь настройки заботы и расписания и попробуй ещё раз.',
+    )
+  })
+
+  it.each(['appointment', 'medical', 'procedure', 'course'] as const)(
+    'keeps required %s template details in offline storage and the cached list',
+    async (type) => {
+      browserOnline = false
+      seedSelfCareSource(queryClient)
+      const template = queryClient.getQueryData<SelfCareTemplate[]>(
+        selfCareTemplatesQueryKey(OWNER_ID),
+      )![0]!
+      queryClient.setQueryData(selfCareTemplatesQueryKey(OWNER_ID), [
+        {
+          ...template,
+          type,
+          defaultSchedule: {
+            preferredTime: '10:30',
+            startDate: '2026-11-14',
+            repeatKind: type === 'course' ? 'course' : 'yearly',
+          },
+        },
+      ])
+
+      await runMutation(queryClient, useCreateSelfCareItemFromTemplate, {
+        input: { overrides: { title: 'Моя забота' } },
+        templateId: template.id,
+      })
+
+      const queued = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued).toHaveLength(1)
+      const command = queued[0]!.command
+      expect(command.type).toBe('create_item_from_template')
+      if (command.type !== 'create_item_from_template') return
+      const expectedType = type === 'course' ? 'course' : 'appointment'
+      expect(command.overrides).toMatchObject({
+        title: 'Моя забота',
+        type: expectedType,
+      })
+      expect(command.overrides.steps?.[0]?.id).toMatch(UUID_V7_PATTERN)
+      const list = queryClient.getQueryData<SelfCareListResponse>(
+        selfCareItemsQueryKey(OWNER_ID),
+      )!
+      expect(list.items).toContainEqual(
+        expect.objectContaining({
+          id: command.itemId,
+          type: expectedType,
+          title: 'Моя забота',
+        }),
+      )
+      if (expectedType === 'course') {
+        expect(command.overrides.courseDetails).toMatchObject({
+          totalCount: 30,
+          courseType: 'days',
+        })
+        expect(list.courseDetails).toContainEqual(
+          expect.objectContaining({ itemId: command.itemId, totalCount: 30 }),
+        )
+      } else {
+        expect(command.overrides.appointmentDetails?.startsAt).toBe(
+          '2026-11-14T06:30:00.000Z',
+        )
+        expect(list.appointmentDetails).toContainEqual(
+          expect.objectContaining({
+            itemId: command.itemId,
+            startsAt: '2026-11-14T06:30:00.000Z',
+          }),
+        )
+      }
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+    },
+  )
+
+  it('creates Yoga offline with its weekly goal intact in the queue and cached list', async () => {
+    browserOnline = false
+    seedSelfCareSource(queryClient)
+    const template = queryClient.getQueryData<SelfCareTemplate[]>(
+      selfCareTemplatesQueryKey(OWNER_ID),
+    )![0]!
+    queryClient.setQueryData(selfCareTemplatesQueryKey(OWNER_ID), [
+      {
+        ...template,
+        category: 'movement',
+        defaultSchedule: {
+          repeatKind: 'flexible_goal',
+          flexiblePeriod: 'week',
+          flexibleTargetCount: 3,
+        },
+        defaultSteps: [],
+        title: 'Йога',
+        type: 'flexible_goal',
+      },
+    ])
+
+    await runMutation(queryClient, useCreateSelfCareItemFromTemplate, {
+      templateId: template.id,
+    })
+
+    const queued = await listSelfCareOfflineMutations(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    )
+    expect(queued).toHaveLength(1)
+    const command = queued[0]!.command
+    expect(command.type).toBe('create_item_from_template')
+    if (command.type !== 'create_item_from_template') return
+    expect(command.overrides.scheduleRule?.id).toMatch(UUID_V7_PATTERN)
+    expect(command.overrides.scheduleRule).toMatchObject({
+      repeatKind: 'flexible_goal',
+      flexiblePeriod: 'week',
+      flexibleTargetCount: 3,
+    })
+    const list = queryClient.getQueryData<SelfCareListResponse>(
+      selfCareItemsQueryKey(OWNER_ID),
+    )!
+    expect(list.items).toContainEqual(
+      expect.objectContaining({
+        id: command.itemId,
+        title: 'Йога',
+        type: 'flexible_goal',
+        createdFromTemplateId: template.id,
+      }),
+    )
+    expect(list.scheduleRules).toContainEqual(
+      expect.objectContaining({
+        itemId: command.itemId,
+        repeatKind: 'flexible_goal',
+        flexibleTargetCount: 3,
+        flexiblePeriod: 'week',
+      }),
+    )
+    expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
   })
 })
 

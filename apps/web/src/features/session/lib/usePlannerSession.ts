@@ -2,6 +2,7 @@ import type { SessionResponse } from '@planner/contracts'
 import { useQuery } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import { RequestTimeoutError } from '@/shared/lib/api-client'
 
 import { isNativeSessionPersistenceRuntime } from './native-session-storage'
 import {
@@ -52,6 +53,7 @@ export function usePlannerSession() {
 
   return useQuery({
     enabled: canLoadPlannerSession,
+    networkMode: 'always',
     queryFn: async ({ signal }) => {
       const session = await loadPlannerSession({
         accessToken: auth.accessToken ?? undefined,
@@ -82,8 +84,11 @@ export function usePlannerSession() {
         }
       : {}),
     refetchOnMount: true,
+    refetchOnReconnect: true,
     retry: (failureCount, error) =>
-      !isUnauthorizedSessionApiError(error) && failureCount < 2,
+      !isUnauthorizedSessionApiError(error) &&
+      !(error instanceof RequestTimeoutError) &&
+      failureCount < 2,
     staleTime: 5 * 60_000,
   })
 }

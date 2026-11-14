@@ -2,10 +2,16 @@ import type {
   SessionResponse,
   SessionWorkspaceMembership,
 } from '@planner/contracts'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  onlineManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { createElement, type PropsWithChildren, type ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { RequestTimeoutError } from '@/shared/lib/api-client'
 
 const nativeSessionMocks = vi.hoisted(() => ({
   isNativeSessionPersistenceRuntime: vi.fn(),
@@ -39,6 +45,72 @@ describe('loadPlannerSession', () => {
 
   afterEach(() => {
     cleanup()
+    onlineManager.setOnline(true)
+    vi.restoreAllMocks()
+  })
+
+  it('finishes offline startup failures and retries when connectivity returns', async () => {
+    onlineManager.setOnline(false)
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new TypeError('Failed to fetch'))
+
+    renderWithPlannerSession(
+      createElement(SessionStatusProbe),
+      createAuthState(),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-status')).toHaveTextContent(
+        'error:idle',
+      )
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    const workspace = createWorkspaceMembership({
+      id: 'workspace-a',
+      kind: 'personal',
+      name: 'User A',
+      role: 'owner',
+      slug: 'user-a',
+    })
+    const session = createSessionResponse({
+      actorUserId: 'user-a',
+      role: 'owner',
+      workspace,
+      workspaceId: workspace.id,
+      workspaces: [workspace],
+    })
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(session), { status: 200 }),
+    )
+
+    act(() => onlineManager.setOnline(true))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-status')).toHaveTextContent(
+        'success:idle',
+      )
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
+  it('shows a session timeout without starting another automatic attempt', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new RequestTimeoutError())
+
+    renderWithPlannerSession(
+      createElement(SessionStatusProbe),
+      createAuthState(),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-status')).toHaveTextContent(
+        'error:idle',
+      )
+    })
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
   it('exposes the cached session before auth storage restore finishes', () => {
@@ -396,6 +468,16 @@ function CachedSessionProbe() {
   )
 }
 
+function SessionStatusProbe() {
+  const sessionQuery = usePlannerSession()
+
+  return createElement(
+    'output',
+    { 'data-testid': 'session-status' },
+    `${sessionQuery.status}:${sessionQuery.fetchStatus}`,
+  )
+}
+
 function renderWithPlannerSession(
   element: ReactElement,
   authState: SessionAuthState,
@@ -404,6 +486,7 @@ function renderWithPlannerSession(
     defaultOptions: {
       queries: {
         retry: false,
+        retryDelay: 0,
       },
     },
   })

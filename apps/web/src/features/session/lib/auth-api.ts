@@ -18,7 +18,11 @@ import {
 } from '@planner/contracts'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
-import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
+import {
+  readResponsePayload,
+  throwApiError,
+  withRequestTimeout,
+} from '@/shared/lib/api-client'
 import { recordClientEvent } from '@/shared/lib/observability'
 
 export type AuthTokenTransport = 'body' | 'cookie'
@@ -135,7 +139,7 @@ export async function updatePassword(
   options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
   const path = '/api/v1/auth/password'
-  const response = await fetchAuth(
+  const { response, payload } = await fetchAuth(
     new URL(path, plannerApiConfig.apiBaseUrl),
     {
       body: JSON.stringify(authPasswordUpdateInputSchema.parse(input)),
@@ -148,7 +152,6 @@ export async function updatePassword(
     },
     { path },
   )
-  const payload = await readResponsePayload(response)
 
   if (!response.ok) {
     throwAuthApiError(response, payload, 'Failed to update password.')
@@ -163,7 +166,7 @@ async function postAuthJson<TInput>(
   options: AuthRequestOptions = {},
   retryPolicy: AuthNetworkRetryPolicy = 'never',
 ): Promise<AuthTokenResponse> {
-  const response = await fetchAuth(
+  const { response, payload } = await fetchAuth(
     new URL(path, plannerApiConfig.apiBaseUrl),
     {
       body: JSON.stringify(input),
@@ -173,7 +176,6 @@ async function postAuthJson<TInput>(
     },
     { path, retryPolicy },
   )
-  const payload = await readResponsePayload(response)
 
   if (!response.ok) {
     throwAuthApiError(response, payload, 'Auth request failed.')
@@ -188,7 +190,7 @@ async function postAuthNoContent<TInput>(
   options: AuthRequestOptions = {},
   retryPolicy: AuthNetworkRetryPolicy = 'never',
 ): Promise<void> {
-  const response = await fetchAuth(
+  const { response, payload } = await fetchAuth(
     new URL(path, plannerApiConfig.apiBaseUrl),
     {
       body: JSON.stringify(input),
@@ -198,7 +200,6 @@ async function postAuthNoContent<TInput>(
     },
     { path, retryPolicy },
   )
-  const payload = await readResponsePayload(response)
 
   if (!response.ok) {
     throwAuthApiError(response, payload, 'Auth request failed.')
@@ -232,12 +233,17 @@ async function fetchAuth(
     path: string
     retryPolicy?: AuthNetworkRetryPolicy
   },
-): Promise<Response> {
+): Promise<{ response: Response; payload: unknown }> {
   let attempt = 1
 
   while (true) {
     try {
-      return await fetch(url, init)
+      return await withRequestTimeout(async (signal) => {
+        const response = await fetch(url, { ...init, signal })
+        const payload = await readResponsePayload(response)
+
+        return { response, payload }
+      })
     } catch (error) {
       if (
         context.retryPolicy !== 'safe_once' ||

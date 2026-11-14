@@ -1,3 +1,5 @@
+import { RequestTimeoutError } from '@/shared/lib/api-client'
+
 import { SessionApiError } from './session-api'
 
 export type AuthMode = 'login' | 'register'
@@ -7,6 +9,8 @@ export type AuthFieldName =
 export type AuthFieldErrors = Partial<Record<AuthFieldName, string>>
 
 const MIN_PASSWORD_LENGTH = 6
+const REGISTRATION_NETWORK_ERROR_MESSAGE =
+  'Не удалось получить ответ сервера. Проверьте соединение и попробуйте войти с тем же email и паролем: аккаунт мог быть создан.'
 
 export function validateAuthForm({
   email,
@@ -116,8 +120,16 @@ export function getFriendlyAuthErrorMessage(
     return 'Регистрация временно недоступна.'
   }
 
+  if (error instanceof RequestTimeoutError) {
+    return screenMode === 'register'
+      ? REGISTRATION_NETWORK_ERROR_MESSAGE
+      : 'Сервер не ответил вовремя. Проверьте соединение и попробуйте еще раз.'
+  }
+
   if (message.includes('network') || message.includes('fetch')) {
-    return 'Не удалось связаться с сервером. Проверьте интернет или VPN и попробуйте еще раз.'
+    return screenMode === 'register'
+      ? REGISTRATION_NETWORK_ERROR_MESSAGE
+      : 'Не удалось связаться с сервером. Проверьте интернет или VPN и попробуйте еще раз.'
   }
 
   if (screenMode === 'register') {
@@ -132,6 +144,14 @@ export function getFriendlyAuthErrorMessage(
 }
 
 export function getFriendlyPlannerSessionErrorMessage(error: unknown): string {
+  if (error instanceof RequestTimeoutError) {
+    return 'Сервер не ответил вовремя. Проверьте соединение и попробуйте еще раз.'
+  }
+
+  if (error instanceof TypeError) {
+    return 'Не удалось связаться с сервером. Проверьте соединение и попробуйте еще раз.'
+  }
+
   if (error instanceof SessionApiError) {
     if (error.status >= 500) {
       return 'Не удалось связаться с сервером. Проверьте соединение и попробуйте еще раз.'

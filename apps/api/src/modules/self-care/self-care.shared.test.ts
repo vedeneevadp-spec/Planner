@@ -15,6 +15,7 @@ import type {
   SelfCareScheduleRule,
   SelfCareTemplate,
 } from '@planner/contracts'
+import { selfCareItemInputSchema } from '@planner/contracts'
 
 import {
   buildAnalyticsResponse,
@@ -1455,6 +1456,37 @@ void test('buildSystemSelfCareTemplates creates visit templates as appointments'
     templates.some((template) => template.type === 'mood_check'),
     false,
   )
+})
+
+void test('all system templates produce complete valid inputs for offline creation', () => {
+  const templates = buildSystemSelfCareTemplates()
+  assert.equal(templates.length, 11)
+  for (const template of templates) {
+    const input = buildItemInputFromTemplate(
+      template,
+      {},
+      {
+        plannerTimeZone: 'Asia/Novosibirsk',
+      },
+    )
+    const parsed = selfCareItemInputSchema.safeParse(input)
+    assert.equal(
+      parsed.success,
+      true,
+      `${template.title}: ${parsed.error?.message ?? ''}`,
+    )
+    if (input.type === 'flexible_goal') {
+      assert.equal(input.scheduleRule?.flexiblePeriod, 'week')
+      assert.equal(
+        input.scheduleRule?.flexibleTargetCount,
+        template.title === 'Прогулка' ? 5 : 3,
+      )
+    }
+    if (input.type === 'course')
+      assert.equal(input.courseDetails?.totalCount, 30)
+    if (input.type === 'appointment')
+      assert.ok(input.appointmentDetails?.startsAt)
+  }
 })
 
 void test('buildSelfCareListResponse hides legacy mood check items', () => {
