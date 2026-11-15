@@ -18,6 +18,7 @@ import {
   TrashIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import styles from './CalendarPage.module.css'
 
@@ -332,7 +333,7 @@ export function CalendarDayScheduleDialog({
   const unscheduledCountLabel = formatTaskCount(unscheduledCount)
 
   return (
-    <div
+    <ModalSurface
       className={styles.taskOverlay}
       role="dialog"
       aria-modal="true"
@@ -376,6 +377,6 @@ export function CalendarDayScheduleDialog({
           ))}
         </div>
       </div>
-    </div>
+    </ModalSurface>
   )
 }

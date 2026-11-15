@@ -1,6 +1,7 @@
-import { spawn } from 'node:child_process'
 import { chmod, mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+
+import { runInfrastructureBackupCommand } from './infrastructure-backup-command.mjs'
 
 import {
   hashFile,
@@ -64,104 +65,16 @@ console.log(
   `Database backup written and verified: ${outputPath} (removed ${removed.length} expired backup(s))`,
 )
 
-async function run(command, args, options = {}) {
-  await new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: options.stdio ?? 'inherit',
-    })
-
-    child.once('error', (error) => {
-      if (error.code === 'ENOENT') {
-        reject(
-          new Error(
-            `${command} was not found. Install PostgreSQL client tools matching the server version; do not skip a production backup without a verified restore point.`,
-          ),
-        )
-        return
-      }
-
-      reject(error)
-    })
-    child.once('exit', (code) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-
-      reject(
-        new Error(
-          `${formatCommand(command, args)} failed with exit code ${code ?? 'unknown'}`,
-        ),
-      )
-    })
-  })
+function run(command, args, options = {}) {
+  return runInfrastructureBackupCommand(command, args, options)
 }
 
-async function collect(command, args) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk
-    })
-    child.once('error', reject)
-    child.once('exit', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim())
-        return
-      }
-
-      reject(
-        new Error(
-          `${command} failed with exit code ${code ?? 'unknown'}${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
-        ),
-      )
-    })
-  })
+function collect(command, args) {
+  return runInfrastructureBackupCommand(command, args, { capture: true })
 }
 
 function createPgDumpConnectionString(value) {
-  try {
-    const url = new URL(value)
-
-    url.searchParams.delete('uselibpqcompat')
-
-    return url.toString()
-  } catch {
-    return value
-      .replace(/([?&])uselibpqcompat=true(&|$)/, '$1')
-      .replace(/[?&]$/, '')
-  }
-}
-
-function formatCommand(command, args) {
-  return [
-    command,
-    ...args.map((arg) =>
-      arg === pgDumpConnectionString ? redactConnectionString(arg) : arg,
-    ),
-  ].join(' ')
-}
-
-function redactConnectionString(value) {
-  try {
-    const url = new URL(value)
-
-    if (url.password) {
-      url.password = '***'
-    }
-
-    return url.toString()
-  } catch {
-    return '<redacted-database-url>'
-  }
+  const url = new URL(value)
+  url.searchParams.delete('uselibpqcompat')
+  return url.toString()
 }

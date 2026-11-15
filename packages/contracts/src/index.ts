@@ -313,6 +313,11 @@ export {
   dailyPlanUpsertInputSchema,
   energyModeSchema,
 } from './daily-plan.js'
+export {
+  emailVerificationConfirmInputSchema,
+  type EmailVerificationStatus,
+  emailVerificationStatusSchema,
+} from './email-verification.js'
 export type {
   AddEmojiSetItemsInput,
   EmojiAsset,

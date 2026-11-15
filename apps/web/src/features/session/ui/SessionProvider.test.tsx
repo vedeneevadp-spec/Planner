@@ -730,6 +730,222 @@ describe('SessionProvider', () => {
     expect(cleanupOrder).toEqual(['offline-workspaces', 'auth-session'])
   })
 
+  it('revokes the remote session while offline cleanup is still pending', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createUsableNativeStoredSession(),
+    )
+    let finishCleanup!: (value: {
+      failures: unknown[]
+      workspaceIds: string[]
+    }) => void
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockReturnValue(
+      new Promise((resolve) => {
+        finishCleanup = resolve
+      }),
+    )
+    authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+    render(
+      <SessionProvider>
+        <SignOutProbe />
+      </SessionProvider>,
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Sign out' }),
+      ).not.toBeDisabled(),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() => {
+      expect(authStorageMocks.clearStoredAuthSession).toHaveBeenCalledTimes(1)
+      expect(authApiMocks.signOutAuthSession).toHaveBeenCalledTimes(1)
+    })
+    await act(async () => {
+      finishCleanup({ failures: [], workspaceIds: [] })
+      await Promise.resolve()
+    })
+  })
+
+  it.each(['success', 'retryable error'] as const)(
+    'ignores a refresh %s that arrives after logout',
+    async (outcome) => {
+      authStorageMocks.readStoredAuthSession.mockResolvedValue(
+        createUsableNativeStoredSession(),
+      )
+      const refresh = createDeferred<AuthTokenResponse>()
+      authApiMocks.refreshAuthSession.mockReturnValue(refresh.promise)
+      authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+      render(
+        <SessionProvider>
+          <AuthSnapshotProbe />
+          <SignOutProbe />
+        </SessionProvider>,
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+          'newer-access-token',
+        ),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Retry denied refresh' }),
+      )
+      await waitFor(() =>
+        expect(authApiMocks.refreshAuthSession).toHaveBeenCalledOnce(),
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+          'signed_out',
+        ),
+      )
+      await act(async () => {
+        if (outcome === 'success') refresh.resolve(createTokenResponse())
+        else refresh.reject(new TypeError('Network unavailable'))
+        await Promise.resolve()
+      })
+      await flushAsyncWork()
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+      expect(screen.getByTestId('auth-email')).toHaveTextContent('none')
+      expect(screen.getByTestId('auth-recovering')).toHaveTextContent('no')
+      expect(
+        authStorageMocks.commitStoredAuthSessionRefresh,
+      ).not.toHaveBeenCalled()
+      expect(
+        readClientEvents().some(
+          (event) => event.name === 'auth_device_session_kept',
+        ),
+      ).toBe(false)
+    },
+  )
+
+  it.each(['success', 'retryable error'] as const)(
+    'ignores a native refresh commit %s after logout',
+    async (outcome) => {
+      authStorageMocks.readStoredAuthSession.mockResolvedValue(
+        createUsableNativeStoredSession(),
+      )
+      authApiMocks.refreshAuthSession.mockResolvedValue(createTokenResponse())
+      const commit = createDeferred<StoredAuthSession>()
+      authStorageMocks.commitStoredAuthSessionRefresh.mockReturnValue(
+        commit.promise,
+      )
+      authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+      render(
+        <SessionProvider>
+          <AuthSnapshotProbe />
+          <SignOutProbe />
+        </SessionProvider>,
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+          'newer-access-token',
+        ),
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Retry denied refresh' }),
+      )
+      await waitFor(() =>
+        expect(
+          authStorageMocks.commitStoredAuthSessionRefresh,
+        ).toHaveBeenCalledOnce(),
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+      await waitFor(() =>
+        expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+          'signed_out',
+        ),
+      )
+      await act(async () => {
+        if (outcome === 'success')
+          commit.resolve(createUsableNativeStoredSession())
+        else commit.reject(new TypeError('Native session was removed'))
+        await Promise.resolve()
+      })
+      await flushAsyncWork()
+      expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+        'signed_out',
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+      expect(screen.getByTestId('auth-recovering')).toHaveTextContent('no')
+      expect(
+        readClientEvents().some(
+          (event) => event.name === 'auth_device_session_kept',
+        ),
+      ).toBe(false)
+    },
+  )
+
+  it('ignores a native storage resume that finishes after logout', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createUsableNativeStoredSession(),
+    )
+    authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+        <SignOutProbe />
+      </SessionProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'newer-access-token',
+      ),
+    )
+    const restored = createDeferred<StoredAuthSession>()
+    authStorageMocks.readStoredAuthSession.mockReturnValue(restored.promise)
+    await act(async () => {
+      appStateListener?.(true)
+      await Promise.resolve()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+        'signed_out',
+      ),
+    )
+    await act(async () => {
+      restored.resolve(createUsableNativeStoredSession())
+      await Promise.resolve()
+    })
+    await flushAsyncWork()
+    expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent('signed_out')
+    expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+  })
+
+  it('clears controller state and revokes remotely even when native storage removal fails', async () => {
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createUsableNativeStoredSession(),
+    )
+    authStorageMocks.clearStoredAuthSession.mockRejectedValue(
+      new Error('Keychain unavailable'),
+    )
+    authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+        <SignOutProbe />
+      </SessionProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'newer-access-token',
+      ),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+        'signed_out',
+      )
+      expect(authApiMocks.signOutAuthSession).toHaveBeenCalledOnce()
+      expect(screen.getByTestId('auth-notice')).toHaveTextContent(
+        'локальные данные удалить не удалось',
+      )
+    })
+    errorSpy.mockRestore()
+  })
+
   it('keeps the current native account when device storage is temporarily empty on resume', async () => {
     const warnSpy = vi
       .spyOn(console, 'warn')
@@ -1262,6 +1478,16 @@ function readLastWrittenStoredAuthSession(): StoredAuthSession {
   }
 
   return lastCall[0]
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 async function flushAsyncWork(): Promise<void> {

@@ -1,6 +1,8 @@
 import type { SessionResponse } from '@planner/contracts'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { rememberWorkspaceWriteEpoch } from '@/shared/lib/api-client'
 
 import type { SessionAuthState } from '../model/session-auth-context'
 
@@ -38,6 +40,7 @@ describe('useSessionFeatureReadiness', () => {
   let sessionQuery: PlannerSessionQueryStub
 
   beforeEach(() => {
+    localStorage.clear()
     auth = createAuthState()
     sessionQuery = {
       data: createSessionResponse(),
@@ -62,6 +65,7 @@ describe('useSessionFeatureReadiness', () => {
       apiBaseUrl: 'https://api.chaotika.test',
       clientTimeZone: 'Europe/Astrakhan',
       workspaceId: 'workspace-1',
+      writeEpochSnapshot: JSON.stringify({ 'workspace-1': '0' }),
     })
   })
 
@@ -73,6 +77,32 @@ describe('useSessionFeatureReadiness', () => {
     expect(result.current.readiness.status).toBe('ready')
     expect(result.current.isApiEnabled).toBe(false)
     expect(result.current.apiConfig).toBeNull()
+  })
+
+  it('renews feature clients when the personal scope changes while a shared workspace stays selected', () => {
+    const remember = (epoch: string) =>
+      rememberWorkspaceWriteEpoch(
+        new Response('{}', {
+          headers: {
+            'x-workspace-id': 'workspace-1',
+            'x-workspace-epoch': '0',
+            'x-workspace-actor-id': 'user-1',
+            'x-workspace-epochs': JSON.stringify({
+              'workspace-1': '0',
+              personal: epoch,
+            }),
+          },
+        }),
+      )
+    remember('1')
+    const { result } = renderHook(() => useSessionFeatureReadiness())
+    const previous = result.current.apiConfig
+    act(() => remember('2'))
+    expect(result.current.apiConfig).not.toBe(previous)
+    expect(result.current.apiConfig?.writeEpochSnapshot).toBe(
+      JSON.stringify({ personal: '2', 'workspace-1': '0' }),
+    )
+    expect(result.current.session).toBe(sessionQuery.data)
   })
 
   it('allows cached rendering while auth is restoring without exposing writes', () => {

@@ -756,6 +756,12 @@ async function seedFixture(value: RlsFixture): Promise<void> {
       `${value.prefix} Rejoining`,
     ],
   )
+  // The invitation lifecycle fixtures represent recipients with verified mailboxes.
+  // Other users remain unverified; the verification spec covers denial before proof.
+  await client.query(
+    'update app.users set email_verified_at = now() where id = any($1::uuid[])',
+    [[value.recipientUserId, value.rejoiningUserId]],
+  )
   await client.query(
     `
       insert into app.workspaces (id, owner_user_id, name, slug)

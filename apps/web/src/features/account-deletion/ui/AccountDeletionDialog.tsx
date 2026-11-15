@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { TrashIcon } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import styles from './AccountDeletionDialog.module.css'
 
@@ -67,7 +68,7 @@ export function AccountDeletionDialog({
         }
       }}
     >
-      <section
+      <ModalSurface
         aria-describedby={descriptionId}
         aria-labelledby={headingId}
         aria-modal="true"
@@ -147,7 +148,7 @@ export function AccountDeletionDialog({
             <span>{isPending ? 'Удаляем...' : 'Удалить навсегда'}</span>
           </button>
         </footer>
-      </section>
+      </ModalSurface>
     </div>,
     document.body,
   )

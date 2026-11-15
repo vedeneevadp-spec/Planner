@@ -33,7 +33,9 @@
     "backup:restore-drill": "node ./scripts/infrastructure-restore-drill.mjs",
     "backup:restore-db:check": "node ./scripts/check-user-backup-restore-database.mjs",
     "backup:database:check": "node ./scripts/check-backup-database.mjs",
-    "test:backup": "node --test ./scripts/infrastructure-backup.test.mjs",
+    "test:backup": "node --test ./scripts/infrastructure-backup.test.mjs ./scripts/asset-gc.test.mjs",
+    "test:backup:retention": "node ./scripts/restic-retention-smoke.mjs",
+    "test:pwa-update": "node ./scripts/pwa-update-smoke.mjs",
     "db:migrations:check": "node ./scripts/check-migrations.mjs",
     "db:migrate": "node ./scripts/db-migrate.mjs",
     "db:time:verify": "node ./scripts/time-migration-verify.mjs",
@@ -41,7 +43,7 @@
     "db:security:check": "node ./scripts/db-security-check.mjs",
     "db:security:repair": "node ./scripts/db-security-repair.mjs",
     "prod-config:check": "node ./scripts/check-production-config.mjs",
-    "test:deploy": "node --test ./scripts/deploy-prod.test.mjs",
+    "test:deploy": "node --test ./scripts/deploy-prod.test.mjs ./scripts/db-migrate.test.mjs",
     "test:mobile-release": "node --test ./scripts/mobile-release-android-config.test.mjs ./scripts/google-play-artifact.test.mjs",
     "db:seed": "node ./scripts/db-seed.mjs",
     "db:setup": "npm run db:up && npm run db:migrate && npm run db:seed",
@@ -111,7 +113,8 @@
     "release:check": "npm run ci && npm run mobile:android:ci",
     "prepare": "husky",
     "task-reminders:worker": "npm run -w apps/api task-reminders:worker",
-    "deploy:prod": "node ./scripts/deploy-prod.mjs"
+    "deploy:prod": "node ./scripts/deploy-prod.mjs",
+    "assets:gc": "node ./scripts/asset-gc.mjs"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [

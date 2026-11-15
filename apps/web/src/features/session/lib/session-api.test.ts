@@ -94,7 +94,7 @@ describe('sessionApi', () => {
       fetchMock,
     )
     const rejectedSession = expect(pendingSession).rejects.toBe(reason)
-    await Promise.resolve()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     const [, requestInit] = fetchMock.mock.calls[0]!
 

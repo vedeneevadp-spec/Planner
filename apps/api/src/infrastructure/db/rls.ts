@@ -227,6 +227,13 @@ async function applyTransactionLocalClaimsContext(
       true
     )
   `.execute(executor)
+  // Lock scopes before row locks. Restore takes the exclusive form of this
+  // lock; triggers still validate the epoch on every actual protected write.
+  for (const workspaceId of Object.keys(authContext.writeEpochs ?? {}).sort()) {
+    await sql`select pg_advisory_xact_lock_shared(hashtextextended(${workspaceId}::text, 7334202607))`.execute(
+      executor,
+    )
+  }
 }
 
 async function applySessionRlsContext(
@@ -276,5 +283,7 @@ function buildEffectiveClaims(
       : {}),
     role: authContext.claims.role,
     sub: effectiveActorUserId,
+    planner_write_epochs: authContext.writeEpochs ?? {},
+    planner_integration_issued_at: authContext.integrationIssuedAt ?? null,
   }
 }

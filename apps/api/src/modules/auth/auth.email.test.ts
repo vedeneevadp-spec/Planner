@@ -2,8 +2,39 @@ import assert from 'node:assert/strict'
 import { createServer, type Socket } from 'node:net'
 import { test } from 'node:test'
 
-import { SmtpAuthEmailSender } from './auth.email.js'
+import { NoopAuthEmailSender, SmtpAuthEmailSender } from './auth.email.js'
 import type { PlannerAuthRuntimeConfig } from './auth.model.js'
+
+void test('does not report verification delivery when SMTP is unavailable', async () => {
+  await assert.rejects(
+    new NoopAuthEmailSender('production').sendEmailVerificationEmail(),
+    {
+      code: 'email_delivery_unavailable',
+      statusCode: 503,
+    },
+  )
+})
+
+void test(
+  'delivers the mailbox verification code through local SMTP in both MIME formats',
+  { timeout: 5_000 },
+  async (context) => {
+    const smtp = await startSmtpServer()
+    context.after(smtp.close)
+    const sender = new SmtpAuthEmailSender(createConfig(smtp.port))
+    await sender.sendEmailVerificationEmail({
+      email: 'recipient@example.test',
+      code: 'ABCD-1234-EF56',
+    })
+    assert.ok(smtp.commands.includes('RCPT TO:<recipient@example.test>'))
+    assert.equal(smtp.messages.length, 1)
+    for (const format of ['plain', 'html'] as const) {
+      assert.ok(
+        readMimePart(smtp.messages[0]!, format).includes('ABCD-1234-EF56'),
+      )
+    }
+  },
+)
 
 void test(
   'delivers a password reset email through SMTP with usable text and HTML links',

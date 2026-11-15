@@ -1,3 +1,4 @@
+import { generateUuidV7 } from '@planner/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createShoppingListApiClient } from './shopping-list-api'
@@ -44,6 +45,55 @@ describe('shoppingListApi', () => {
     expect(new Headers(requestInit?.headers).get('x-workspace-id')).toBe(
       'workspace-1',
     )
+  })
+
+  it('loads later pages so archived records cannot hide an older active purchase', async () => {
+    const activeId = generateUuidV7()
+    const rows = Array.from({ length: 201 }, (_, index) => ({
+      id: index === 200 ? activeId : generateUuidV7(),
+      convertedNoteId: null,
+      convertedTaskId: null,
+      createdAt: '2026-11-15T00:00:00.000Z',
+      deletedAt: null,
+      dueDate: null,
+      isFavorite: false,
+      kind: 'shopping',
+      linkedTaskDeleted: false,
+      priority: null,
+      shoppingCategory: null,
+      source: 'manual',
+      sphereId: null,
+      status: index === 200 ? 'new' : 'archived',
+      text: `Purchase ${index}`,
+      updatedAt: '2026-11-15T00:00:00.000Z',
+      userId: 'user-1',
+      version: 1,
+      workspaceId: 'workspace-1',
+    }))
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
+      const page = Number(
+        new URL(input instanceof Request ? input.url : input).searchParams.get(
+          'page',
+        ) ?? 1,
+      )
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: rows.slice((page - 1) * 200, page * 200),
+            page,
+            limit: 200,
+            total: 201,
+          }),
+        ),
+      )
+    })
+    const items = await createShoppingListApiClient(
+      TEST_CONFIG,
+      fetchMock,
+    ).listItems()
+    expect(items).toHaveLength(201)
+    expect(items.find((item) => item.id === activeId)?.status).toBe('new')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('creates shopping list items with shopping kind', async () => {

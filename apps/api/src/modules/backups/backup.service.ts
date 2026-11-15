@@ -99,6 +99,8 @@ export class UserBackupService {
     }
 
     return this.repository.restorePersonalWorkspace({
+      expectedWriteEpoch:
+        context.auth?.writeEpochs?.[context.workspaceId] ?? '0',
       archive: request.archive,
       archiveDigest: createUserBackupArchiveDigest(request.archive),
       context,

@@ -38,7 +38,6 @@ interface TaskComposerDetailsFieldsProps {
   canUseRecurrence: boolean
   confirmationFieldId: string
   icon: string
-  isHabitTaskType: boolean
   isReminderAvailable: boolean
   isRoutineLikeTaskType: boolean
   isSharedWorkspace: boolean
@@ -75,7 +74,6 @@ export function TaskComposerDetailsFields({
   canUseRecurrence,
   confirmationFieldId,
   icon,
-  isHabitTaskType,
   isReminderAvailable,
   isRoutineLikeTaskType,
   isSharedWorkspace,
@@ -105,8 +103,7 @@ export function TaskComposerDetailsFields({
   onRoutineFormChange,
 }: TaskComposerDetailsFieldsProps) {
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
-  const showMobileFinish =
-    showTimeFields && !isHabitTaskType && Boolean(plannedStartTime)
+  const showMobileFinish = showTimeFields && Boolean(plannedStartTime)
 
   return (
     <div className={styles.columnPanel}>
@@ -149,7 +146,7 @@ export function TaskComposerDetailsFields({
         </section>
       ) : null}
 
-      {isReminderAvailable && !isHabitTaskType ? (
+      {isReminderAvailable ? (
         <section
           className={cx(
             styles.columnSection,
@@ -165,7 +162,7 @@ export function TaskComposerDetailsFields({
         </section>
       ) : null}
 
-      {isSharedWorkspace && !isHabitTaskType ? (
+      {isSharedWorkspace ? (
         <section className={cx(styles.columnSection, styles.assigneeSection)}>
           <SelectPicker
             className={styles.field}
@@ -183,7 +180,7 @@ export function TaskComposerDetailsFields({
         </section>
       ) : null}
 
-      {isSharedWorkspace && !isHabitTaskType ? (
+      {isSharedWorkspace ? (
         <section
           className={cx(styles.columnSection, styles.confirmationSection)}
         >
@@ -211,20 +208,18 @@ export function TaskComposerDetailsFields({
         </section>
       ) : null}
 
-      {!isHabitTaskType ? (
-        <section className={cx(styles.columnSection, styles.necessitySection)}>
-          <TaskNecessityPicker
-            className={styles.fieldNecessity}
-            value={necessity}
-            onChange={onNecessityChange}
-          />
-        </section>
-      ) : null}
+      <section className={cx(styles.columnSection, styles.necessitySection)}>
+        <TaskNecessityPicker
+          className={styles.fieldNecessity}
+          value={necessity}
+          onChange={onNecessityChange}
+        />
+      </section>
 
       {isRoutineLikeTaskType ? (
         <section className={cx(styles.columnSection, styles.routineSection)}>
           <RoutineTaskFields
-            showTargetFields={isHabitTaskType}
+            showTargetFields={false}
             value={routineForm}
             onChange={onRoutineFormChange}
           />
@@ -240,15 +235,13 @@ export function TaskComposerDetailsFields({
         </section>
       ) : null}
 
-      {!isHabitTaskType ? (
-        <section className={cx(styles.columnSection, styles.resourceSection)}>
-          <ResourcePicker
-            className={styles.fieldResource}
-            value={resource}
-            onChange={onResourceChange}
-          />
-        </section>
-      ) : null}
+      <section className={cx(styles.columnSection, styles.resourceSection)}>
+        <ResourcePicker
+          className={styles.fieldResource}
+          value={resource}
+          onChange={onResourceChange}
+        />
+      </section>
 
       {isIconPickerOpen ? (
         <TaskIconPickerDialog

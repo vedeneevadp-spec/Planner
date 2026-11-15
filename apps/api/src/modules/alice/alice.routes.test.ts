@@ -13,7 +13,10 @@ import { z } from 'zod'
 
 import { buildApiApp } from '../../bootstrap/build-app.js'
 import { createApiConfig } from '../../bootstrap/config.js'
-import { JwtRequestAuthenticator } from '../../infrastructure/auth/jwt-request-authenticator.js'
+import {
+  type AccessSessionValidator,
+  JwtRequestAuthenticator,
+} from '../../infrastructure/auth/jwt-request-authenticator.js'
 import {
   ChaosInboxService,
   MemoryChaosInboxRepository,
@@ -42,6 +45,129 @@ void describe('alice routes', () => {
       await app.close()
       app = null
     }
+  })
+
+  void it('uses the same revoked-session check for bearer and Alice body tokens', async () => {
+    const config = createTestConfig()
+    const token = await createAccessToken(config)
+    let calls = 0
+    app = buildTestApp(config, {
+      isSessionActive(userId, sessionId) {
+        assert.equal(userId, USER_ID)
+        assert.equal(sessionId, '88888888-8888-4888-8888-888888888888')
+        calls += 1
+        return Promise.resolve(false)
+      },
+    })
+    const regular = await app.inject({
+      url: '/api/v1/session',
+      headers: { authorization: `Bearer ${token}` },
+    })
+    assert.equal(regular.statusCode, 401)
+    for (const bodyToken of [true, false]) {
+      const response: LightMyRequestResponse = await app.inject({
+        method: 'POST',
+        url: '/api/v1/alice/webhook',
+        headers: bodyToken ? {} : { authorization: `Bearer ${token}` },
+        payload: createAliceRequest(
+          'добавь задачу проверить отчёт',
+          bodyToken ? { token } : {},
+        ),
+      })
+      assert.deepEqual(response.json(), {
+        start_account_linking: {},
+        version: '1.0',
+      })
+    }
+    assert.equal(calls, 3)
+  })
+
+  void it('keeps the original session epoch when a refreshed Alice JWT has a newer iat', async (t) => {
+    const config = createTestConfig()
+    const sessionId = '018bcfe5-6800-7000-8000-000000000001'
+    const spy = t.mock.method(TaskService.prototype, 'createTask')
+    app = buildTestApp(config)
+    for (const issuedAt of [1700000000, Math.floor(Date.now() / 1000)]) {
+      const token = await createAccessToken(config, { sessionId, issuedAt })
+      const response: LightMyRequestResponse = await app.inject({
+        method: 'POST',
+        url: '/api/v1/alice/webhook',
+        payload: createAliceRequest('добавь задачу проверить отчёт', { token }),
+      })
+      assert.equal(response.statusCode, 200)
+    }
+    assert.equal(spy.mock.calls.length, 2)
+    for (const call of spy.mock.calls) {
+      const context = call.arguments[0]
+      assert.equal(
+        context.auth?.integrationIssuedAt,
+        '2023-11-14T22:13:20.000Z',
+      )
+    }
+  })
+
+  void it('explains restore conflicts without asking Alice to retry a stale command', async (t) => {
+    const config = createTestConfig()
+    const token = await createAccessToken(config)
+    t.mock.method(TaskService.prototype, 'createTask', () =>
+      Promise.reject(
+        Object.assign(new Error('workspace_restored'), { code: 'P4009' }),
+      ),
+    )
+    app = buildTestApp(config)
+    const response: LightMyRequestResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/alice/webhook',
+      payload: createAliceRequest('добавь задачу проверить отчёт', { token }),
+    })
+    const body = aliceResponseSchema.parse(response.json())
+    assert.equal(response.statusCode, 200)
+    assert.match(
+      body.response?.text ?? '',
+      /Данные восстановлены.*заново привяжите/,
+    )
+    assert.doesNotMatch(body.response?.text ?? '', /Попробуйте еще раз/)
+  })
+
+  void it('never calls a paid parser anonymously and bounds authenticated calls', async (t) => {
+    let providerCalls = 0
+    t.mock.method(globalThis, 'fetch', () => {
+      providerCalls += 1
+      return Promise.resolve(new Response(JSON.stringify({ output: [] })))
+    })
+    const config = createTestConfig()
+    config.aliceCommandLlm = {
+      apiFormat: 'responses',
+      endpoint: 'https://example.invalid',
+      model: 'test',
+      apiKey: 'synthetic-test-key',
+      provider: 'openai-compatible',
+      timeoutMs: 1000,
+    }
+    app = buildTestApp(config)
+    for (const command of [
+      'помощь',
+      'выход',
+      'нужно как-нибудь разобраться с делами',
+    ]) {
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/alice/webhook',
+        payload: createAliceRequest(command),
+      })
+    }
+    assert.equal(providerCalls, 0)
+    const token = await createAccessToken(config)
+    for (let attempt = 0; attempt < 31; attempt += 1) {
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/alice/webhook',
+        payload: createAliceRequest('нужно как-нибудь разобраться с делами', {
+          token,
+        }),
+      })
+    }
+    assert.equal(providerCalls, 30)
   })
 
   for (const scenario of [
@@ -543,14 +669,20 @@ function createAliceRequest(
   }
 }
 
-function buildTestApp(config = createTestConfig()): FastifyInstance {
+function buildTestApp(
+  config = createTestConfig(),
+  sessionValidator?: AccessSessionValidator,
+): FastifyInstance {
   const taskService = new TaskService(new MemoryTaskRepository())
 
   return buildApiApp({
     chaosInboxService: new ChaosInboxService(new MemoryChaosInboxRepository()),
     config,
     database: null,
-    requestAuthenticator: new JwtRequestAuthenticator(config.jwtAuth!),
+    requestAuthenticator: new JwtRequestAuthenticator(
+      config.jwtAuth!,
+      sessionValidator,
+    ),
     sessionService: new SessionService(new MemorySessionRepository()),
     taskService,
   })
@@ -567,15 +699,17 @@ function createTestConfig() {
 
 async function createAccessToken(
   config: ReturnType<typeof createTestConfig>,
+  options: { sessionId?: string; issuedAt?: number } = {},
 ): Promise<string> {
   return new SignJWT({
     email: 'alice@planner.local',
     role: 'authenticated',
+    session_id: options.sessionId ?? '88888888-8888-4888-8888-888888888888',
   })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setAudience(config.jwtAuth!.audience)
     .setExpirationTime('1h')
-    .setIssuedAt()
+    .setIssuedAt(options.issuedAt)
     .setIssuer(config.jwtAuth!.issuer)
     .setSubject(USER_ID)
     .sign(new TextEncoder().encode(JWT_SECRET))

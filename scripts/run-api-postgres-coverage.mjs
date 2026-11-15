@@ -27,6 +27,7 @@ await writeCoverageLog(logPath, output)
 assertCoverageHotspots(output, [
   { file: 'self-care.repository.postgres.helpers.ts', minLines: 65 },
   { file: 'self-care.repository.postgres.ts', minLines: 65 },
+  { file: 'self-care.repository.postgres.persistence.ts', minLines: 65 },
 ])
 
 console.log('API Postgres coverage hotspot guard passed.')

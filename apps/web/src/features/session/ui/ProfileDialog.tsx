@@ -9,6 +9,7 @@ import {
 
 import { cx } from '@/shared/lib/classnames'
 import { CheckIcon, CloseIcon, TrashIcon, UploadIcon } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import {
   ACCEPTED_PROFILE_AVATAR_TYPES,
@@ -21,6 +22,7 @@ import {
   getUpdateUserProfileErrorMessage,
   useUpdateUserProfile,
 } from '../lib/useUserProfile'
+import { EmailVerificationPanel } from './EmailVerificationPanel'
 import styles from './ProfileDialog.module.css'
 import { UserAvatar } from './UserAvatar'
 
@@ -259,8 +261,9 @@ export function ProfileAccountPanel({
     }
   }
 
+  const Surface = ariaModal ? ModalSurface : 'section'
   return (
-    <section
+    <Surface
       className={cx(styles.dialog, variant === 'page' && styles.pageDialog)}
       {...(role ? { role } : {})}
       {...(ariaModal ? { 'aria-modal': true } : {})}
@@ -354,6 +357,8 @@ export function ProfileAccountPanel({
           </label>
         </section>
 
+        {isAuthEnabled ? <EmailVerificationPanel /> : null}
+
         {isAuthEnabled ? (
           <section className={styles.fields}>
             <div className={styles.sectionHeader}>
@@ -436,7 +441,7 @@ export function ProfileAccountPanel({
           </button>
         </footer>
       </form>
-    </section>
+    </Surface>
   )
 }
 

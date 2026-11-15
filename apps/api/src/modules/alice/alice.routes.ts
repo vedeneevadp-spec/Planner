@@ -3,9 +3,15 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
-import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
-import type { JwtAuthRuntimeConfig } from '../../infrastructure/auth/jwt-request-authenticator.js'
-import { verifyJwtAccessToken } from '../../infrastructure/auth/jwt-request-authenticator.js'
+import {
+  getClientAddress,
+  type RateLimiter,
+} from '../../bootstrap/rate-limit.js'
+import type {
+  AuthenticatedRequestContext,
+  RequestAuthenticator,
+} from '../../bootstrap/request-auth.js'
+import { isWorkspaceEpochConflict } from '../../infrastructure/db/workspace-epochs.js'
 import type { ChaosInboxService } from '../chaos-inbox/index.js'
 import type { SessionService } from '../session/index.js'
 import type { SessionSnapshot } from '../session/session.model.js'
@@ -14,6 +20,7 @@ import { isActiveTaskStatus } from '../tasks/task.shared.js'
 import type {
   AliceCommandParser,
   AliceCommandParserInput,
+  AliceParsedCommand,
   AliceParsedCreateTaskCommand,
   AliceParsedListTasksCommand,
   AliceParsedShoppingCommand,
@@ -22,6 +29,7 @@ import {
   addDaysToDateKey,
   getDateKeyInTimeZone,
   normalizeTimeZone,
+  parseCommandWithRules,
 } from './alice-command-parser.js'
 
 const ALICE_PROTOCOL_VERSION = '1.0'
@@ -57,7 +65,7 @@ export const aliceWebhookRequestSchema = z
       .optional(),
     request: z
       .object({
-        command: z.string().optional(),
+        command: z.string().max(4096).optional(),
         nlu: z
           .object({
             entities: z.array(aliceNluEntitySchema).optional(),
@@ -65,7 +73,7 @@ export const aliceWebhookRequestSchema = z
           })
           .passthrough()
           .optional(),
-        original_utterance: z.string().optional(),
+        original_utterance: z.string().max(4096).optional(),
         payload: z.unknown().optional(),
         type: z.string().optional(),
       })
@@ -100,7 +108,8 @@ type AliceWebhookRequest = z.infer<typeof aliceWebhookRequestSchema>
 interface RegisterAliceRoutesOptions {
   chaosInboxService?: ChaosInboxService
   commandParser: AliceCommandParser
-  jwtAuth: JwtAuthRuntimeConfig | null
+  requestAuthenticator: RequestAuthenticator
+  rateLimiter: RateLimiter
   sessionService: SessionService
   taskService: TaskService
 }
@@ -131,7 +140,13 @@ export function registerAliceRoutes(
   app: FastifyInstance,
   options: RegisterAliceRoutesOptions,
 ): void {
+  const activeUsers = new Set<string>()
   app.post('/api/v1/alice/webhook', async (request, reply) => {
+    await options.rateLimiter.consume({
+      key: `alice:ip:${getClientAddress(request)}`,
+      limit: 600,
+      windowMs: 60_000,
+    })
     const parsedRequest = aliceWebhookRequestSchema.safeParse(
       request.body ?? {},
     )
@@ -145,8 +160,21 @@ export function registerAliceRoutes(
     }
 
     try {
-      return await handleAliceRequest(request, parsedRequest.data, options)
+      return await handleAliceRequest(
+        request,
+        parsedRequest.data,
+        options,
+        activeUsers,
+      )
     } catch (error) {
+      if (
+        isWorkspaceEpochConflict(error) ||
+        (error instanceof HttpError && error.code === 'workspace_restored')
+      ) {
+        return createTextResponse(
+          'Данные восстановлены. Проверьте их в Хаотике и заново привяжите аккаунт к навыку перед новыми изменениями.',
+        )
+      }
       if (error instanceof HttpError) {
         return createHttpErrorResponse(error, parsedRequest.data)
       }
@@ -164,28 +192,21 @@ async function handleAliceRequest(
   request: FastifyRequest,
   body: AliceWebhookRequest,
   options: RegisterAliceRoutesOptions,
+  activeUsers: Set<string>,
 ): Promise<AliceResponse> {
   const parserInput = createParserInput(body)
-  const parsedCommand = await options.commandParser.parse(parserInput)
+  // Public dialogue commands are cheap and never call a provider.
+  const publicCommand = parseCommandWithRules(parserInput)
 
-  request.log.info(
-    {
-      confidence: parsedCommand.confidence,
-      intent: parsedCommand.intent,
-      source: parsedCommand.source,
-    },
-    'Alice command parsed.',
-  )
-
-  if (parsedCommand.intent === 'ping') {
+  if (publicCommand.intent === 'ping') {
     return createTextResponse('pong', { endSession: true })
   }
 
-  if (parsedCommand.intent === 'exit') {
+  if (publicCommand.intent === 'exit') {
     return createTextResponse('Готово, выхожу.', { endSession: true })
   }
 
-  if (parsedCommand.intent === 'help') {
+  if (publicCommand.intent === 'help') {
     return createHelpResponse()
   }
 
@@ -216,6 +237,40 @@ async function handleAliceRequest(
       },
     )
   }
+
+  const userId = authContext.claims.sub
+  await options.rateLimiter.consume({
+    key: `alice:user:${userId}:minute`,
+    limit: 30,
+    windowMs: 60_000,
+  })
+  await options.rateLimiter.consume({
+    key: `alice:user:${userId}:hour`,
+    limit: 300,
+    windowMs: 3_600_000,
+  })
+  if (activeUsers.has(userId) || activeUsers.size >= 16) {
+    throw new HttpError(
+      429,
+      'rate_limit_exceeded',
+      'Alice is busy. Try again later.',
+    )
+  }
+  activeUsers.add(userId)
+  let parsedCommand: AliceParsedCommand
+  try {
+    parsedCommand = await options.commandParser.parse(parserInput)
+  } finally {
+    activeUsers.delete(userId)
+  }
+  request.log.info(
+    {
+      confidence: parsedCommand.confidence,
+      intent: parsedCommand.intent,
+      source: parsedCommand.source,
+    },
+    'Alice command parsed.',
+  )
 
   if (parsedCommand.intent === 'list_tasks') {
     return createTaskListResponse(parsedCommand, body, authContext, options)
@@ -375,15 +430,20 @@ async function resolveAliceAuthContext(
     readBearerToken(request.headers.authorization) ??
     body.session?.user?.access_token?.trim()
 
-  if (!accessToken || !options.jwtAuth) {
+  if (!accessToken) {
     return null
   }
 
   try {
-    return {
-      accessToken,
-      claims: await verifyJwtAccessToken(accessToken, options.jwtAuth),
-    }
+    const auth = await options.requestAuthenticator.authenticate({
+      headers: { ...request.headers, authorization: `Bearer ${accessToken}` },
+    })
+    return auth
+      ? {
+          ...auth,
+          integrationIssuedAt: sessionStartedAt(auth.claims.sessionId),
+        }
+      : null
   } catch (error) {
     if (error instanceof HttpError && error.statusCode === 401) {
       return null
@@ -391,6 +451,23 @@ async function resolveAliceAuthContext(
 
     throw error
   }
+}
+
+function sessionStartedAt(sessionId: string | undefined): string | undefined {
+  // Refresh changes JWT iat but preserves the signed UUIDv7 session ID. Never
+  // upgrade an old integration's write intent merely by refreshing its token.
+  if (
+    !sessionId ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      sessionId,
+    )
+  )
+    return undefined
+  const milliseconds = Number.parseInt(
+    sessionId.replaceAll('-', '').slice(0, 12),
+    16,
+  )
+  return new Date(milliseconds).toISOString()
 }
 
 function createAuthorizationRequiredResponse(
@@ -414,6 +491,11 @@ function createHttpErrorResponse(
 ): AliceResponse {
   if (error.statusCode === 401) {
     return createAuthorizationRequiredResponse(body)
+  }
+  if (error.statusCode === 429) {
+    return createTextResponse(
+      'Слишком много запросов. Попробуйте немного позже.',
+    )
   }
 
   if (error.code === 'workspace_write_forbidden') {

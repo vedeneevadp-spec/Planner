@@ -70,8 +70,8 @@ android {
         applicationId "ru.chaotika.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 50
-        versionName "1.1.42"
+        versionCode 51
+        versionName "1.1.43"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         if (!androidAbiFilters.isEmpty()) {
             ndk {
@@ -111,20 +111,20 @@ android {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
-    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
-    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.appcompat:appcompat:${rootProject.ext.androidxAppCompatVersion}"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:${rootProject.ext.androidxCoordinatorLayoutVersion}"
+    implementation "androidx.core:core-splashscreen:${rootProject.ext.coreSplashScreenVersion}"
     implementation project(':capacitor-android')
     // Official native Google account picker; Google authentication stays outside WebView.
-    implementation "androidx.credentials:credentials:$androidxCredentialsVersion"
-    implementation "androidx.credentials:credentials-play-services-auth:$androidxCredentialsVersion"
-    implementation "com.google.android.libraries.identity.googleid:googleid:$googleIdentityVersion"
+    implementation "androidx.credentials:credentials:${rootProject.ext.androidxCredentialsVersion}"
+    implementation "androidx.credentials:credentials-play-services-auth:${rootProject.ext.androidxCredentialsVersion}"
+    implementation "com.google.android.libraries.identity.googleid:googleid:${rootProject.ext.googleIdentityVersion}"
     // Already used by Capacitor Push Notifications; the app now renders task actions.
-    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
-    testImplementation "junit:junit:$junitVersion"
+    implementation "com.google.firebase:firebase-messaging:${rootProject.ext.firebaseMessagingVersion}"
+    testImplementation "junit:junit:${rootProject.ext.junitVersion}"
     testImplementation "org.json:json:20240303"
-    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
-    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation "androidx.test.ext:junit:${rootProject.ext.androidxJunitVersion}"
+    androidTestImplementation "androidx.test.espresso:espresso-core:${rootProject.ext.androidxEspressoCoreVersion}"
     implementation project(':capacitor-cordova-android-plugins')
 }
 

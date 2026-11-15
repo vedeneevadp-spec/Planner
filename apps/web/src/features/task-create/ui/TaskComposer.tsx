@@ -1,4 +1,3 @@
-import type { NewHabitInput } from '@planner/contracts'
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -14,7 +13,6 @@ import {
   type TaskTypeValue,
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
-import { useCreateHabit } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import {
   usePlannerSession,
@@ -22,9 +20,9 @@ import {
   useWorkspaceUsers,
 } from '@/features/session'
 import { getTodayDate } from '@/shared/time/time.service'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import {
-  buildTaskComposerHabitInput,
   buildTaskComposerTaskInput,
   type TaskComposerDraft,
 } from '../model/task-composer-model'
@@ -36,7 +34,6 @@ import { TaskComposerOpenButton } from './TaskComposerOpenButton'
 import { TaskComposerPrimaryFields } from './TaskComposerPrimaryFields'
 
 interface TaskComposerProps {
-  allowHabitTaskType?: boolean | undefined
   desktopOpenButtonHidden?: boolean | undefined
   hideOpenButton?: boolean
   initialPlannedDate: string | null
@@ -51,7 +48,6 @@ interface TaskComposerProps {
 }
 
 export function TaskComposer({
-  allowHabitTaskType = false,
   desktopOpenButtonHidden = false,
   hideOpenButton = false,
   initialPlannedDate,
@@ -65,7 +61,6 @@ export function TaskComposer({
   onClose,
 }: TaskComposerProps) {
   const { addTask, spheres } = usePlanner()
-  const createHabitMutation = useCreateHabit()
   const [isOpen, setIsOpen] = useState(false)
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
@@ -84,10 +79,8 @@ export function TaskComposer({
   const titleInputRef = useRef<HTMLInputElement>(null)
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
-  const normalizedDefaultTaskType = normalizeTaskComposerTaskType(
-    defaultTaskType,
-    allowHabitTaskType,
-  )
+  const normalizedDefaultTaskType =
+    normalizeTaskComposerTaskType(defaultTaskType)
   const defaultIsImportant = normalizedDefaultTaskType === 'important'
   const defaultTaskKind = defaultIsImportant ? '' : normalizedDefaultTaskType
   const [title, setTitle] = useState('')
@@ -205,7 +198,6 @@ export function TaskComposer({
     setIcon(openDraft.icon ?? '')
     const nextTaskType = normalizeTaskComposerTaskType(
       openDraft.taskType ?? defaultTaskType,
-      allowHabitTaskType,
     )
     setTaskType(nextTaskType === 'important' ? '' : nextTaskType)
     setIsImportant(openDraft.isImportant ?? nextTaskType === 'important')
@@ -228,28 +220,18 @@ export function TaskComposer({
     reminderAvailabilityRef.current = false
     setNote(openDraft.note ?? '')
     setIsOpen(true)
-  }, [
-    allowHabitTaskType,
-    defaultTaskType,
-    initialPlannedDate,
-    isSharedWorkspace,
-    openDraft,
-  ])
+  }, [defaultTaskType, initialPlannedDate, isSharedWorkspace, openDraft])
 
   const isReminderAvailable =
     !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
-  const isHabitTaskType = taskType === 'habit'
-  const isRoutineLikeTaskType = taskType === 'routine' || isHabitTaskType
+  const isRoutineLikeTaskType = taskType === 'routine'
   const canUseRecurrence = !isRoutineLikeTaskType
-  const composerTitle = isHabitTaskType
-    ? 'Новая регулярная забота'
-    : taskType === 'routine' || defaultTaskType === 'routine'
+  const composerTitle =
+    taskType === 'routine' || defaultTaskType === 'routine'
       ? 'Новая рутина'
       : 'Новая задача'
-  const titleFieldLabel = isHabitTaskType ? 'Регулярная забота' : 'Задача'
-  const submitLabel = isHabitTaskType
-    ? 'Добавить регулярную заботу'
-    : 'Добавить задачу'
+  const titleFieldLabel = 'Задача'
+  const submitLabel = 'Добавить задачу'
 
   useEffect(() => {
     const wasAvailable = reminderAvailabilityRef.current
@@ -318,20 +300,6 @@ export function TaskComposer({
     })
   }
 
-  function buildCurrentHabitInput(): NewHabitInput | null {
-    return buildTaskComposerHabitInput({
-      icon,
-      initialPlannedDate,
-      note,
-      plannedDate,
-      projectId,
-      routineForm,
-      spheres,
-      title,
-      todayKey,
-    })
-  }
-
   function resetForm() {
     setTitle('')
     setIcon('')
@@ -356,30 +324,7 @@ export function TaskComposer({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (submitLockRef.current || createHabitMutation.isPending) {
-      return
-    }
-
-    if (isHabitTaskType) {
-      const habitInput = buildCurrentHabitInput()
-
-      if (!habitInput) {
-        return
-      }
-
-      submitLockRef.current = true
-      setIsSubmitting(true)
-
-      try {
-        await createHabitMutation.mutateAsync(habitInput)
-        resetForm()
-        setIsOpen(false)
-        onClose?.()
-      } finally {
-        submitLockRef.current = false
-        setIsSubmitting(false)
-      }
-
+    if (submitLockRef.current) {
       return
     }
 
@@ -443,7 +388,7 @@ export function TaskComposer({
 
       {isOpen && typeof document !== 'undefined'
         ? createPortal(
-            <div
+            <ModalSurface
               className={styles.modalOverlay}
               role="dialog"
               aria-modal="true"
@@ -467,11 +412,7 @@ export function TaskComposer({
               >
                 <TaskComposerModalHeader
                   isCloseDisabled={isSubmitting}
-                  isSubmitDisabled={
-                    !title.trim() ||
-                    isSubmitting ||
-                    createHabitMutation.isPending
-                  }
+                  isSubmitDisabled={!title.trim() || isSubmitting}
                   isSubmitting={isSubmitting}
                   submitLabel={submitLabel}
                   title={composerTitle}
@@ -483,7 +424,6 @@ export function TaskComposer({
                   <div className={styles.formColumns}>
                     <TaskComposerPrimaryFields
                       isImportant={isImportant}
-                      isHabitTaskType={isHabitTaskType}
                       note={note}
                       plannedDate={plannedDate}
                       plannedEndTime={plannedEndTime}
@@ -505,7 +445,6 @@ export function TaskComposer({
                       canUseRecurrence={canUseRecurrence}
                       confirmationFieldId={confirmationFieldId}
                       icon={icon}
-                      isHabitTaskType={isHabitTaskType}
                       isReminderAvailable={isReminderAvailable}
                       isRoutineLikeTaskType={isRoutineLikeTaskType}
                       isSharedWorkspace={Boolean(isSharedWorkspace)}
@@ -537,17 +476,13 @@ export function TaskComposer({
                   </div>
 
                   <TaskComposerFooter
-                    isSubmitDisabled={
-                      !title.trim() ||
-                      isSubmitting ||
-                      createHabitMutation.isPending
-                    }
+                    isSubmitDisabled={!title.trim() || isSubmitting}
                     isSubmitting={isSubmitting}
                     submitLabel={submitLabel}
                   />
                 </div>
               </form>
-            </div>,
+            </ModalSurface>,
             document.body,
           )
         : null}
@@ -570,9 +505,8 @@ function restoreCssVariable(
 
 function normalizeTaskComposerTaskType(
   taskType: TaskTypeValue | undefined,
-  allowHabitTaskType: boolean,
 ): TaskTypeValue {
-  if (taskType === 'habit' && !allowHabitTaskType) {
+  if (taskType === 'habit') {
     return ''
   }
 

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import type { useSelfCareAnalytics } from '@/features/self-care'
 import { cx } from '@/shared/lib/classnames'
 import { CloseIcon } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import {
   buildVisibleCategoryDistribution,
@@ -532,7 +533,7 @@ function AnalyticsRecordDialog({
   const rows = getAnalyticsRecordRows(record)
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -611,7 +612,7 @@ function AnalyticsRecordDialog({
           </button>
         </div>
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

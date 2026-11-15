@@ -7,11 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearHabitOfflineWorkspaceData,
   enqueueHabitOfflineMutation,
+  exportLegacyHabitCommands,
   HABIT_OFFLINE_DATABASE_NAME,
   HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
   HabitOfflinePurgeUnavailableError,
   listRetryableHabitOfflineMutations,
   loadCachedHabitRecords,
+  markHabitOfflineMutationConflicted,
   replaceCachedHabitRecords,
   resetHabitOfflineDatabaseForTests,
   resetHabitOfflineRuntimeForTests,
@@ -35,6 +37,45 @@ describe('offline habit workspace lifecycle', () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     await resetHabitOfflineDatabaseForTests()
+  })
+
+  it('exports pending and conflicted legacy payloads only for their actor without consuming them', async () => {
+    const pending = await enqueueHabitOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      habitId: 'pending-habit',
+      type: 'habit.delete',
+    })
+    const conflict = await enqueueHabitOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      habitId: 'conflict-habit',
+      type: 'habit.delete',
+    })
+    await enqueueHabitOfflineMutation({
+      actorUserId: 'another-user',
+      workspaceId: WORKSPACE_ID,
+      habitId: 'private-habit',
+      type: 'habit.delete',
+    })
+    await markHabitOfflineMutationConflicted(conflict!.id, {
+      actualVersion: 2,
+      expectedVersion: 1,
+      message: 'Version conflict',
+    })
+    const exported = await exportLegacyHabitCommands(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    )
+    expect(exported.map((item) => item.id).sort()).toEqual(
+      [pending!.id, conflict!.id].sort(),
+    )
+    expect(exported.find((item) => item.id === conflict!.id)?.status).toBe(
+      'conflicted',
+    )
+    expect(
+      await exportLegacyHabitCommands(WORKSPACE_ID, ACTOR_USER_ID),
+    ).toEqual(exported)
   })
 
   it('rejects cleanup when neither IndexedDB purge nor a durable marker is available', async () => {
@@ -159,11 +200,11 @@ describe('offline habit workspace lifecycle', () => {
     const secondPurge = clearHabitOfflineWorkspaceData(otherWorkspaceId)
 
     expect(readLifecycleState(WORKSPACE_ID)).toEqual({
-      pendingPurgeGeneration: 1,
+      pendingPurgeGeneration: null,
       writeGeneration: 1,
     })
     expect(readLifecycleState(otherWorkspaceId)).toEqual({
-      pendingPurgeGeneration: 1,
+      pendingPurgeGeneration: null,
       writeGeneration: 1,
     })
 

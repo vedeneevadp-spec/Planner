@@ -219,6 +219,7 @@ export function getRequiredScopesForTool(
 }
 
 export async function executeMcpTool(input: {
+  credentialIssuedAt?: string | undefined
   aiContextService: AiContextService
   plannerService?: McpPlannerService | undefined
   arguments: unknown
@@ -236,6 +237,7 @@ export async function executeMcpTool(input: {
       input.name as PlannerToolName,
       input.arguments,
       input.userId,
+      input.credentialIssuedAt,
     )
   }
   switch (input.name) {

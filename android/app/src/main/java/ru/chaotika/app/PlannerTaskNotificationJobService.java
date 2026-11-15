@@ -55,7 +55,7 @@ public class PlannerTaskNotificationJobService extends JobService {
                 fail(entry);
                 return true;
             }
-            PlannerWidgetSyncConfig config = new PlannerWidgetSyncConfig(currentConfig.apiBaseUrl, entry.workspaceId(), currentConfig.timeZone);
+            PlannerWidgetSyncConfig config = new PlannerWidgetSyncConfig(currentConfig.apiBaseUrl, entry.workspaceId(), currentConfig.timeZone, entry.workspaceEpoch());
             PlannerWidgetAuthSession session = PlannerWidgetBackgroundSync.getUsableSession(this, config);
             if (!entry.belongsTo(session)) { discard(entry); return true; }
             PlannerWidgetNetworkClient client = new PlannerWidgetNetworkClient(config);

@@ -102,6 +102,7 @@ export interface SelfCareApiClientConfig {
 }
 
 export interface SelfCareApiClient {
+  readonly writeEpoch?: string
   archiveItem: (itemId: string) => Promise<SelfCareItem>
   cancelOccurrence: (occurrenceId: string) => Promise<SelfCareOccurrence>
   completeFlexibleGoal: (
@@ -229,7 +230,7 @@ export function createSelfCareApiClient(
   config: SelfCareApiClientConfig,
   fetchFn: ApiClientFetch = fetch,
 ): SelfCareApiClient {
-  const { request } = createApiRequester(
+  const { request, writeEpoch } = createApiRequester(
     config,
     (message, options) => new SelfCareApiError(message, options),
     fetchFn,
@@ -240,6 +241,7 @@ export function createSelfCareApiClient(
   )
 
   return {
+    writeEpoch,
     archiveItem(itemId) {
       return request({
         method: 'POST',

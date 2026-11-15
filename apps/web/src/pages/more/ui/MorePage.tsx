@@ -231,6 +231,46 @@ export function MorePage() {
     }
   }
 
+  async function handleExportLegacyHabits() {
+    if (!session) return
+    setBackupOperation('download')
+    setBackupError(null)
+    setBackupStatus(null)
+    try {
+      const { exportLegacyHabitCommands } =
+        await import('@/features/habits/lib/offline-habit-store')
+      const commands = await exportLegacyHabitCommands(
+        session.workspaceId,
+        session.actorUserId,
+      )
+      if (commands.length === 0) {
+        setBackupStatus(
+          'Несинхронизированных изменений старых привычек на этом устройстве нет.',
+        )
+        return
+      }
+      const result = await saveUserBackupFile({
+        fileName: 'chaotika-legacy-habits.json',
+        text: JSON.stringify(
+          {
+            format: 'chaotika.legacy-habits-recovery',
+            version: 1,
+            workspaceId: session.workspaceId,
+            actorUserId: session.actorUserId,
+            commands,
+          },
+          null,
+          2,
+        ),
+      })
+      setBackupStatus(getBackupSaveMessage(result))
+    } catch (error) {
+      setBackupError(getUserBackupErrorMessage(error))
+    } finally {
+      setBackupOperation(null)
+    }
+  }
+
   function handleOpenBackupFilePicker() {
     if (isBackupBusy) {
       return
@@ -567,6 +607,19 @@ export function MorePage() {
                 <UploadIcon size={19} strokeWidth={2} />
               </span>
               <span className={styles.listText}>{previewBackupLabel}</span>
+            </button>
+            <button
+              className={styles.listAction}
+              type="button"
+              disabled={isBackupBusy}
+              onClick={() => void handleExportLegacyHabits()}
+            >
+              <span className={styles.listIcon} aria-hidden="true">
+                <DownloadIcon size={19} strokeWidth={2} />
+              </span>
+              <span className={styles.listText}>
+                Сохранить старые изменения привычек
+              </span>
             </button>
             <input
               ref={backupFileInputRef}

@@ -10,6 +10,7 @@ const tablePrivileges = new Map([
   ['users', 'SELECT,UPDATE'],
   ['workspaces', 'SELECT,UPDATE'],
   ['user_backup_restore_operations', 'SELECT,INSERT,UPDATE'],
+  ['workspace_write_epochs', 'SELECT,INSERT,UPDATE'],
   ['projects', 'SELECT,INSERT,UPDATE'],
   ['task_templates', 'SELECT,INSERT,UPDATE'],
   ['task_chains', 'SELECT,INSERT,UPDATE'],

@@ -16,6 +16,8 @@ export interface OfflineDrainConflictInput extends OfflineConflictDetails {
 export type OfflineDrainErrorDecision = 'break' | 'continue'
 
 export interface OfflineQueueAdapter<TMutation> {
+  claimMutation?:
+    ((mutationId: string) => Promise<TMutation | null>) | undefined
   completeMutation: (mutationId: string) => Promise<void>
   getMutationId: (mutation: TMutation) => string
   listRetryableMutations: () => Promise<TMutation[]>
@@ -27,6 +29,8 @@ interface DrainOfflineMutationsOptions<
   TResult extends OfflineDrainResultBase,
 > {
   apply: (mutation: TMutation) => Promise<void>
+  claim?: ((mutationId: string) => Promise<TMutation | null>) | undefined
+  isCurrent?: (() => boolean) | undefined
   complete: (mutationId: string) => Promise<void>
   getMutationId: (mutation: TMutation) => string
   markSyncing: (mutationId: string) => Promise<void>
@@ -45,6 +49,7 @@ interface DrainOfflineQueueOptions<
   TResult extends OfflineDrainResultBase,
 > {
   adapter: OfflineQueueAdapter<TMutation>
+  isCurrent?: (() => boolean) | undefined
   apply: (mutation: TMutation) => Promise<void>
   result: TResult
   onError: (input: {
@@ -95,6 +100,7 @@ export async function drainOfflineQueue<
   TResult extends OfflineDrainResultBase,
 >({
   adapter,
+  isCurrent,
   apply,
   result,
   onError,
@@ -103,6 +109,8 @@ export async function drainOfflineQueue<
 
   return drainOfflineMutations({
     apply,
+    claim: adapter.claimMutation,
+    isCurrent,
     complete: adapter.completeMutation,
     getMutationId: adapter.getMutationId,
     markSyncing: adapter.markMutationSyncing,
@@ -118,23 +126,30 @@ export async function drainOfflineMutations<
 >({
   apply,
   complete,
+  claim,
+  isCurrent = () => true,
   getMutationId,
   markSyncing,
   mutations,
   result,
   onError,
 }: DrainOfflineMutationsOptions<TMutation, TResult>): Promise<TResult> {
-  for (const mutation of mutations) {
-    const mutationId = getMutationId(mutation)
-
+  for (const snapshot of mutations) {
+    if (!isCurrent()) break
+    const mutationId = getMutationId(snapshot)
+    const mutation = claim ? await claim(mutationId) : snapshot
+    if (!mutation || !isCurrent()) continue
+    if (!claim) await markSyncing(mutationId)
+    if (!isCurrent()) break
     result.processed += 1
-    await markSyncing(mutationId)
 
     try {
       await apply(mutation)
+      if (!isCurrent()) break
       await complete(mutationId)
       result.synced += 1
     } catch (error) {
+      if (!isCurrent()) break
       const decision = await onError({
         error,
         mutation,

@@ -12,6 +12,7 @@ export type CleaningOfflineMutationStatus =
   'conflicted' | 'failed' | 'pending' | 'syncing'
 
 interface CleaningOfflineMutationBase {
+  writeEpoch?: string
   actorUserId: string
   attemptCount: number
   conflictActualVersion: number | null

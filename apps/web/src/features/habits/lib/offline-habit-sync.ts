@@ -7,12 +7,17 @@ import {
   getOfflineErrorMessage,
   isBrowserRetryableOfflineError,
   readOfflineConflictDetails,
+  trackOfflineMutation,
+  withWorkspaceMutationLock,
 } from '@/shared/lib/offline-sync'
 
 import { type HabitsApiClient, HabitsApiError } from './habits-api'
 import {
+  claimHabitOfflineMutation,
   completeHabitOfflineMutation,
+  getHabitOfflineWorkspaceWriteGeneration,
   type HabitOfflineMutationRecord,
+  isHabitOfflineWorkspaceWriteGenerationCurrent,
   listRetryableHabitOfflineMutations,
   markHabitOfflineMutationConflicted,
   markHabitOfflineMutationFailed,
@@ -49,7 +54,16 @@ interface OfflineMutationCallbacks {
   onHabitSynced?: (habit: HabitRecord) => void
 }
 
-export async function drainHabitOfflineQueue({
+export function drainHabitOfflineQueue(
+  options: DrainHabitOfflineQueueOptions,
+): Promise<HabitOfflineDrainResult> {
+  return withWorkspaceMutationLock(
+    `offline:habits:${options.workspaceId}`,
+    () => drainHabitOfflineQueueUnlocked(options),
+  )
+}
+
+async function drainHabitOfflineQueueUnlocked({
   actorUserId,
   api,
   onEntryDeleted,
@@ -58,6 +72,9 @@ export async function drainHabitOfflineQueue({
   onHabitSynced,
   workspaceId,
 }: DrainHabitOfflineQueueOptions): Promise<HabitOfflineDrainResult> {
+  const generation = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
+  const isCurrent = () =>
+    isHabitOfflineWorkspaceWriteGenerationCurrent(workspaceId, generation)
   const result = createOfflineDrainResult<HabitOfflineDrainResult>({
     conflicted: 0,
   })
@@ -80,14 +97,17 @@ export async function drainHabitOfflineQueue({
   }
 
   return drainOfflineQueue({
+    isCurrent,
     adapter: {
+      claimMutation: claimHabitOfflineMutation,
       completeMutation: completeHabitOfflineMutation,
       getMutationId: (mutation) => mutation.id,
       listRetryableMutations: () =>
         listRetryableHabitOfflineMutations(workspaceId, actorUserId),
       markMutationSyncing: markHabitOfflineMutationSyncing,
     },
-    apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
+    apply: (mutation) =>
+      applyOfflineMutation(api, mutation, callbacks, isCurrent),
     result,
     onError: createOfflineDrainErrorHandler<HabitOfflineDrainResult>({
       getErrorMessage,
@@ -114,63 +134,82 @@ async function applyOfflineMutation(
   api: HabitsApiClient,
   mutation: HabitOfflineMutationRecord,
   callbacks: OfflineMutationCallbacks,
+  isCurrent: () => boolean,
 ): Promise<void> {
   if (mutation.type === 'habit.create') {
-    const habit = await api.createHabit(mutation.input)
+    const habit = await trackOfflineMutation(
+      mutation.workspaceId,
+      mutation.id,
+      () => api.createHabit(mutation.input),
+    )
 
+    if (!isCurrent()) return
     await upsertCachedHabitRecord(mutation.workspaceId, habit)
     await upsertCachedHabitInTodayResponses(mutation.workspaceId, habit)
-    callbacks.onHabitSynced?.(habit)
+    if (isCurrent()) callbacks.onHabitSynced?.(habit)
 
     return
   }
 
   if (mutation.type === 'habit.update') {
-    const habit = await api.updateHabit(mutation.habitId, mutation.input)
+    const habit = await trackOfflineMutation(
+      mutation.workspaceId,
+      mutation.id,
+      () => api.updateHabit(mutation.habitId, mutation.input),
+    )
 
+    if (!isCurrent()) return
     await upsertCachedHabitRecord(mutation.workspaceId, habit)
     await upsertCachedHabitInTodayResponses(mutation.workspaceId, habit)
-    callbacks.onHabitSynced?.(habit)
+    if (isCurrent()) callbacks.onHabitSynced?.(habit)
 
     return
   }
 
   if (mutation.type === 'habit.delete') {
-    await api.removeHabit(mutation.habitId)
+    await trackOfflineMutation(mutation.workspaceId, mutation.id, () =>
+      api.removeHabit(mutation.habitId),
+    )
+    if (!isCurrent()) return
     await removeCachedHabitRecord(mutation.workspaceId, mutation.habitId)
     await removeCachedHabitFromTodayResponses(
       mutation.workspaceId,
       mutation.habitId,
     )
-    callbacks.onHabitDeleted?.(mutation.habitId)
+    if (isCurrent()) callbacks.onHabitDeleted?.(mutation.habitId)
 
     return
   }
 
   if (mutation.type === 'habit.entry.upsert') {
-    const entry = await api.upsertEntry(
-      mutation.habitId,
-      mutation.date,
-      mutation.input,
+    const entry = await trackOfflineMutation(
+      mutation.workspaceId,
+      mutation.id,
+      () => api.upsertEntry(mutation.habitId, mutation.date, mutation.input),
     )
 
+    if (!isCurrent()) return
     await upsertCachedHabitTodayEntry(
       mutation.workspaceId,
       mutation.habitId,
       mutation.date,
       entry,
     )
-    callbacks.onEntrySynced?.(entry)
+    if (isCurrent()) callbacks.onEntrySynced?.(entry)
 
     return
   }
 
-  await api.removeEntry(mutation.habitId, mutation.date, mutation.input)
+  await trackOfflineMutation(mutation.workspaceId, mutation.id, () =>
+    api.removeEntry(mutation.habitId, mutation.date, mutation.input),
+  )
+  if (!isCurrent()) return
   await removeCachedHabitTodayEntry(
     mutation.workspaceId,
     mutation.habitId,
     mutation.date,
   )
+  if (!isCurrent()) return
   callbacks.onEntryDeleted?.({
     date: mutation.date,
     habitId: mutation.habitId,

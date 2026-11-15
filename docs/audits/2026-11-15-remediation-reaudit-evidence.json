@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-15",
+  "branch": "codex/audit-remediation-20261115",
+  "base_commit": "6a6a9d7638846f76f0122e82b9ceab25144e5c19",
+  "delivery": "local_working_tree_not_deployed",
+  "baseline_report": "docs/audits/2026-11-15-full-project-audit.md",
+  "findings": [
+    {
+      "id": "A01",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A02",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A03",
+      "status": "reproduced_defect_fixed_locally",
+      "scope_limit": "client_queue_fixed_no_server_workspace_epoch"
+    },
+    {
+      "id": "A04",
+      "status": "reproduced_defect_fixed_locally",
+      "validation_limit": "full_iOS_build_blocked_by_host_Xcode"
+    },
+    {
+      "id": "A05",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A06",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A07",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A08",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A09",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A10",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A11",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A12",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A13",
+      "status": "reproduced_defect_fixed_locally"
+    },
+    {
+      "id": "A14",
+      "status": "reproduced_defect_fixed_locally"
+    }
+  ],
+  "additional_risks": {
+    "R1": "request_and_body_deadlines_added",
+    "R2": "forced_PWA_reload_removed"
+  },
+  "reaudit_fixes": [
+    "immutable_icon_upload_paths",
+    "avatar_unknown_commit_preserves_file",
+    "logout_refresh_generation_guards",
+    "web_and_native_logout_markers",
+    "Android_widget_plugin_shared_storage_lock",
+    "localStorage_failure_fail_closed",
+    "lazy_participants_dialog_to_meet_existing_bundle_budget"
+  ],
+  "checks": {
+    "ci": {
+      "status": "passed",
+      "log": "tmp/audit-fixes-2026-11-15/ci-verified.log"
+    },
+    "web": {
+      "files": 155,
+      "passed": 1439,
+      "line_coverage_percent": 74.12,
+      "branch_coverage_percent": 68.5
+    },
+    "api_unit": {
+      "passed": 494,
+      "line_coverage_percent": 90.81,
+      "branch_coverage_percent": 84.59,
+      "postgres_implementations_excluded": true
+    },
+    "postgres": {
+      "passed": 125,
+      "optional_migration_checks_passed": 2,
+      "sql_files_applied": 119,
+      "log": "tmp/audit-fixes-2026-11-15/postgres-full-final.log"
+    },
+    "postgres_repository_coverage": {
+      "tests_passed": 60,
+      "lines_percent": 81.93,
+      "branches_percent": 72.89
+    },
+    "pooler_contracts": {
+      "passed": 14,
+      "lines_percent": 91.76,
+      "branches_percent": 75.21
+    },
+    "scripts": {
+      "passed": 69,
+      "log": "tmp/audit-fixes-2026-11-15/scripts-full.log"
+    },
+    "e2e": {
+      "passed": 33,
+      "workers": 1,
+      "log": "tmp/audit-fixes-2026-11-15/e2e-full.log",
+      "after_lazy_change_targeted_participants_flow": "passed"
+    },
+    "pwa_production_update": {
+      "status": "passed",
+      "log": "tmp/audit-fixes-2026-11-15/pwa-update-final.log",
+      "draft": "unsaved_login_form"
+    },
+    "api_production_artifact": {
+      "status": "passed",
+      "production_only_dependencies": true,
+      "db_role": "planner_runtime",
+      "log": "tmp/audit-fixes-2026-11-15/artifact-smoke-final.log"
+    },
+    "android_unit": {
+      "passed": 31,
+      "suites": 8,
+      "fresh_tasks": 93,
+      "log": "tmp/audit-fixes-2026-11-15/android-unit-final.log"
+    },
+    "android_instrumentation": {
+      "apk_compilation": "passed",
+      "device_execution": "not_run_no_AVD_or_device",
+      "log": "tmp/audit-fixes-2026-11-15/native-logout-android-build.log"
+    },
+    "ios": {
+      "rotation_runner": "passed",
+      "syntax_parse": "passed",
+      "full_build": "blocked_by_IDESimulatorFoundation_DVTDownloads_symbol_mismatch",
+      "log": "tmp/audit-2026-11-15/ios-remediation-build.log"
+    },
+    "restic_retention": {
+      "status": "passed",
+      "version": "0.19.1",
+      "isolated_repository": true,
+      "snapshots_before": 4,
+      "snapshots_after": 2,
+      "log": "tmp/audit-fixes-2026-11-15/restic-retention-final.log"
+    },
+    "backup_snapshot": {
+      "status": "passed",
+      "real_pg_dump": true,
+      "missing_referenced_asset_fails_backup": true,
+      "log": "tmp/audit-fixes-2026-11-15/backup-snapshot-smoke.log"
+    },
+    "pg_password_file": {
+      "permissions": "0600",
+      "actual_psql_auth": "passed",
+      "argv_password_removed": true
+    },
+    "npm_audit": {
+      "production": "clean",
+      "full_graph": "clean"
+    },
+    "toolchain": {
+      "node": "26.13.0",
+      "npm": "12.2.2",
+      "status": "passed"
+    },
+    "bundle": {
+      "status": "passed",
+      "initial_kib": 789.3,
+      "initial_budget_kib": 790,
+      "entry_kib": 102.8
+    },
+    "dev_postgres": {
+      "bind": "127.0.0.1:54329",
+      "existing_volume_preserved": true
+    }
+  },
+  "not_verified": [
+    "live_production_configuration",
+    "physical_Android_or_iOS",
+    "real_external_SMTP_Google_Yandex_FCM",
+    "production_offsite_restore",
+    "new_remote_GitHub_CI_and_alert_status",
+    "load_limits"
+  ],
+  "remaining_design_debt": [
+    "server_side_restore_epoch_for_global_mutation_ordering",
+    "large_selfcare_AI_context_deploy_modules",
+    "legacy_habits_retirement_and_data_migration",
+    "safe_orphan_asset_collection",
+    "search_SQL_pagination_after_measurement"
+  ],
+  "evidence_directory": "tmp/audit-fixes-2026-11-15"
+}

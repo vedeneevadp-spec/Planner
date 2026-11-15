@@ -114,3 +114,75 @@ test('keeps desktop and mobile screens free of blocking accessibility violations
     }
   }
 })
+
+test('contains keyboard focus in the task composer and returns it to the opener', async ({
+  page,
+}) => {
+  await registerUser({ ...createE2eUser('e2e-modal-focus'), page })
+  const opener = page.getByRole('button', { name: 'Новая задача', exact: true })
+  await opener.click()
+  const dialog = page.getByRole('dialog', { name: 'Новая задача' })
+  await expect(dialog).toBeVisible()
+  await dialog
+    .getByRole('textbox', { name: 'Задача', exact: true })
+    .fill('Черновик клавиатурной проверки')
+  const moveToBoundary = async (last: boolean) =>
+    dialog.evaluate((root, useLast) => {
+      const controls = [
+        ...root.querySelectorAll<HTMLElement>(
+          'a[href],button,input,select,textarea,[tabindex]',
+        ),
+      ].filter(
+        (element) =>
+          element.tabIndex >= 0 &&
+          !element.matches(':disabled') &&
+          !element.closest('[hidden],[inert]') &&
+          element.getClientRects().length > 0,
+      )
+      const control = useLast ? controls.at(-1) : controls[0]
+      if (!control) throw new Error('No focusable control in composer')
+      control.setAttribute('data-focus-boundary', useLast ? 'last' : 'first')
+      control.focus()
+    }, last)
+  await moveToBoundary(false)
+  await page.keyboard.press('Shift+Tab')
+  await moveToBoundary(true)
+  await page.keyboard.press('Tab')
+  await expect(dialog.locator('[data-focus-boundary="first"]')).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.locator('[data-focus-boundary="last"]')).toBeFocused()
+  const iconOpener = dialog.getByRole('button', { name: /^Выбрать иконку/ })
+  await iconOpener.click()
+  const picker = page.getByRole('dialog', { name: 'Иконка', exact: true })
+  await expect(picker).toBeVisible()
+  await expect(dialog).toHaveAttribute('inert', '')
+  await page.keyboard.press('Tab')
+  await expect
+    .poll(() =>
+      picker.evaluate((root) => root.contains(document.activeElement)),
+    )
+    .toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(picker).toBeHidden()
+  await expect(iconOpener).toBeFocused()
+  await expect(dialog).not.toHaveAttribute('inert')
+  await expect
+    .poll(() =>
+      page.locator('#root').evaluate((root) => root.hasAttribute('inert')),
+    )
+    .toBe(true)
+  await page.screenshot({
+    path: 'tmp/audit-fixes-2026-11-15/modal-focus-desktop.png',
+  })
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(opener).toBeFocused()
+  await page.goto('/profile')
+  await expect(
+    page.getByRole('region', { name: 'Подтверждение email' }),
+  ).toBeVisible()
+  await page.screenshot({
+    path: 'tmp/audit-fixes-2026-11-15/profile-email-verification.png',
+    fullPage: true,
+  })
+})

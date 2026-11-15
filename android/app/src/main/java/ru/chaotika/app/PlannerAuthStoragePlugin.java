@@ -82,7 +82,9 @@ public class PlannerAuthStoragePlugin extends Plugin {
 
         try {
             com.getcapacitor.JSObject result = new com.getcapacitor.JSObject();
-            String value = PlannerSecureStorage.getString(getContext(), key, PREFERENCES_GROUP);
+            String value = PlannerWidgetAuthSessionStore.AUTH_SESSION_KEY.equals(key)
+                ? PlannerWidgetAuthSessionStore.readRaw(getContext())
+                : PlannerSecureStorage.getString(getContext(), key, PREFERENCES_GROUP);
             result.put("value", value == null ? com.getcapacitor.JSObject.NULL : value);
             call.resolve(result);
         } catch (RuntimeException exception) {
@@ -103,7 +105,10 @@ public class PlannerAuthStoragePlugin extends Plugin {
         try {
             // Auth rotation must not reach the server before the encrypted
             // operation marker is durably committed.
-            if (!PlannerSecureStorage.putString(getContext(), key, value, PREFERENCES_GROUP)) {
+            boolean stored = PlannerWidgetAuthSessionStore.AUTH_SESSION_KEY.equals(key)
+                ? PlannerWidgetAuthSessionStore.setSession(getContext(), value)
+                : PlannerSecureStorage.putString(getContext(), key, value, PREFERENCES_GROUP);
+            if (!stored) {
                 call.reject("Failed to commit secure auth storage.");
                 return;
             }
@@ -132,7 +137,10 @@ public class PlannerAuthStoragePlugin extends Plugin {
         }
 
         try {
-            if (!PlannerSecureStorage.remove(getContext(), key, PREFERENCES_GROUP)) {
+            boolean removed = PlannerWidgetAuthSessionStore.AUTH_SESSION_KEY.equals(key)
+                ? PlannerWidgetAuthSessionStore.removeSession(getContext())
+                : PlannerSecureStorage.remove(getContext(), key, PREFERENCES_GROUP);
+            if (!removed) {
                 call.reject("Failed to commit secure auth storage removal.");
                 return;
             }

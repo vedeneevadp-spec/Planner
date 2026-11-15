@@ -33,6 +33,7 @@ export class TaskRemindersService {
               taskId: reminder.taskId,
               type: 'task-reminder',
               workspaceId: reminder.workspaceId,
+              workspaceEpoch: reminder.workspaceEpoch ?? '0',
             },
             notificationTag: `task-reminder:${reminder.id}`,
             taskTitle: reminder.taskTitle,

@@ -446,6 +446,7 @@ test('keeps auth after reload and exposes password reset before and after failed
 test('recovers from an expired password reset link without editing the URL', async ({
   page,
 }) => {
+  const { email } = createE2eUser('e2e-expired-reset')
   await page.goto('/today?reset_token=expired-e2e-reset-token')
   await page.getByLabel('Новый пароль', { exact: true }).fill('new-password')
   await page.getByLabel('Повторите новый пароль').fill('new-password')
@@ -455,13 +456,12 @@ test('recovers from an expired password reset link without editing the URL', asy
   )
   await page.getByRole('button', { name: 'Запросить новую ссылку' }).click()
   await expect(page).not.toHaveURL(/reset_token/)
-  await page.getByLabel('Email').fill('recovery-e2e@example.test')
+  await page.getByLabel('Email').fill(email)
   await page.getByRole('button', { name: 'Отправить ссылку' }).click()
   await expect(
-    page.getByText(
-      'Письмо для восстановления отправлено на recovery-e2e@example.test.',
-      { exact: false },
-    ),
+    page.getByText(`Письмо для восстановления отправлено на ${email}.`, {
+      exact: false,
+    }),
   ).toBeVisible()
   await page.getByRole('button', { name: 'Ко входу' }).click()
   await expect(

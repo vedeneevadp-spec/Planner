@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { randomBytes, randomUUID } from 'node:crypto'
 import process from 'node:process'
 import { setTimeout as wait } from 'node:timers/promises'
 
@@ -63,12 +64,18 @@ try {
 }
 
 function startLocalProductionApi(port) {
-  const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const child = spawn(npmBin, ['run', '-w', 'apps/api', 'start:source'], {
+  const runtimeEnv = { ...process.env }
+  for (const key of [
+    'SMOKE_CLEANUP_DATABASE_URL',
+    'MIGRATE_DATABASE_URL',
+    'BACKUP_DATABASE_URL',
+  ])
+    delete runtimeEnv[key]
+  const child = spawn(process.execPath, ['apps/api/dist/server.js'], {
     cwd: process.cwd(),
     detached: process.platform !== 'win32',
     env: {
-      ...process.env,
+      ...runtimeEnv,
       API_AUTH_MODE: process.env.API_AUTH_MODE ?? 'jwt',
       API_CORS_ORIGIN: process.env.API_CORS_ORIGIN ?? 'http://127.0.0.1:5173',
       API_DB_RLS_MODE: process.env.API_DB_RLS_MODE ?? 'transaction_local',
@@ -144,9 +151,9 @@ async function waitForProductionHealth(targetBaseUrl, processState) {
 }
 
 async function runSmoke(targetBaseUrl, health) {
-  const smokeId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const smokeId = randomUUID()
   const email = `prod-smoke-${smokeId}@example.test`
-  const password = 'prod-smoke-password'
+  const password = randomBytes(32).toString('base64url')
 
   console.log('Production API smoke: signing up')
   const auth = await requestJson(targetBaseUrl, '/api/v1/auth/sign-up', {
@@ -164,177 +171,175 @@ async function runSmoke(targetBaseUrl, health) {
     authorization: `Bearer ${auth.accessToken}`,
   }
 
-  console.log('Production API smoke: resolving session')
-  const session = await requestJson(targetBaseUrl, '/api/v1/session', {
-    headers: authHeaders,
-  })
-  assertString(session.actorUserId, 'session.actorUserId')
-  assertString(session.workspaceId, 'session.workspaceId')
-  if (session.source !== 'access_token') {
-    throw new Error(
-      `Expected access_token session source, got ${session.source}`,
-    )
-  }
-
-  const workspaceHeaders = {
-    ...authHeaders,
-    'x-workspace-id': session.workspaceId,
-  }
-
-  console.log('Production API smoke: listing tasks')
-  const tasks = await requestJson(targetBaseUrl, '/api/v1/tasks', {
-    headers: workspaceHeaders,
-  })
-  if (!Array.isArray(tasks)) {
-    throw new Error('Expected /api/v1/tasks to return an array.')
-  }
-
-  console.log('Production API smoke: creating task')
-  const createdTask = await requestJson(targetBaseUrl, '/api/v1/tasks', {
-    method: 'POST',
-    headers: workspaceHeaders,
-    body: {
-      assigneeUserId: null,
-      dueDate: null,
-      note: `Searchable note ${smokeId}`,
-      plannedDate: null,
-      plannedEndTime: null,
-      plannedStartTime: null,
-      project: '',
-      projectId: null,
-      requiresConfirmation: false,
-      resource: 0,
-      sphereId: null,
-      title: `Production smoke ${smokeId}`,
-    },
-  })
-  assertString(createdTask.id, 'createdTask.id')
-  assertPositiveInteger(createdTask.version, 'createdTask.version')
-  if (createdTask.status !== 'todo') {
-    throw new Error(
-      `Expected created task status todo, got ${createdTask.status}`,
-    )
-  }
-
-  console.log('Production API smoke: searching task notes')
-  const searchPath = `/api/v1/planner-search?source=tasks&query=${encodeURIComponent(`Searchable note ${smokeId}`)}`
-  const activeSearch = await requestJson(
-    targetBaseUrl,
-    `${searchPath}&includeCompleted=false`,
-    { headers: workspaceHeaders },
-  )
-  if (
-    !activeSearch.items?.some(
-      (item) => item.id === createdTask.id && item.status === 'active',
-    )
-  ) {
-    throw new Error('Planner search did not find the new task by its note.')
-  }
-
-  console.log('Production API smoke: rescheduling and restoring task date')
-  const targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10)
-  const movedTask = await requestJson(
-    targetBaseUrl,
-    `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/schedule`,
-    {
-      method: 'PATCH',
-      headers: workspaceHeaders,
-      body: {
-        expectedVersion: createdTask.version,
-        schedule: {
-          plannedDate: targetDate,
-          plannedStartTime: null,
-          plannedEndTime: null,
-        },
-      },
-    },
-  )
-  if (movedTask.plannedDate !== targetDate)
-    throw new Error('Task rescheduling did not persist the selected date.')
-  const restoredTask = await requestJson(
-    targetBaseUrl,
-    `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/schedule`,
-    {
-      method: 'PATCH',
-      headers: workspaceHeaders,
-      body: {
-        expectedVersion: movedTask.version,
-        schedule: {
-          plannedDate: null,
-          plannedStartTime: null,
-          plannedEndTime: null,
-        },
-      },
-    },
-  )
-  if (restoredTask.plannedDate !== null)
-    throw new Error('Undo did not restore the original task date.')
-
-  console.log('Production API smoke: completing task')
-  const doneTask = await requestJson(
-    targetBaseUrl,
-    `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/status`,
-    {
-      method: 'PATCH',
-      headers: workspaceHeaders,
-      body: {
-        expectedVersion: restoredTask.version,
-        status: 'done',
-      },
-    },
-  )
-  assertPositiveInteger(doneTask.version, 'doneTask.version')
-  if (doneTask.status !== 'done') {
-    throw new Error(`Expected task status done, got ${doneTask.status}`)
-  }
-
-  const completedSearch = await requestJson(
-    targetBaseUrl,
-    `${searchPath}&includeCompleted=true`,
-    { headers: workspaceHeaders },
-  )
-  const activeOnlySearch = await requestJson(
-    targetBaseUrl,
-    `${searchPath}&includeCompleted=false`,
-    { headers: workspaceHeaders },
-  )
-  if (
-    !completedSearch.items?.some(
-      (item) => item.id === createdTask.id && item.status === 'done',
-    ) ||
-    activeOnlySearch.items?.some((item) => item.id === createdTask.id)
-  ) {
-    throw new Error('Planner search did not respect the completed-task filter.')
-  }
-
-  console.log('Production API smoke: deleting task')
-  await requestJson(
-    targetBaseUrl,
-    `/api/v1/tasks/${encodeURIComponent(createdTask.id)}?expectedVersion=${doneTask.version}`,
-    {
-      method: 'DELETE',
-      headers: workspaceHeaders,
-      expectJson: false,
-    },
-  )
-
+  let workspaceId
   try {
-    await cleanupSmokeDatabase({
-      email,
+    console.log('Production API smoke: resolving session')
+    const session = await requestJson(targetBaseUrl, '/api/v1/session', {
+      headers: authHeaders,
+    })
+    assertString(session.actorUserId, 'session.actorUserId')
+    assertString(session.workspaceId, 'session.workspaceId')
+    workspaceId = session.workspaceId
+    if (session.source !== 'access_token') {
+      throw new Error(
+        `Expected access_token session source, got ${session.source}`,
+      )
+    }
+
+    const workspaceHeaders = {
+      ...authHeaders,
+      'x-workspace-id': session.workspaceId,
+    }
+
+    console.log('Production API smoke: listing tasks')
+    const tasks = await requestJson(targetBaseUrl, '/api/v1/tasks', {
+      headers: workspaceHeaders,
+    })
+    if (!Array.isArray(tasks)) {
+      throw new Error('Expected /api/v1/tasks to return an array.')
+    }
+
+    console.log('Production API smoke: creating task')
+    const createdTask = await requestJson(targetBaseUrl, '/api/v1/tasks', {
+      method: 'POST',
+      headers: workspaceHeaders,
+      body: {
+        assigneeUserId: null,
+        dueDate: null,
+        note: `Searchable note ${smokeId}`,
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: false,
+        resource: 0,
+        sphereId: null,
+        title: `Production smoke ${smokeId}`,
+      },
+    })
+    assertString(createdTask.id, 'createdTask.id')
+    assertPositiveInteger(createdTask.version, 'createdTask.version')
+    if (createdTask.status !== 'todo') {
+      throw new Error(
+        `Expected created task status todo, got ${createdTask.status}`,
+      )
+    }
+
+    console.log('Production API smoke: searching task notes')
+    const searchPath = `/api/v1/planner-search?source=tasks&query=${encodeURIComponent(`Searchable note ${smokeId}`)}`
+    const activeSearch = await requestJson(
+      targetBaseUrl,
+      `${searchPath}&includeCompleted=false`,
+      { headers: workspaceHeaders },
+    )
+    if (
+      !activeSearch.items?.some(
+        (item) => item.id === createdTask.id && item.status === 'active',
+      )
+    ) {
+      throw new Error('Planner search did not find the new task by its note.')
+    }
+
+    console.log('Production API smoke: rescheduling and restoring task date')
+    const targetDate = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10)
+    const movedTask = await requestJson(
+      targetBaseUrl,
+      `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/schedule`,
+      {
+        method: 'PATCH',
+        headers: workspaceHeaders,
+        body: {
+          expectedVersion: createdTask.version,
+          schedule: {
+            plannedDate: targetDate,
+            plannedStartTime: null,
+            plannedEndTime: null,
+          },
+        },
+      },
+    )
+    if (movedTask.plannedDate !== targetDate)
+      throw new Error('Task rescheduling did not persist the selected date.')
+    const restoredTask = await requestJson(
+      targetBaseUrl,
+      `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/schedule`,
+      {
+        method: 'PATCH',
+        headers: workspaceHeaders,
+        body: {
+          expectedVersion: movedTask.version,
+          schedule: {
+            plannedDate: null,
+            plannedStartTime: null,
+            plannedEndTime: null,
+          },
+        },
+      },
+    )
+    if (restoredTask.plannedDate !== null)
+      throw new Error('Undo did not restore the original task date.')
+
+    console.log('Production API smoke: completing task')
+    const doneTask = await requestJson(
+      targetBaseUrl,
+      `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/status`,
+      {
+        method: 'PATCH',
+        headers: workspaceHeaders,
+        body: {
+          expectedVersion: restoredTask.version,
+          status: 'done',
+        },
+      },
+    )
+    assertPositiveInteger(doneTask.version, 'doneTask.version')
+    if (doneTask.status !== 'done') {
+      throw new Error(`Expected task status done, got ${doneTask.status}`)
+    }
+
+    const completedSearch = await requestJson(
+      targetBaseUrl,
+      `${searchPath}&includeCompleted=true`,
+      { headers: workspaceHeaders },
+    )
+    const activeOnlySearch = await requestJson(
+      targetBaseUrl,
+      `${searchPath}&includeCompleted=false`,
+      { headers: workspaceHeaders },
+    )
+    if (
+      !completedSearch.items?.some(
+        (item) => item.id === createdTask.id && item.status === 'done',
+      ) ||
+      activeOnlySearch.items?.some((item) => item.id === createdTask.id)
+    ) {
+      throw new Error(
+        'Planner search did not respect the completed-task filter.',
+      )
+    }
+
+    console.log('Production API smoke: deleting task')
+    await requestJson(
+      targetBaseUrl,
+      `/api/v1/tasks/${encodeURIComponent(createdTask.id)}?expectedVersion=${doneTask.version}`,
+      {
+        method: 'DELETE',
+        headers: workspaceHeaders,
+        expectJson: false,
+      },
+    )
+
+    return {
+      appEnv: health.appEnv,
+      databaseStatus: health.databaseStatus,
       userId: auth.user.id,
       workspaceId: session.workspaceId,
-    })
-  } catch (error) {
-    console.warn(`Production smoke cleanup skipped: ${formatError(error)}`)
-  }
-
-  return {
-    appEnv: health.appEnv,
-    databaseStatus: health.databaseStatus,
-    userId: auth.user.id,
-    workspaceId: session.workspaceId,
+    }
+  } finally {
+    await cleanupSmokeDatabase({ email, userId: auth.user.id, workspaceId })
   }
 }
 
@@ -372,7 +377,7 @@ async function cleanupSmokeDatabase({ email, userId, workspaceId }) {
     await client.query(
       `
         delete from app.workspaces
-        where id = $1
+        where ($1::uuid is null or id = $1::uuid)
           and owner_user_id = $2
           and slug = any($3::text[])
       `,

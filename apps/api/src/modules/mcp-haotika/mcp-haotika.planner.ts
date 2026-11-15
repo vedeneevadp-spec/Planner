@@ -32,8 +32,9 @@ export class McpPlannerService {
     name: PlannerToolName,
     input: unknown,
     userId: string,
+    credentialIssuedAt?: string,
   ): Promise<unknown> {
-    const context = await this.resolveContext(userId)
+    const context = await this.resolveContext(userId, credentialIssuedAt)
     const tasks = this.dependencies.taskService
     switch (name) {
       case 'list_tasks': {
@@ -206,10 +207,14 @@ export class McpPlannerService {
     return this.dependencies.shoppingService
   }
 
-  private async resolveContext(userId: string): Promise<TaskWriteContext> {
+  private async resolveContext(
+    userId: string,
+    credentialIssuedAt?: string,
+  ): Promise<TaskWriteContext> {
     // The subject comes only from the verified MCP OAuth token, never tool arguments.
     const auth: AuthenticatedRequestContext = {
       accessToken: 'mcp-planner',
+      integrationIssuedAt: credentialIssuedAt,
       claims: {
         sub: userId,
         role: 'authenticated',

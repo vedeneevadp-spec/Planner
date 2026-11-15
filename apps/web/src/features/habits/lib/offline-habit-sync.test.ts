@@ -14,6 +14,8 @@ import {
   enqueueHabitOfflineMutation,
   listRetryableHabitOfflineMutations,
   loadCachedHabitRecords,
+  markHabitOfflineMutationFailed,
+  markHabitOfflineMutationSyncing,
   resetHabitOfflineDatabaseForTests,
 } from './offline-habit-store'
 import { drainHabitOfflineQueue } from './offline-habit-sync'
@@ -76,6 +78,85 @@ describe('offline habit sync', () => {
     expect(await loadCachedHabitRecords(WORKSPACE_ID)).toEqual([habitRecord])
   })
 
+  it('keeps a newer entry command when the in-flight command is acknowledged', async () => {
+    let release!: () => void
+    let started!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const sending = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    const api = createHabitsApiClientMock({
+      upsertEntry: vi.fn<HabitsApiClient['upsertEntry']>(
+        async (_habitId, date, input) => {
+          started()
+          await gate
+          return {
+            ...input,
+            date,
+            id: 'entry',
+            habitId: HABIT_ID,
+            workspaceId: WORKSPACE_ID,
+            userId: ACTOR_USER_ID,
+            deletedAt: null,
+            status: input.status ?? 'done',
+            value: input.value ?? 1,
+            note: input.note ?? '',
+            version: 1,
+            createdAt: '2026-11-15T00:00:00.000Z',
+            updatedAt: '2026-11-15T00:00:00.000Z',
+          }
+        },
+      ),
+    })
+    const command = {
+      workspaceId: WORKSPACE_ID,
+      actorUserId: ACTOR_USER_ID,
+      habitId: HABIT_ID,
+      date: '2026-05-11',
+      type: 'habit.entry.upsert' as const,
+    }
+    await enqueueHabitOfflineMutation({
+      ...command,
+      input: createEntryInput({ status: 'done', note: 'first' }),
+    })
+    const drain = drainHabitOfflineQueue({
+      workspaceId: WORKSPACE_ID,
+      actorUserId: ACTOR_USER_ID,
+      api,
+    })
+    await sending
+    await enqueueHabitOfflineMutation({
+      ...command,
+      input: createEntryInput({ status: 'skipped', note: 'newer' }),
+    })
+    expect(await listRetryableHabitOfflineMutations(WORKSPACE_ID)).toHaveLength(
+      2,
+    )
+    release()
+    await drain
+    const remaining = await listRetryableHabitOfflineMutations(WORKSPACE_ID)
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0]).toMatchObject({
+      status: 'pending',
+      input: { status: 'skipped', note: 'newer' },
+    })
+    await drainHabitOfflineQueue({
+      workspaceId: WORKSPACE_ID,
+      actorUserId: ACTOR_USER_ID,
+      api,
+    })
+    expect(api.upsertEntry).toHaveBeenLastCalledWith(
+      HABIT_ID,
+      '2026-05-11',
+      expect.objectContaining({ status: 'skipped', note: 'newer' }),
+    )
+    expect(await listRetryableHabitOfflineMutations(WORKSPACE_ID)).toHaveLength(
+      0,
+    )
+  })
+
   it('never folds or replays another actor mutation from the same workspace', async () => {
     const otherActorUserId = 'user-2'
     const otherHabitId = 'habit-other'
@@ -110,6 +191,42 @@ describe('offline habit sync', () => {
     expect(
       await countRetryableHabitOfflineMutations(WORKSPACE_ID, otherActorUserId),
     ).toBe(1)
+  })
+
+  it('preserves an attempted failed payload when a newer edit is queued', async () => {
+    const command = {
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      habitId: HABIT_ID,
+      date: '2026-05-11',
+      type: 'habit.entry.upsert' as const,
+    }
+    const first = await enqueueHabitOfflineMutation({
+      ...command,
+      input: createEntryInput({ note: 'original' }),
+    })
+    expect(first).not.toBeNull()
+    await markHabitOfflineMutationSyncing(first!.id)
+    await markHabitOfflineMutationFailed(first!.id, 'Lost response')
+    await enqueueHabitOfflineMutation({
+      ...command,
+      input: createEntryInput({ note: 'newer' }),
+    })
+    const queue = await listRetryableHabitOfflineMutations(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    )
+    expect(queue).toHaveLength(2)
+    expect(queue[0]).toMatchObject({
+      id: first!.id,
+      status: 'failed',
+      input: { note: 'original' },
+    })
+    expect(queue[1]).toMatchObject({
+      status: 'pending',
+      input: { note: 'newer' },
+    })
+    expect(queue[1]!.id).not.toBe(first!.id)
   })
 
   it('marks stale entry changes as conflicted and leaves later mutations retryable', async () => {

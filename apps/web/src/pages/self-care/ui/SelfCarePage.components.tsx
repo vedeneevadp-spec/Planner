@@ -1,5 +1,4 @@
 import type {
-  SelfCareCompletion,
   SelfCareListResponse,
   SelfCareTodayItem,
 } from '@planner/contracts'
@@ -12,10 +11,8 @@ import type {
 } from '@/features/self-care'
 import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKeyInTimeZone } from '@/shared/time/time.service'
 import {
   CheckIcon,
-  EditIcon,
   GearIcon,
   IconMark,
   ImageStackIcon,
@@ -29,8 +26,6 @@ import { PageStateView } from '@/shared/ui/PageState'
 import {
   canRestartCourse,
   CATEGORY_LABELS,
-  formatCompletionCost,
-  formatCompletionMeasurementHistoryValue,
   formatCompletionState,
   formatCourseCompletionState,
   formatDate,
@@ -41,11 +36,9 @@ import {
   formatMeasurementTarget,
   formatPlanningText,
   formatSchedule,
-  formatStateCompletionSummary,
   formatStateSummary,
   formatTime,
   formatTomorrowPlanSummary,
-  getCompletionCost,
   getCourseProgress,
   getEffectiveRitualStepIds,
   getPrimaryActionLabel,
@@ -58,7 +51,6 @@ import {
   groupTodayItems,
   type RitualStepDrafts,
   shouldShowSelfCareSkipAction,
-  STATUS_LABELS,
   TIME_GROUP_LABELS,
   VISIBLE_CATEGORY_LABELS,
   type VisibleSelfCareCategory,
@@ -71,19 +63,15 @@ import {
   getLatestProgressCompletionByItemId,
   getNextPlannedDateByItemId,
   getPlannedEntriesCountForDate,
-  getPlanOccurrenceEntries,
   inferNextCompletionDate,
   isClosedTodayEntry,
   isEntryDoneToday,
-  mergeLatestProgressCompletion,
   mergeRitualProgressCompletion,
   shiftDateKey,
   shouldShowOverdueEntry,
   shouldShowTodayEntry,
 } from './SelfCarePage.schedule'
 import { SelfCareSection } from './SelfCarePage.sections'
-
-export { SelfCareSettingsTab } from './SelfCarePage.settings'
 
 export function SelfCareTodayTab({
   canAddCare,
@@ -440,157 +428,6 @@ function SelfCareTodayClearState({
   )
 }
 
-export function SelfCarePlanTab({
-  canAddCare,
-  hiddenScheduledItemIds,
-  history,
-  isBusy,
-  isAddingCare,
-  onCardAction,
-  onArchiveItem,
-  onAddCare,
-  onCancelOccurrence,
-  onEditItem,
-  onTogglePauseItem,
-  onRestartCourse,
-  onScheduleItem,
-  plan,
-  todayKey,
-  uploadedIcons,
-}: {
-  canAddCare: boolean
-  hiddenScheduledItemIds: ReadonlySet<string>
-  history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
-  isBusy: boolean
-  isAddingCare: boolean
-  onCardAction: (entry: SelfCareTodayItem) => void
-  onArchiveItem: (entry: SelfCareTodayItem) => void
-  onAddCare: () => void
-  onCancelOccurrence: (entry: SelfCareTodayItem) => void
-  onEditItem: (entry: SelfCareTodayItem) => void
-  onTogglePauseItem: (entry: SelfCareTodayItem) => void
-  onRestartCourse: (entry: SelfCareTodayItem) => void
-  onScheduleItem: (entry: SelfCareTodayItem) => void
-  plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
-  todayKey: string
-  uploadedIcons: UploadedIconAsset[]
-}) {
-  const latestCompletionByItemId = useMemo(
-    () => getLatestProgressCompletionByItemId(history),
-    [history],
-  )
-  const nextPlannedDateByItemId = useMemo(
-    () => getNextPlannedDateByItemId(plan, todayKey),
-    [plan, todayKey],
-  )
-  const occurrences = getPlanOccurrenceEntries(plan, todayKey)
-  const courseEntries = (plan?.courses ?? []).map((entry) =>
-    mergeLatestProgressCompletion(
-      entry,
-      latestCompletionByItemId.get(entry.item.id) ?? null,
-    ),
-  )
-  const planningHints = (plan?.planningHints ?? []).filter(
-    (entry) => !hiddenScheduledItemIds.has(entry.item.id),
-  )
-  const medicalEntries = plan?.medical ?? []
-  const hasPlanContent =
-    occurrences.length > 0 ||
-    planningHints.length > 0 ||
-    medicalEntries.length > 0 ||
-    courseEntries.length > 0
-
-  return (
-    <div className={styles.tabPanel}>
-      {occurrences.length ? (
-        <SelfCareSection title="Записи и задачи">
-          {occurrences.slice(0, 18).map((entry) => (
-            <SelfCareItemCard
-              actions="plan"
-              key={entry.occurrence?.id ?? entry.item.id}
-              entry={entry}
-              isBusy={isBusy}
-              todayKey={todayKey}
-              uploadedIcons={uploadedIcons}
-              onAction={onCardAction}
-              onArchive={onArchiveItem}
-              onCancelOccurrence={onCancelOccurrence}
-              onEdit={onEditItem}
-              onTogglePause={onTogglePauseItem}
-            />
-          ))}
-        </SelfCareSection>
-      ) : !hasPlanContent ? (
-        <PageStateView
-          action={
-            canAddCare
-              ? {
-                  disabled: isBusy,
-                  label: isAddingCare ? 'Добавляем…' : 'Добавить заботу',
-                  onClick: onAddCare,
-                }
-              : undefined
-          }
-          description="Можно оставить ближайшие дни свободными или добавить одну подходящую заботу."
-          kind="empty"
-          title="На ближайшие даты ничего не запланировано"
-        />
-      ) : null}
-
-      {planningHints.length ? (
-        <SelfCareSection title="Можно запланировать">
-          {planningHints.map((entry) => (
-            <PlanningHintCard
-              key={`plan-hint-${entry.item.id}`}
-              entry={entry}
-              isBusy={isBusy}
-              onArchive={onArchiveItem}
-              onEdit={onEditItem}
-              onTogglePause={onTogglePauseItem}
-              onSchedule={onScheduleItem}
-            />
-          ))}
-        </SelfCareSection>
-      ) : null}
-
-      {medicalEntries.length ? (
-        <SelfCareSection title="Записи и здоровье">
-          {medicalEntries.map((entry) => (
-            <PlanningHintCard
-              key={`medical-${entry.item.id}-${entry.occurrence?.id ?? 'item'}`}
-              entry={entry}
-              isBusy={isBusy}
-              onArchive={onArchiveItem}
-              onEdit={onEditItem}
-              onTogglePause={onTogglePauseItem}
-            />
-          ))}
-        </SelfCareSection>
-      ) : null}
-
-      {courseEntries.length ? (
-        <SelfCareSection title="Курсы">
-          {courseEntries.map((entry) => (
-            <SelfCareItemCard
-              key={`course-${entry.item.id}`}
-              entry={entry}
-              isBusy={isBusy}
-              todayKey={todayKey}
-              nextOccurrenceDate={nextPlannedDateByItemId.get(entry.item.id)}
-              uploadedIcons={uploadedIcons}
-              onAction={onCardAction}
-              onArchive={onArchiveItem}
-              onEdit={onEditItem}
-              onTogglePause={onTogglePauseItem}
-              onRestartCourse={onRestartCourse}
-            />
-          ))}
-        </SelfCareSection>
-      ) : null}
-    </div>
-  )
-}
-
 export function SelfCareRitualsTab({
   canAddCare,
   dashboardItems,
@@ -730,122 +567,6 @@ export function SelfCareRitualsTab({
   )
 }
 
-export function SelfCareHistoryTab({
-  canAddCare,
-  defaultCurrency,
-  history,
-  isBusy,
-  isAddingCare,
-  onAddCare,
-  onEditCompletion,
-}: {
-  canAddCare: boolean
-  defaultCurrency: string
-  history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
-  isBusy: boolean
-  isAddingCare: boolean
-  onAddCare: () => void
-  onEditCompletion: (completion: SelfCareCompletion) => void
-}) {
-  const plannerTimeZone = usePlannerTimeZone()
-  const itemById = new Map(
-    (history?.items ?? []).map((item) => [item.id, item]),
-  )
-  const completions = [...(history?.completions ?? [])].sort((left, right) =>
-    right.completedAt.localeCompare(left.completedAt),
-  )
-
-  if (!completions.length) {
-    return (
-      <PageStateView
-        action={
-          canAddCare
-            ? {
-                disabled: isBusy,
-                label: isAddingCare ? 'Добавляем…' : 'Добавить заботу',
-                onClick: onAddCare,
-              }
-            : undefined
-        }
-        description="Выберите более ранний период, чтобы посмотреть прошлые заботы."
-        kind="empty"
-        title="Нет записей за этот период"
-      />
-    )
-  }
-
-  return (
-    <div className={styles.timeline}>
-      {completions.map((completion) => {
-        const item = itemById.get(completion.itemId)
-        const measurementHistoryValue = formatCompletionMeasurementHistoryValue(
-          completion,
-          item,
-        )
-        const completionCost = getCompletionCost(completion, item, {
-          appointmentDetails: history?.appointmentDetails ?? [],
-          procedureDetails: history?.procedureDetails ?? [],
-        })
-        const costHistoryValue = formatCompletionCost(
-          completionCost,
-          defaultCurrency,
-        )
-        return (
-          <article key={completion.id} className={styles.historyCard}>
-            <time
-              dateTime={getDateKeyInTimeZone(
-                completion.completedAt,
-                plannerTimeZone,
-              )}
-            >
-              {formatDate(
-                getDateKeyInTimeZone(completion.completedAt, plannerTimeZone),
-              )}
-            </time>
-            <div>
-              <h3>{item?.title ?? 'Забота о себе'}</h3>
-              <p>{STATUS_LABELS[completion.status]}</p>
-              {costHistoryValue ? (
-                <p className={styles.measurementHistoryValue}>
-                  {costHistoryValue}
-                </p>
-              ) : null}
-              {measurementHistoryValue ? (
-                <p className={styles.measurementHistoryValue}>
-                  {measurementHistoryValue}
-                </p>
-              ) : null}
-              {formatStateCompletionSummary(completion) ? (
-                <p className={styles.stateHistoryValue}>
-                  {formatStateCompletionSummary(completion)}
-                </p>
-              ) : null}
-              {completion.note ? (
-                <p className={styles.noteText}>{completion.note}</p>
-              ) : null}
-            </div>
-            <div className={styles.historyCardActions}>
-              <button
-                className={cx(
-                  styles.cardActionButton,
-                  styles.cardActionButtonSoft,
-                )}
-                type="button"
-                disabled={isBusy}
-                title="Редактировать"
-                aria-label={`Редактировать запись «${item?.title ?? 'Забота о себе'}»`}
-                onClick={() => onEditCompletion(completion)}
-              >
-                <EditIcon size={17} strokeWidth={2.1} />
-              </button>
-            </div>
-          </article>
-        )
-      })}
-    </div>
-  )
-}
-
 function SelfCareCardIcon({
   uploadedIcons,
   value,
@@ -870,7 +591,7 @@ function SelfCareCardIcon({
   )
 }
 
-function SelfCareItemCard({
+export function SelfCareItemCard({
   actions = 'today',
   compact = false,
   entry,
@@ -1213,7 +934,7 @@ function SelfCarePauseButton({
   )
 }
 
-function PlanningHintCard({
+export function PlanningHintCard({
   entry,
   isBusy,
   isTodayView = false,

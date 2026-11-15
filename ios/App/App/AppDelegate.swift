@@ -9,20 +9,32 @@ final class PlannerAuthStoragePlugin: CAPPlugin, CAPBridgedPlugin {
     let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "get", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "set", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "remove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "prepareRefresh", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "commitRefresh", returnType: CAPPluginReturnPromise)
     ]
+
+    private static let storageLock = NSLock()
+    private let authSessionKey = "planner.auth.planner.auth.session"
+    private let authLogoutKey = "planner.auth.planner.auth.session.loggedOut"
 
     private var service: String {
         "\(Bundle.main.bundleIdentifier ?? "ru.chaotika.app").planner.auth"
     }
 
     @objc func get(_ call: CAPPluginCall) {
+        Self.storageLock.lock()
+        defer { Self.storageLock.unlock() }
         guard let key = call.getString("key") else {
             call.reject("Auth storage key is required.")
             return
         }
 
         do {
+            if key == authSessionKey, try readValue(for: authLogoutKey) != nil {
+                call.resolve(["value": NSNull()])
+                return
+            }
             let value = try readValue(for: key) ?? migrateLegacyValue(for: key)
             call.resolve(["value": value as Any])
         } catch {
@@ -31,6 +43,8 @@ final class PlannerAuthStoragePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func set(_ call: CAPPluginCall) {
+        Self.storageLock.lock()
+        defer { Self.storageLock.unlock() }
         guard let key = call.getString("key"), let value = call.getString("value") else {
             call.reject("Auth storage key and value are required.")
             return
@@ -38,6 +52,7 @@ final class PlannerAuthStoragePlugin: CAPPlugin, CAPBridgedPlugin {
 
         do {
             try writeValue(value, for: key)
+            if key == authSessionKey { try deleteValue(for: authLogoutKey) }
             removeLegacyValue(for: key)
             call.resolve()
         } catch {
@@ -46,19 +61,62 @@ final class PlannerAuthStoragePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func remove(_ call: CAPPluginCall) {
+        Self.storageLock.lock()
+        defer { Self.storageLock.unlock() }
         guard let key = call.getString("key") else {
             call.reject("Auth storage key is required.")
             return
         }
 
-        let status = SecItemDelete(baseQuery(for: key) as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            call.reject("Failed to remove secure auth storage (OSStatus \(status)).")
+        do {
+            if key == authSessionKey { try writeValue("1", for: authLogoutKey) }
+            try deleteValue(for: key)
+            removeLegacyValue(for: key)
+            call.resolve()
+        } catch {
+            call.reject("Failed to remove secure auth storage.")
+        }
+    }
+
+    @objc func prepareRefresh(_ call: CAPPluginCall) {
+        Self.storageLock.lock()
+        defer { Self.storageLock.unlock() }
+        guard let expected = call.getString("expectedSession") else {
+            call.reject("A valid expected auth session is required.")
             return
         }
+        do {
+            guard try readValue(for: authLogoutKey) == nil else {
+                throw PlannerAuthSessionRotation.RotationError.invalidSession
+            }
+            let latest = try readValue(for: authSessionKey) ?? migrateLegacyValue(for: authSessionKey)
+            let prepared = try PlannerAuthSessionRotation.prepare(latest: latest, expected: expected)
+            try writeValue(prepared, for: authSessionKey)
+            call.resolve(["value": prepared])
+        } catch {
+            call.reject("Failed to prepare secure auth refresh.")
+        }
+    }
 
-        removeLegacyValue(for: key)
-        call.resolve()
+    @objc func commitRefresh(_ call: CAPPluginCall) {
+        Self.storageLock.lock()
+        defer { Self.storageLock.unlock() }
+        guard let attempted = call.getString("attemptedSession"),
+              let refreshed = call.getString("refreshedSession") else {
+            call.reject("Valid attempted and refreshed auth sessions are required.")
+            return
+        }
+        do {
+            guard try readValue(for: authLogoutKey) == nil else {
+                throw PlannerAuthSessionRotation.RotationError.invalidSession
+            }
+            let latest = try readValue(for: authSessionKey)
+            let committed = try PlannerAuthSessionRotation.commit(latest: latest, attempted: attempted, refreshed: refreshed)
+            try writeValue(committed, for: authSessionKey)
+            call.resolve(["value": committed])
+        } catch {
+            call.reject("Failed to commit secure auth refresh.")
+        }
     }
 
     private func readValue(for key: String) throws -> String? {
@@ -78,6 +136,13 @@ final class PlannerAuthStoragePlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         return value
+    }
+
+    private func deleteValue(for key: String) throws {
+        let status = SecItemDelete(baseQuery(for: key) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError(status: status)
+        }
     }
 
     private func writeValue(_ value: String, for key: String) throws {

@@ -12,6 +12,10 @@ import fastifyRateLimit from 'fastify-rate-limit'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
+import {
+  isWorkspaceEpochConflict,
+  readWorkspaceEpoch,
+} from '../infrastructure/db/workspace-epochs.js'
 import type { AiContextService } from '../modules/ai-context/index.js'
 import {
   createAliceCommandParser,
@@ -20,6 +24,8 @@ import {
 import { registerApiKeyRoutes } from '../modules/api-keys/api-key.routes.js'
 import type { ApiKeyService } from '../modules/api-keys/api-key.service.js'
 import { registerPublicApiRoutes } from '../modules/api-keys/public-api.routes.js'
+import { registerEmailVerificationRoutes } from '../modules/auth/email-verification.routes.js'
+import type { EmailVerificationService } from '../modules/auth/email-verification.service.js'
 import type { GoogleAuthService } from '../modules/auth/google-auth.service.js'
 import type { AuthService } from '../modules/auth/index.js'
 import {
@@ -49,6 +55,7 @@ import {
   McpPlannerService,
   registerMcpHaotikaRoutes,
 } from '../modules/mcp-haotika/index.js'
+import { PostgresPlannerSearchRepository } from '../modules/planner-search/planner-search.repository.postgres.js'
 import { registerPlannerSearchRoutes } from '../modules/planner-search/planner-search.routes.js'
 import type { PushNotificationsService } from '../modules/push-notifications/index.js'
 import { registerPushNotificationsRoutes } from '../modules/push-notifications/index.js'
@@ -86,6 +93,7 @@ import { registerApiRouteRegistry } from './route-registry.js'
 const DEFAULT_API_BODY_LIMIT_BYTES = 1024 * 1024
 
 export interface BuildApiAppOptions {
+  emailVerificationService?: EmailVerificationService | undefined
   googleAuthService?: GoogleAuthService | undefined
   config: ApiConfig
   database: DatabaseConnection | null
@@ -122,6 +130,7 @@ export function buildApiApp({
   databaseStatusResolver = getDatabaseStatus,
   requestAuthenticator = new NoopRequestAuthenticator(),
   authService,
+  emailVerificationService,
   googleAuthService,
   aiContextService,
   apiKeyService,
@@ -151,6 +160,12 @@ export function buildApiApp({
     trustProxy: config.trustedProxies,
   })
   app.register(cors, {
+    exposedHeaders: [
+      'x-workspace-id',
+      'x-workspace-epoch',
+      'x-workspace-epochs',
+      'x-workspace-actor-id',
+    ],
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: resolveCorsOrigin(config.corsOrigin),
@@ -237,7 +252,8 @@ export function buildApiApp({
   registerAliceRoutes(app, {
     ...(chaosInboxService ? { chaosInboxService } : {}),
     commandParser: createAliceCommandParser(config.aliceCommandLlm),
-    jwtAuth: config.jwtAuth,
+    requestAuthenticator,
+    rateLimiter,
     sessionService,
     taskService,
   })
@@ -285,7 +301,12 @@ export function buildApiApp({
         service: authService,
       })
     }
-    registerSessionRoutes(instance, sessionService)
+    if (emailVerificationService) {
+      registerEmailVerificationRoutes(instance, emailVerificationService)
+    }
+    registerSessionRoutes(instance, sessionService, (userId, workspaceId) =>
+      readWorkspaceEpoch(database, userId, workspaceId),
+    )
     if (userBackupService) {
       registerUserBackupRoutes(instance, sessionService, userBackupService)
     }
@@ -315,6 +336,9 @@ export function buildApiApp({
       registerTaskTemplateRoutes(instance, sessionService, taskTemplateService)
     }
     registerPlannerSearchRoutes(instance, sessionService, {
+      boundedSearch: database
+        ? new PostgresPlannerSearchRepository(database.db)
+        : undefined,
       taskService,
       chaosInboxService,
       cleaningService,
@@ -330,6 +354,15 @@ export function buildApiApp({
   })
 
   app.setErrorHandler((error, request, reply) => {
+    if (isWorkspaceEpochConflict(error)) {
+      return reply.status(409).send({
+        error: {
+          code: 'workspace_restored',
+          message:
+            'Данные восстановлены из копии. Обновите приложение; старое изменение не применено.',
+        },
+      })
+    }
     const diagnostics = createErrorDiagnostics(request, reply)
     const fastifyHttpError = createFastifyHttpError(error)
 

@@ -14,7 +14,7 @@ const APP_SHELL_URLS = [
 ]
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting()
+  // Keep the current app and its unsaved drafts alive until its tabs close.
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_URLS)),
   )

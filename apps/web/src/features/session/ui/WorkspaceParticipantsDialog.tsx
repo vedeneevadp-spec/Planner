@@ -6,6 +6,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { CloseIcon, PlusIcon, TrashIcon, UserIcon } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import { usePlannerSession } from '../lib/usePlannerSession'
@@ -39,7 +40,7 @@ const INVITATION_STATUS_LABELS = {
   pending: 'Ожидает',
 } as const
 
-interface WorkspaceParticipantsDialogProps {
+export interface WorkspaceParticipantsDialogProps {
   isOpen: boolean
   onClose: () => void
 }
@@ -179,7 +180,7 @@ export function WorkspaceParticipantsDialog({
         onClose()
       }}
     >
-      <section
+      <ModalSurface
         className={styles.dialog}
         role="dialog"
         aria-modal="true"
@@ -517,7 +518,7 @@ export function WorkspaceParticipantsDialog({
             ) : null}
           </>
         )}
-      </section>
+      </ModalSurface>
     </div>
   )
 }

@@ -10,7 +10,7 @@ import {
 import {
   HABIT_OFFLINE_DATABASE_NAME,
   HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
-} from '@/features/habits'
+} from '@/features/habits/offline-storage'
 import {
   PLANNER_OFFLINE_DATABASE_NAME,
   PLANNER_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,

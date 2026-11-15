@@ -1139,23 +1139,9 @@ function useCleaningApi(options: { enabled?: boolean } = {}) {
   } = useSessionFeatureReadiness({
     enabled: options.enabled,
   })
-  const apiAccessToken = apiConfig?.accessToken
-  const apiActorUserId = apiConfig?.actorUserId
-  const apiBaseUrl = apiConfig?.apiBaseUrl
-  const apiWorkspaceId = apiConfig?.workspaceId
   const api = useMemo(
-    () =>
-      apiActorUserId && apiBaseUrl && apiWorkspaceId
-        ? createCleaningApiClient({
-            ...(apiAccessToken === undefined
-              ? {}
-              : { accessToken: apiAccessToken }),
-            actorUserId: apiActorUserId,
-            apiBaseUrl,
-            workspaceId: apiWorkspaceId,
-          })
-        : null,
-    [apiAccessToken, apiActorUserId, apiBaseUrl, apiWorkspaceId],
+    () => (apiConfig ? createCleaningApiClient(apiConfig) : null),
+    [apiConfig],
   )
 
   return {

@@ -1,5 +1,6 @@
 import type { LifeSphereRecord, TaskRecord } from '@planner/contracts'
 
+import { assertOfflineWorkspaceEpoch } from '@/shared/lib/api-client'
 import {
   createOfflineDrainResult,
   getOfflineErrorMessage,
@@ -182,6 +183,12 @@ async function applyOfflineMutation(
   callbacks: OfflineMutationCallbacks,
   expectedWriteGeneration: number,
 ): Promise<void> {
+  assertOfflineWorkspaceEpoch(
+    mutation,
+    api.writeEpoch,
+    (message, options) => new PlannerApiError(message, options),
+  )
+
   assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
 
   if (mutation.type === 'lifeSphere.create') {

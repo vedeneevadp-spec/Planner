@@ -116,6 +116,9 @@ async function grantRuntimeAccess(client, { databaseName, runtimeRole }) {
   for (const signature of [
     'app.auth_find_google_user(text)',
     'app.auth_complete_google_sign_in(text, public.citext, text, uuid, uuid, text, timestamptz)',
+    'app.auth_email_verification_status(uuid)',
+    'app.auth_request_email_verification(uuid, text, timestamptz)',
+    'app.auth_confirm_email_verification(uuid, text)',
   ]) {
     const existing = await client.query(
       'select to_regprocedure($1) as function',

@@ -27,6 +27,7 @@ import {
   selfCareDashboardQueryKey,
 } from '@/features/self-care'
 import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
+import { readWorkspaceWriteEpoch } from '@/shared/lib/api-client'
 import { recordClientEvent } from '@/shared/lib/observability'
 import {
   getDateKeyInTimeZone,
@@ -403,8 +404,10 @@ export function NativePlannerWidgetSync() {
   }, [])
 
   const completeWidgetTask = useCallback(
-    async (taskId: string): Promise<boolean> => {
-      const planner = plannerRef.current
+    async (
+      taskId: string,
+      planner: NativeWidgetPlannerRef,
+    ): Promise<boolean> => {
       const cleaningTaskId = getNativePlannerWidgetCleaningTaskId(taskId)
 
       if (cleaningTaskId) {
@@ -503,30 +506,55 @@ export function NativePlannerWidgetSync() {
       }
 
       completionSyncPromiseRef.current = (async () => {
+        const writeEpoch = planner.personalApi?.writeEpoch ?? '0'
         const taskIds = [
-          ...new Set(await readPendingNativePlannerWidgetCompletedTasks()),
+          ...new Set(
+            await readPendingNativePlannerWidgetCompletedTasks(writeEpoch),
+          ),
         ]
         const acknowledgedTaskIds: string[] = []
         let didCompleteTask = false
 
         for (const taskId of taskIds) {
-          if (deferredCompletedTaskIdsRef.current.has(taskId)) {
+          const current = plannerRef.current
+          if (
+            !planner.personalWorkspaceId ||
+            current.personalWorkspaceId !== planner.personalWorkspaceId ||
+            current.actorUserId !== planner.actorUserId ||
+            (current.personalApi?.writeEpoch ?? '0') !== writeEpoch ||
+            readWorkspaceWriteEpoch(planner.personalWorkspaceId) !== writeEpoch
+          ) {
+            // A bridge response or a previous command can finish after restore.
+            // Never hand the old IDs to a newly created client or acknowledge
+            // IDs that may now belong to a newer native queue generation.
+            return { didCompleteTask, hasPendingCompletions: false }
+          }
+          const completionKey = JSON.stringify([
+            planner.actorUserId,
+            planner.personalWorkspaceId,
+            writeEpoch,
+            taskId,
+          ])
+          if (deferredCompletedTaskIdsRef.current.has(completionKey)) {
             continue
           }
 
-          const didUpdateTask = await completeWidgetTask(taskId)
+          const didUpdateTask = await completeWidgetTask(taskId, planner)
 
           if (didUpdateTask) {
             didCompleteTask = true
             acknowledgedTaskIds.push(taskId)
-            deferredCompletedTaskIdsRef.current.delete(taskId)
+            deferredCompletedTaskIdsRef.current.delete(completionKey)
           } else {
-            deferredCompletedTaskIdsRef.current.add(taskId)
+            deferredCompletedTaskIdsRef.current.add(completionKey)
           }
         }
 
         if (acknowledgedTaskIds.length > 0) {
-          await ackPendingNativePlannerWidgetCompletedTasks(acknowledgedTaskIds)
+          await ackPendingNativePlannerWidgetCompletedTasks(
+            acknowledgedTaskIds,
+            writeEpoch,
+          )
           recordClientEvent('widget_completion_acknowledged', {
             count: acknowledgedTaskIds.length,
             pendingCount: taskIds.length,
@@ -607,6 +635,7 @@ export function NativePlannerWidgetSync() {
     if (widgetApiBaseUrl && personalWorkspaceId) {
       void configureNativePlannerWidgetBackgroundSync({
         apiBaseUrl: widgetApiBaseUrl,
+        writeEpoch: personalApi?.writeEpoch ?? '0',
         timeZone: widgetTimeZone,
         workspaceId: personalWorkspaceId,
       }).catch((error) => {
@@ -618,6 +647,7 @@ export function NativePlannerWidgetSync() {
     }
   }, [
     personalWorkspaceId,
+    personalApi?.writeEpoch,
     shouldDisableNativeBackgroundSync,
     widgetApiBaseUrl,
     widgetTimeZone,

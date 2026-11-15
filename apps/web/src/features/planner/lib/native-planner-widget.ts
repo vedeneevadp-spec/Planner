@@ -45,16 +45,26 @@ export interface NativePlannerWidgetSupplementalData {
 }
 
 interface PlannerWidgetPlugin {
-  ackPendingCompletedTasks: (input: { taskIds: string[] }) => Promise<void>
+  ackPendingCompletedTasks: (input: {
+    taskIds: string[]
+    writeEpoch: string
+  }) => Promise<void>
   configureBackgroundSync: (input: {
     apiBaseUrl: string
+    writeEpoch?: string
     timeZone: string
     workspaceId: string
   }) => Promise<void>
-  consumePendingCompletedTasks: () => Promise<{ taskIds: string[] }>
+  consumePendingCompletedTasks: () => Promise<{
+    taskIds: string[]
+    writeEpoch?: string
+  }>
   consumePendingRoute: () => Promise<{ path: string | null }>
   disableBackgroundSync: () => Promise<void>
-  readPendingCompletedTasks: () => Promise<{ taskIds: string[] }>
+  readPendingCompletedTasks: () => Promise<{
+    taskIds: string[]
+    writeEpoch?: string
+  }>
   refresh: () => Promise<void>
 }
 
@@ -157,6 +167,7 @@ export async function persistNativePlannerWidgetSnapshot(
 
 export async function configureNativePlannerWidgetBackgroundSync(input: {
   apiBaseUrl: string
+  writeEpoch?: string
   timeZone: string
   workspaceId: string
 }): Promise<void> {
@@ -254,20 +265,23 @@ export async function consumePendingNativePlannerWidgetCompletedTasks(): Promise
   return normalizePendingTaskIds(taskIds)
 }
 
-export async function readPendingNativePlannerWidgetCompletedTasks(): Promise<
-  string[]
-> {
+export async function readPendingNativePlannerWidgetCompletedTasks(
+  expectedWriteEpoch = '0',
+): Promise<string[]> {
   if (!isAndroidPlannerWidgetRuntime()) {
     return []
   }
 
-  const { taskIds } = await NativePlannerWidget.readPendingCompletedTasks()
+  const { taskIds, writeEpoch } =
+    await NativePlannerWidget.readPendingCompletedTasks()
+  if ((writeEpoch ?? '0') !== expectedWriteEpoch) return []
 
   return normalizePendingTaskIds(taskIds)
 }
 
 export async function ackPendingNativePlannerWidgetCompletedTasks(
   taskIds: string[],
+  writeEpoch = '0',
 ): Promise<void> {
   if (!isAndroidPlannerWidgetRuntime()) {
     return
@@ -281,6 +295,7 @@ export async function ackPendingNativePlannerWidgetCompletedTasks(
 
   await NativePlannerWidget.ackPendingCompletedTasks({
     taskIds: acknowledgedTaskIds,
+    writeEpoch,
   })
 }
 

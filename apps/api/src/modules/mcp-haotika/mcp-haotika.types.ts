@@ -32,6 +32,7 @@ export class McpHaotikaError extends Error {
 }
 
 export interface McpOAuthTokenRecord {
+  createdAt?: string | undefined
   accessTokenHash: string
   clientId: string | null
   expiresAt: string
@@ -57,6 +58,9 @@ export interface CreateMcpOAuthTokenCommand {
 }
 
 export interface McpOAuthTokenRepository {
+  rotateRefreshToken(
+    command: RotateMcpOAuthTokenCommand,
+  ): Promise<McpOAuthTokenRecord | null>
   createToken(command: CreateMcpOAuthTokenCommand): Promise<McpOAuthTokenRecord>
   findByAccessTokenHash(
     accessTokenHash: string,
@@ -68,7 +72,18 @@ export interface McpOAuthTokenRepository {
   touchLastUsed(tokenId: string): Promise<void>
 }
 
+export interface RotateMcpOAuthTokenCommand {
+  refreshTokenHash: string
+  clientId: string | null
+  issuer: string
+  resource: string
+  nextAccessTokenHash: string
+  nextRefreshTokenHash: string
+  expiresAt: Date
+}
+
 export interface McpAuthContext {
+  createdAt?: string | undefined
   scopes: HaotikaMcpScope[]
   tokenId: string
   userId: string

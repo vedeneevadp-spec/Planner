@@ -124,6 +124,7 @@ final class PlannerWidgetNetworkClient {
             if (accessToken != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + accessToken);
                 connection.setRequestProperty("X-Workspace-Id", config.workspaceId);
+                connection.setRequestProperty("X-Workspace-Epoch", config.writeEpoch);
                 connection.setRequestProperty("X-Client-Timezone", config.timeZone);
             }
 

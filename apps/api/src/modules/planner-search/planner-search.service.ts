@@ -13,13 +13,22 @@ import type { TaskReadContext } from '../tasks/task.model.js'
 import type { TaskService } from '../tasks/task.service.js'
 
 export interface PlannerSearchServices {
+  boundedSearch?:
+    | {
+        search: (
+          source: 'cleaning' | 'care',
+          context: TaskReadContext,
+          query: PlannerSearchQuery,
+        ) => Promise<SearchPage>
+      }
+    | undefined
   taskService: TaskService
   chaosInboxService?: ChaosInboxService | undefined
   cleaningService?: CleaningService | undefined
   selfCareService?: SelfCareService | undefined
 }
 
-interface SearchPage {
+export interface SearchPage {
   items: PlannerSearchItem[]
   hasMore: boolean
 }
@@ -100,6 +109,8 @@ export async function searchPlanner(
     {
       source: 'cleaning',
       async load() {
+        if (services.boundedSearch)
+          return services.boundedSearch.search('cleaning', context, input)
         if (!services.cleaningService) throw new Error('Cleaning unavailable')
         const data = await services.cleaningService.listCleaning(context)
         return slice(
@@ -135,6 +146,8 @@ export async function searchPlanner(
     loaders.push({
       source: 'care',
       async load() {
+        if (services.boundedSearch)
+          return services.boundedSearch.search('care', context, input)
         if (!services.selfCareService) throw new Error('Self-care unavailable')
         const data = await services.selfCareService.listItems(context, {
           includeArchived: input.includeCompleted,

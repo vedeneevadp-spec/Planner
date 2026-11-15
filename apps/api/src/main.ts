@@ -22,6 +22,8 @@ import {
   PostgresApiKeyRepository,
 } from './modules/api-keys/api-key.repository.js'
 import { ApiKeyService } from './modules/api-keys/api-key.service.js'
+import { PostgresEmailVerificationRepository } from './modules/auth/email-verification.repository.js'
+import { EmailVerificationService } from './modules/auth/email-verification.service.js'
 import { PostgresGoogleAuthRepository } from './modules/auth/google-auth.repository.js'
 import { GoogleAuthService } from './modules/auth/google-auth.service.js'
 import {
@@ -174,13 +176,22 @@ export function createApiKernel(
     database && config.plannerAuth
       ? new PostgresAuthRepository(database.db)
       : null
+  const authEmailSender = config.plannerAuth?.smtp
+    ? new SmtpAuthEmailSender(config.plannerAuth)
+    : new NoopAuthEmailSender(config.appEnv)
+  const emailVerificationService =
+    database && config.plannerAuth
+      ? new EmailVerificationService(
+          new PostgresEmailVerificationRepository(database.db),
+          authEmailSender,
+          rateLimiter,
+        )
+      : undefined
   const authService =
     authRepository && config.plannerAuth
       ? new AuthService(
           authRepository,
-          config.plannerAuth.smtp
-            ? new SmtpAuthEmailSender(config.plannerAuth)
-            : new NoopAuthEmailSender(config.appEnv),
+          authEmailSender,
           config.plannerAuth,
           rateLimiter,
         )
@@ -218,6 +229,7 @@ export function createApiKernel(
   const sessionService = new SessionService(
     sessionRepository,
     profileAvatarStorage,
+    emailVerificationService,
   )
   const emojiSetService = new EmojiSetService(
     emojiSetRepository,
@@ -261,6 +273,7 @@ export function createApiKernel(
       ? new JwtRequestAuthenticator(config.jwtAuth, authRepository ?? undefined)
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
+    emailVerificationService,
     googleAuthService,
     aiContextService,
     apiKeyService: new ApiKeyService(

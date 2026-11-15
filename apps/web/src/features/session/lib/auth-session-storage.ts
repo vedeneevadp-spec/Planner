@@ -1,4 +1,4 @@
-import { isUuidV7 } from '@planner/contracts'
+import { generateUuidV7, isUuidV7 } from '@planner/contracts'
 
 import { recordClientEvent } from '@/shared/lib/observability'
 
@@ -13,9 +13,12 @@ import {
 
 const AUTH_SESSION_STORAGE_KEY = 'planner.auth.session'
 const NATIVE_AUTH_SESSION_HINT_STORAGE_KEY = 'planner.auth.nativeSessionHint'
+const NATIVE_LOGOUT_STORAGE_KEY = 'planner.auth.nativeLoggedOut'
 const REMEMBER_SESSION_STORAGE_KEY = 'planner.rememberSession'
 const inMemoryAuthStorage = new Map<string, string>()
 const nativeSessionStorage = createNativeSessionStorage()
+let nativeMutationQueue: Promise<unknown> = Promise.resolve()
+let inProcessNativeLogoutMarker: string | null = null
 
 export interface StoredAuthSession {
   accessToken: string
@@ -81,6 +84,7 @@ export function setRememberSessionPreference(remember: boolean): void {
 }
 
 export async function readStoredAuthSession(): Promise<StoredAuthSession | null> {
+  if (isNativeSessionReadBlocked()) return null
   let rawSession: string | null
 
   try {
@@ -96,6 +100,7 @@ export async function readStoredAuthSession(): Promise<StoredAuthSession | null>
   if (!rawSession) {
     return null
   }
+  if (isNativeSessionReadBlocked()) return null
 
   try {
     const parsedSession = JSON.parse(rawSession) as unknown
@@ -118,18 +123,30 @@ export async function writeStoredAuthSession(
 ): Promise<void> {
   const serializedSession = JSON.stringify(session)
   const requiresDurableWrite = isNativeSessionPersistenceRuntime()
+  const logoutMarker = requiresDurableWrite ? readNativeLogoutMarker() : null
 
   if (!requiresDurableWrite) {
     inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
   }
 
   try {
-    await getActiveAuthStorage().setItem(
-      AUTH_SESSION_STORAGE_KEY,
-      serializedSession,
-    )
-    inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
-    writeNativeAuthSessionHint(session)
+    const write = async () => {
+      await getActiveAuthStorage().setItem(
+        AUTH_SESSION_STORAGE_KEY,
+        serializedSession,
+      )
+      if (requiresDurableWrite) {
+        if (readNativeLogoutMarker() !== logoutMarker) {
+          throw new AuthSessionStorageError('Sign-in was cancelled by logout.')
+        }
+        window.localStorage.removeItem(NATIVE_LOGOUT_STORAGE_KEY)
+        inProcessNativeLogoutMarker = null
+      }
+      inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
+      writeNativeAuthSessionHint(session)
+    }
+    if (requiresDurableWrite) await queueNativeMutation(write)
+    else await write()
   } catch (error) {
     console.error('Failed to write auth session storage.', error)
     recordAuthStorageFailure('write', 'active', error, {
@@ -178,9 +195,28 @@ export async function clearStoredAuthSession(
   scope: 'all' | 'local' | 'session' = 'all',
 ): Promise<void> {
   if (isNativeSessionPersistenceRuntime()) {
+    // Persist intent before awaiting the bridge. Even a failed secure-store
+    // removal cannot make the next app bootstrap restore these credentials.
+    const failures: unknown[] = []
+    inProcessNativeLogoutMarker = generateUuidV7()
     try {
-      await clearNativeSessionStorage([AUTH_SESSION_STORAGE_KEY])
+      window.localStorage.setItem(
+        NATIVE_LOGOUT_STORAGE_KEY,
+        inProcessNativeLogoutMarker,
+      )
+      // The persisted marker survives restart. Retain an in-process marker
+      // when persistence fails, so app resume is still fail-closed.
+      inProcessNativeLogoutMarker = null
     } catch (error) {
+      failures.push(error)
+      recordAuthStorageFailure('clear', 'native', error, { fallback: 'none' })
+    }
+    try {
+      await queueNativeMutation(() =>
+        clearNativeSessionStorage([AUTH_SESSION_STORAGE_KEY]),
+      )
+    } catch (error) {
+      failures.push(error)
       console.error('Failed to clear auth session storage.', error)
       recordAuthStorageFailure('clear', 'native', error, {
         fallback: 'memory',
@@ -189,6 +225,11 @@ export async function clearStoredAuthSession(
 
     clearNativeAuthSessionHint()
     inMemoryAuthStorage.delete(AUTH_SESSION_STORAGE_KEY)
+    if (failures.length > 0) {
+      throw new AuthSessionStorageError('Native auth session removal failed.', {
+        cause: new AggregateError(failures, 'Native logout cleanup failed.'),
+      })
+    }
     return
   }
 
@@ -316,7 +357,12 @@ async function runNativeRefreshStorageOperation(
   action: () => Promise<string>,
 ): Promise<StoredAuthSession> {
   try {
-    const rawSession = await action()
+    const rawSession = await queueNativeMutation(async () => {
+      assertNativeSessionNotLoggedOut()
+      const value = await action()
+      assertNativeSessionNotLoggedOut()
+      return value
+    })
     const parsedSession = JSON.parse(rawSession) as unknown
 
     if (isStoredAuthSession(parsedSession)) {
@@ -335,6 +381,41 @@ async function runNativeRefreshStorageOperation(
     throw new AuthSessionStorageError(
       'Native auth refresh state could not be persisted durably.',
       { cause: error },
+    )
+  }
+}
+
+function queueNativeMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = nativeMutationQueue.then(operation)
+  nativeMutationQueue = result.catch(() => undefined)
+  return result
+}
+
+function readNativeLogoutMarker(): string | null {
+  if (inProcessNativeLogoutMarker !== null) return inProcessNativeLogoutMarker
+  try {
+    return window.localStorage.getItem(NATIVE_LOGOUT_STORAGE_KEY)
+  } catch (error) {
+    throw new AuthSessionStorageError('Native logout state is unavailable.', {
+      cause: error,
+    })
+  }
+}
+
+function isNativeSessionReadBlocked(): boolean {
+  if (!isNativeSessionPersistenceRuntime()) return false
+  try {
+    return readNativeLogoutMarker() !== null
+  } catch (error) {
+    recordAuthStorageFailure('read', 'native', error, { fallback: 'none' })
+    return true
+  }
+}
+
+function assertNativeSessionNotLoggedOut(): void {
+  if (readNativeLogoutMarker() !== null) {
+    throw new AuthSessionStorageError(
+      'Native session was explicitly logged out.',
     )
   }
 }
@@ -373,6 +454,7 @@ function readNativeAuthSessionHint(): NativeAuthSessionHint | null {
   }
 
   try {
+    if (readNativeLogoutMarker() !== null) return null
     const rawHint = window.localStorage.getItem(
       NATIVE_AUTH_SESSION_HINT_STORAGE_KEY,
     )

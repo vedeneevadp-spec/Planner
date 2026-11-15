@@ -58,6 +58,7 @@ export class ApiKeyService {
       )
     const auth: AuthenticatedRequestContext = {
       accessToken: '',
+      integrationIssuedAt: key.createdAt,
       claims: {
         sub: key.userId,
         role: 'authenticated',

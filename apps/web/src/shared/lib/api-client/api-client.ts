@@ -1,6 +1,13 @@
 import { apiErrorSchema } from '@planner/contracts'
 
 import { resolveClientTimeZone } from '@/shared/lib/date'
+import { withWorkspaceMutationLock } from '@/shared/lib/offline-sync'
+
+import { withRequestTimeout } from './request-timeout'
+import {
+  readWorkspaceWriteEpochs,
+  rememberWorkspaceWriteEpoch,
+} from './workspace-epoch'
 
 export type ApiClientFetch = typeof fetch
 export type ApiRequestSignal = AbortSignal | undefined
@@ -32,6 +39,7 @@ export interface ApiClientRequestOptions<TResponse> {
   responseSchema?: { parse: (value: unknown) => TResponse } | undefined
   signal?: ApiRequestSignal
   writeAccess?: boolean | undefined
+  timeoutMs?: number | undefined
 }
 
 export function createApiRequester<TError extends Error>(
@@ -44,12 +52,43 @@ export function createApiRequester<TError extends Error>(
   } = {},
 ) {
   const baseUrl = config.apiBaseUrl.replace(/\/$/, '')
+  const writeEpochs = config.workspaceId
+    ? readWorkspaceWriteEpochs(config.workspaceId, config.actorUserId)
+    : {}
+  const writeEpoch = config.workspaceId
+    ? (writeEpochs[config.workspaceId] ?? '0')
+    : '0'
 
   async function request<TResponse>(
     options: ApiClientRequestOptions<TResponse>,
   ): Promise<TResponse> {
-    const response = await send(options)
+    return requestResponse(options, (response) =>
+      readRequest(response, options),
+    )
+  }
 
+  async function requestResponse<TResponse>(
+    options: ApiClientRequestOptions<unknown>,
+    consume: (response: Response) => Promise<TResponse>,
+  ): Promise<TResponse> {
+    return withRequestTimeout(
+      (signal) => {
+        const operation = async () => {
+          if (signal.aborted) throw signal.reason
+          return consume(await sendRaw({ ...options, signal }))
+        }
+        return config.workspaceId && options.method && options.method !== 'GET'
+          ? withWorkspaceMutationLock(config.workspaceId, operation)
+          : operation()
+      },
+      { signal: options.signal, timeoutMs: options.timeoutMs },
+    )
+  }
+
+  async function readRequest<TResponse>(
+    response: Response,
+    options: ApiClientRequestOptions<TResponse>,
+  ): Promise<TResponse> {
     if (response.status === 204) {
       return undefined as TResponse
     }
@@ -78,6 +117,15 @@ export function createApiRequester<TError extends Error>(
   }
 
   function send(options: ApiClientRequestOptions<unknown>): Promise<Response> {
+    return withRequestTimeout((signal) => sendRaw({ ...options, signal }), {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+    })
+  }
+
+  async function sendRaw(
+    options: ApiClientRequestOptions<unknown>,
+  ): Promise<Response> {
     const url = new URL(`${baseUrl}${options.path}`)
 
     if (options.query) {
@@ -88,18 +136,27 @@ export function createApiRequester<TError extends Error>(
       }
     }
 
-    return fetchFn(url.href, {
+    const headers = createRequestHeaders(config, options)
+    if (config.workspaceId) headers.set('x-workspace-epoch', writeEpoch)
+    if (config.workspaceId)
+      headers.set('x-workspace-epochs', JSON.stringify(writeEpochs))
+    const response = await fetchFn(url.href, {
       body: options.body === undefined ? null : JSON.stringify(options.body),
-      headers: createRequestHeaders(config, options),
+      headers,
       method: options.method ?? 'GET',
       ...(options.credentials ? { credentials: options.credentials } : {}),
       ...(options.signal ? { signal: options.signal } : {}),
     })
+    if (response.ok && options.path === '/api/v1/session')
+      rememberWorkspaceWriteEpoch(response)
+    return response
   }
 
   return {
     baseUrl,
+    writeEpoch,
     request,
+    requestResponse,
     send,
   }
 }

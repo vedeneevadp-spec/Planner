@@ -10,6 +10,7 @@ import {
   CheckIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
@@ -257,7 +258,7 @@ export function TaskEditDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.editorOverlay}
       role="dialog"
       aria-modal="true"
@@ -597,7 +598,7 @@ export function TaskEditDialog({
           </div>
         </div>
       </form>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

@@ -5,6 +5,7 @@ import {
   getClientAddress,
   type RateLimiter,
 } from '../../bootstrap/rate-limit.js'
+import { isWorkspaceEpochConflict } from '../../infrastructure/db/workspace-epochs.js'
 import {
   type AiContextService,
   AiContextValidationError,
@@ -456,6 +457,7 @@ async function handleToolCall(
     const output = await executeMcpTool({
       aiContextService: options.aiContextService,
       plannerService: options.plannerService,
+      credentialIssuedAt: auth.createdAt,
       arguments: toolArguments,
       name: toolName,
       userId: auth.userId,
@@ -674,6 +676,12 @@ function createJsonRpcError(
 }
 
 function mapToolError(error: unknown): McpHaotikaError {
+  if (isWorkspaceEpochConflict(error))
+    return new McpHaotikaError(
+      'CONFLICT',
+      'Workspace was restored. Reconnect the integration and review data before creating a new command; do not retry the old command.',
+      409,
+    )
   if (error instanceof McpHaotikaError) {
     return error
   }

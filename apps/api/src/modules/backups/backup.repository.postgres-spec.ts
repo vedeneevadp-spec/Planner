@@ -344,6 +344,7 @@ void test('PostgresUserBackupRepository restores missing rows idempotently', asy
     )
     const resurrected = await repository.restorePersonalWorkspace({
       ...input,
+      expectedWriteEpoch: '1',
       idempotencyKey: `backup-restore-${randomUUID()}`,
     })
     const resurrectedProject = await connection.pool.query<{
@@ -385,6 +386,7 @@ void test('PostgresUserBackupRepository restores missing rows idempotently', asy
         repository.restorePersonalWorkspace({
           ...input,
           idempotencyKey: rollbackIdempotencyKey,
+          expectedWriteEpoch: '2',
         }),
       (error: unknown) =>
         error instanceof HttpError && error.code === 'backup_restore_conflict',

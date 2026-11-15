@@ -17,6 +17,7 @@ import type {
   McpHaotikaRuntimeConfig,
   McpOAuthTokenRecord,
   McpOAuthTokenRepository,
+  RotateMcpOAuthTokenCommand,
 } from './mcp-haotika.types.js'
 import { McpHaotikaError } from './mcp-haotika.types.js'
 
@@ -35,6 +36,7 @@ interface AuthorizationCodeRecord {
 }
 
 interface McpOAuthTokenRow {
+  created_at: Date | string
   access_token_hash: string
   client_id: string | null
   expires_at: Date | string
@@ -289,6 +291,7 @@ export class McpOAuthService {
     return {
       scopes: token.scopes,
       tokenId: token.id,
+      createdAt: token.createdAt,
       userId: token.userId,
     }
   }
@@ -321,36 +324,28 @@ export class McpOAuthService {
       )
     }
 
-    const currentToken = await this.repository.findByRefreshTokenHash(
-      hashOpaqueToken(input.refreshToken),
-    )
+    const accessToken = createOpaqueToken('hat')
+    const refreshToken = createOpaqueToken('hrt')
+    const rotatedToken = await this.repository.rotateRefreshToken({
+      refreshTokenHash: hashOpaqueToken(input.refreshToken),
+      clientId: input.clientId ?? null,
+      issuer: this.config.oauthIssuer,
+      resource: resolveRequestedResource(input.resource, this.config),
+      nextAccessTokenHash: hashOpaqueToken(accessToken),
+      nextRefreshTokenHash: hashOpaqueToken(refreshToken),
+      expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000),
+    })
 
-    if (!currentToken || currentToken.revokedAt) {
+    if (!rotatedToken) {
       throw this.createUnauthorizedError('Refresh token is invalid')
     }
-
-    if (
-      currentToken.issuer !== this.config.oauthIssuer ||
-      currentToken.resource !== createMcpResource(this.config.publicBaseUrl)
-    ) {
-      throw this.createUnauthorizedError('Refresh token audience is invalid')
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: ACCESS_TOKEN_TTL_SECONDS,
+      scope: rotatedToken.scopes.join(' '),
+      token_type: 'Bearer',
     }
-
-    if (
-      input.resource?.trim() &&
-      input.resource.trim() !== currentToken.resource
-    ) {
-      throw this.createUnauthorizedError('Requested resource is invalid')
-    }
-
-    await this.repository.revokeByTokenHash(hashOpaqueToken(input.refreshToken))
-
-    return this.createTokenResponse({
-      clientId: currentToken.clientId,
-      resource: currentToken.resource,
-      scopes: currentToken.scopes,
-      userId: currentToken.userId,
-    })
   }
 
   private async createTokenResponse(input: {
@@ -387,10 +382,41 @@ export class McpOAuthService {
 export class MemoryMcpOAuthTokenRepository implements McpOAuthTokenRepository {
   private readonly tokens = new Map<string, McpOAuthTokenRecord>()
 
+  rotateRefreshToken(
+    command: RotateMcpOAuthTokenCommand,
+  ): Promise<McpOAuthTokenRecord | null> {
+    const previous = [...this.tokens.values()].find(
+      (token) =>
+        token.refreshTokenHash === command.refreshTokenHash &&
+        token.revokedAt === null &&
+        token.clientId === command.clientId &&
+        token.issuer === command.issuer &&
+        token.resource === command.resource,
+    )
+    if (!previous) return Promise.resolve(null)
+    // No await between claiming the old token and installing its successor.
+    const next = this.createToken({
+      accessTokenHash: command.nextAccessTokenHash,
+      refreshTokenHash: command.nextRefreshTokenHash,
+      clientId: previous.clientId,
+      issuer: previous.issuer,
+      resource: previous.resource,
+      scopes: previous.scopes,
+      userId: previous.userId,
+      expiresAt: command.expiresAt,
+    })
+    previous.revokedAt = new Date().toISOString()
+    return next.then((token) => {
+      token.createdAt = previous.createdAt
+      return token
+    })
+  }
+
   createToken(
     command: CreateMcpOAuthTokenCommand,
   ): Promise<McpOAuthTokenRecord> {
     const token: McpOAuthTokenRecord = {
+      createdAt: new Date().toISOString(),
       accessTokenHash: command.accessTokenHash,
       clientId: command.clientId,
       expiresAt: command.expiresAt.toISOString(),
@@ -457,6 +483,19 @@ export class MemoryMcpOAuthTokenRepository implements McpOAuthTokenRepository {
 
 export class PostgresMcpOAuthTokenRepository implements McpOAuthTokenRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
+
+  async rotateRefreshToken(
+    command: RotateMcpOAuthTokenCommand,
+  ): Promise<McpOAuthTokenRecord | null> {
+    const result = await sql<McpOAuthTokenRow>`
+      select * from app.mcp_oauth_rotate_refresh_token(
+        ${command.refreshTokenHash}, ${command.clientId}, ${command.issuer},
+        ${command.resource}, ${command.nextAccessTokenHash},
+        ${command.nextRefreshTokenHash}, ${command.expiresAt}::timestamptz
+      )
+    `.execute(this.db)
+    return result.rows[0] ? mapTokenRow(result.rows[0]) : null
+  }
 
   async createToken(
     command: CreateMcpOAuthTokenCommand,
@@ -699,6 +738,7 @@ function escapeWwwAuthenticate(value: string): string {
 
 function mapTokenRow(row: McpOAuthTokenRow): McpOAuthTokenRecord {
   return {
+    createdAt: serializeDate(row.created_at),
     accessTokenHash: row.access_token_hash,
     clientId: row.client_id,
     expiresAt: serializeDate(row.expires_at),

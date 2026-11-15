@@ -9,6 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ProfileDialog } from './ProfileDialog'
 
+vi.mock('./EmailVerificationPanel', () => ({
+  EmailVerificationPanel: () => null,
+}))
+
 interface MockSessionResult {
   data: {
     actor: {

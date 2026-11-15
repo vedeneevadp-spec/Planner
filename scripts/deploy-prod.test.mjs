@@ -444,11 +444,15 @@ test('runtime services and Caddy resolve the current release symlink', async () 
     /`\$\{config\.remoteHost\}:\$\{config\.remoteRoot\}\/`,/,
   )
   assert.match(backupSource, /process\.env\.DB_BACKUP_DIR/)
-  assert.match(deploySource, /BACKUP_AUTOMATION_ENABLED/)
-  assert.match(deploySource, /planner-backup\.service/)
-  assert.match(deploySource, /printf 'PLANNER_APP_COMMIT=%s\\n'/)
+  const remoteSource = await readFile(
+    resolve(repositoryRoot, 'scripts/deploy-prod-remote.mjs'),
+    'utf8',
+  )
+  assert.match(remoteSource, /BACKUP_AUTOMATION_ENABLED/)
+  assert.match(remoteSource, /planner-backup\.service/)
+  assert.match(remoteSource, /printf 'PLANNER_APP_COMMIT=%s\\n'/)
   assert.match(
-    deploySource,
+    remoteSource,
     /mv -f \/etc\/planner\/release\.env\.next \/etc\/planner\/release\.env/,
   )
 })

@@ -73,7 +73,7 @@ describe('registerPwaServiceWorkerWithEnv', () => {
     expect(update).toHaveBeenCalledTimes(1)
   })
 
-  it('reloads an already controlled app once when the service worker changes', () => {
+  it('preserves an open app and its unsaved draft when the service worker changes', () => {
     const { env, listeners, reload } = createRegistrationTestEnv({
       hasController: true,
     })
@@ -82,7 +82,7 @@ describe('registerPwaServiceWorkerWithEnv', () => {
     listeners.controllerchange?.()
     listeners.controllerchange?.()
 
-    expect(reload).toHaveBeenCalledTimes(1)
+    expect(reload).not.toHaveBeenCalled()
   })
 
   it('does not reload on first service worker install', () => {

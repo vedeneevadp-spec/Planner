@@ -63,6 +63,7 @@ export interface ShoppingListItemCreateInput {
 }
 
 export interface ShoppingListApiClient {
+  readonly writeEpoch?: string
   createItem: (
     input: string | ShoppingListItemCreateInput,
   ) => Promise<ChaosInboxItemRecord>
@@ -78,13 +79,14 @@ export function createShoppingListApiClient(
   config: ShoppingListApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): ShoppingListApiClient {
-  const { request } = createApiRequester(
+  const { request, writeEpoch } = createApiRequester(
     config,
     (message, options) => new ShoppingListApiError(message, options),
     fetchFn,
   )
 
   return {
+    writeEpoch,
     async createItem(input) {
       const itemInput = normalizeCreateItemInput(input)
       const validatedInput = createChaosInboxItemsInputSchema.parse({
@@ -114,17 +116,27 @@ export function createShoppingListApiClient(
       return response.items[0]!
     },
     async listItems(signal) {
-      const response = await request({
-        path: '/api/v1/chaos-inbox',
-        query: {
-          kind: 'shopping',
-          limit: 200,
+      const items = new Map<string, ChaosInboxItemRecord>()
+      const limit = 200
+      for (let page = 1; page <= 1000; page += 1) {
+        const response = await request({
+          path: '/api/v1/chaos-inbox',
+          query: { kind: 'shopping', limit, ...(page > 1 ? { page } : {}) },
+          responseSchema: chaosInboxListRecordResponseSchema,
+          signal,
+        })
+        for (const item of response.items) items.set(item.id, item)
+        if (page * response.limit >= response.total) return [...items.values()]
+        if (response.items.length === 0) break
+      }
+      // Never replace a complete offline snapshot with a silently partial list.
+      throw new ShoppingListApiError(
+        'Не удалось загрузить полный список покупок. Повторите загрузку.',
+        {
+          code: 'shopping_snapshot_incomplete',
+          status: 502,
         },
-        responseSchema: chaosInboxListRecordResponseSchema,
-        signal,
-      })
-
-      return response.items
+      )
     },
     removeItem(itemId) {
       return request<void>({

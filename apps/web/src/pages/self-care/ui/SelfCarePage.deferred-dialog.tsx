@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom'
 
 import { CloseIcon } from '@/shared/ui/Icon'
 import { PageStateView } from '@/shared/ui/PageState'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import type {
   SelfCareCompletionEditDialog as SelfCareCompletionEditDialogType,
@@ -280,7 +281,7 @@ function SelfCareDialogLoadState({
   const title = kind === 'loading' ? copy.loadingTitle : copy.unavailableTitle
 
   return createPortal(
-    <div
+    <ModalSurface
       aria-label={title}
       aria-modal="true"
       className={styles.modalOverlay}
@@ -325,7 +326,7 @@ function SelfCareDialogLoadState({
           title={title}
         />
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }
