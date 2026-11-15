@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 
@@ -54,6 +54,20 @@ export function SelectPicker<Value extends string = string>(
   } = props
   const labelId = useId()
   const [isOpen, setIsOpen] = useState(false)
+  const [focusedValue, setFocusedValue] = useState<string>('')
+  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!isOpen) return
+    const menu = menuRef.current
+    const selected = menu?.querySelector<HTMLButtonElement>(
+      '[role="option"][aria-selected="true"]:not(:disabled)',
+    )
+    const first = menu?.querySelector<HTMLButtonElement>(
+      '[role="option"]:not(:disabled)',
+    )
+    ;(selected ?? first)?.focus()
+  }, [isOpen])
   const selectedOption = props.multiple
     ? null
     : (options.find((option) => option.value === props.value) ?? null)
@@ -85,6 +99,7 @@ export function SelectPicker<Value extends string = string>(
       if (props.clearValue !== undefined && nextValue === props.clearValue) {
         props.onChange([])
         setIsOpen(false)
+        triggerRef.current?.focus()
         return
       }
 
@@ -99,6 +114,7 @@ export function SelectPicker<Value extends string = string>(
 
       if (props.closeOnSelect) {
         setIsOpen(false)
+        triggerRef.current?.focus()
       }
 
       return
@@ -106,6 +122,7 @@ export function SelectPicker<Value extends string = string>(
 
     props.onChange(nextValue)
     setIsOpen(false)
+    triggerRef.current?.focus()
   }
 
   function isOptionActive(option: SelectPickerOption<Value>) {
@@ -123,6 +140,39 @@ export function SelectPicker<Value extends string = string>(
   return (
     <div
       className={cx(styles.picker, className)}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && isOpen) {
+          event.preventDefault()
+          event.stopPropagation()
+          setIsOpen(false)
+          triggerRef.current?.focus()
+          return
+        }
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        if (!isOpen) {
+          setIsOpen(true)
+          return
+        }
+        const available = [
+          ...(menuRef.current?.querySelectorAll<HTMLButtonElement>(
+            '[role="option"]:not(:disabled)',
+          ) ?? []),
+        ]
+        const current = available.findIndex(
+          (element) => element === document.activeElement,
+        )
+        const next =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? available.length - 1
+              : (current +
+                  (event.key === 'ArrowDown' ? 1 : -1) +
+                  available.length) %
+                available.length
+        available[next]?.focus()
+      }}
       onBlur={(event) => {
         const nextTarget = event.relatedTarget
 
@@ -141,6 +191,7 @@ export function SelectPicker<Value extends string = string>(
       ) : null}
 
       <button
+        ref={triggerRef}
         className={styles.trigger}
         type="button"
         disabled={disabled || options.length === 0}
@@ -165,8 +216,10 @@ export function SelectPicker<Value extends string = string>(
 
       {isOpen ? (
         <div
+          ref={menuRef}
           className={styles.menu}
           role="listbox"
+          aria-label={ariaLabel ?? label ?? placeholder}
           aria-multiselectable={props.multiple ? true : undefined}
           tabIndex={-1}
         >
@@ -179,6 +232,8 @@ export function SelectPicker<Value extends string = string>(
               )}
               type="button"
               role="option"
+              tabIndex={focusedValue === option.value ? 0 : -1}
+              onFocus={() => setFocusedValue(option.value)}
               disabled={option.disabled}
               aria-selected={isOptionActive(option)}
               onClick={() => {

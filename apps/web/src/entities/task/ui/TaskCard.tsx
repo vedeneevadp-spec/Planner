@@ -11,6 +11,7 @@ import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate, formatTimeRange } from '@/shared/lib/date'
 import { CheckIcon, IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import { getTaskResource } from '../model/resource'
 import { getRoutineTaskFrequencyLabel } from '../model/routine-task'
@@ -801,7 +802,7 @@ export function TaskCard({
 
       {isViewing && typeof document !== 'undefined'
         ? createPortal(
-            <div
+            <ModalSurface
               className={styles.viewerOverlay}
               role="dialog"
               aria-modal="true"
@@ -853,7 +854,7 @@ export function TaskCard({
                   }}
                 />
               </div>
-            </div>,
+            </ModalSurface>,
             document.body,
           )
         : null}

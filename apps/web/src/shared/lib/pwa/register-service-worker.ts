@@ -53,19 +53,8 @@ export function registerPwaServiceWorkerWithEnv({
   }
 
   const serviceWorker = navigator.serviceWorker
-  const shouldReloadOnControllerChange = Boolean(serviceWorker.controller)
-  let hasReloadedForUpdate = false
-
-  if (shouldReloadOnControllerChange) {
-    serviceWorker.addEventListener('controllerchange', () => {
-      if (hasReloadedForUpdate) {
-        return
-      }
-
-      hasReloadedForUpdate = true
-      window.location.reload()
-    })
-  }
+  // A service-worker update must never reload an open editor. New workers
+  // activate after existing tabs close; the next navigation loads the new app.
 
   window.addEventListener('load', () => {
     serviceWorker

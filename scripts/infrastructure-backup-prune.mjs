@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { runInfrastructureBackupCommand } from './infrastructure-backup-command.mjs'
 import {
+  createResticRetentionArgs,
   pruneLocalInfrastructureBackups,
   readPositiveInteger,
 } from './infrastructure-backup-helpers.mjs'
@@ -36,27 +37,27 @@ const localKeepDays = readPositiveInteger(
 await mkdir(backupRoot, { recursive: true })
 
 if (environment.RESTIC_REPOSITORY?.trim()) {
-  await runInfrastructureBackupCommand('restic', [
-    'forget',
-    '--tag',
-    'planner',
-    '--keep-daily',
-    String(keepDaily),
-    '--keep-weekly',
-    String(keepWeekly),
-    '--keep-monthly',
-    String(keepMonthly),
-    '--prune',
-  ])
+  await runInfrastructureBackupCommand(
+    'restic',
+    createResticRetentionArgs({
+      keepDaily,
+      keepWeekly,
+      keepMonthly,
+      dryRun: environment.BACKUP_PRUNE_DRY_RUN === '1',
+    }),
+  )
 } else if (environment.BACKUP_REQUIRE_OFFSITE === '1') {
   throw new Error(
     'RESTIC_REPOSITORY is required when BACKUP_REQUIRE_OFFSITE=1.',
   )
 }
 
-const removed = await pruneLocalInfrastructureBackups(backupRoot, {
-  keepDays: localKeepDays,
-})
+const removed =
+  environment.BACKUP_PRUNE_DRY_RUN === '1'
+    ? []
+    : await pruneLocalInfrastructureBackups(backupRoot, {
+        keepDays: localKeepDays,
+      })
 
 console.log(
   `[backup] Retention completed; removed ${removed.length} local backup set(s).`,

@@ -8,7 +8,6 @@ import { TaskComposerScheduleFields } from './TaskComposerScheduleFields'
 
 interface TaskComposerPrimaryFieldsProps {
   isImportant: boolean
-  isHabitTaskType: boolean
   note: string
   plannedDate: string
   plannedEndTime: string
@@ -27,7 +26,6 @@ interface TaskComposerPrimaryFieldsProps {
 
 export function TaskComposerPrimaryFields({
   isImportant,
-  isHabitTaskType,
   note,
   plannedDate,
   plannedEndTime,
@@ -60,18 +58,15 @@ export function TaskComposerPrimaryFields({
             />
           </label>
 
-          {!isHabitTaskType ? (
-            <TaskImportanceToggle
-              className={styles.titleImportanceToggle}
-              isImportant={isImportant}
-              onChange={onImportantChange}
-            />
-          ) : null}
+          <TaskImportanceToggle
+            className={styles.titleImportanceToggle}
+            isImportant={isImportant}
+            onChange={onImportantChange}
+          />
         </div>
       </section>
 
       <TaskComposerScheduleFields
-        isHabitTaskType={isHabitTaskType}
         plannedDate={plannedDate}
         plannedEndTime={plannedEndTime}
         plannedStartTime={plannedStartTime}

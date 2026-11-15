@@ -23,13 +23,7 @@ import { addDateDays } from '@/shared/time/time.service'
 import pageStyles from '@/shared/ui/Page'
 import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
-import {
-  SelfCareHistoryTab,
-  SelfCarePlanTab,
-  SelfCareRitualsTab,
-  SelfCareSettingsTab,
-  SelfCareTodayTab,
-} from './SelfCarePage.components'
+import { SelfCareRitualsTab, SelfCareTodayTab } from './SelfCarePage.components'
 import { useSelfCarePageData } from './SelfCarePage.data'
 import {
   DeferredSelfCareCompletionEditDialog,
@@ -40,7 +34,10 @@ import {
   DeferredSelfCareMeasurementDialog,
   DeferredSelfCareScheduleDialog,
 } from './SelfCarePage.deferred-dialog'
-import { startSelfCareDialogWarmup } from './SelfCarePage.dialog-loader'
+import {
+  loadSelfCarePlanTab,
+  startSelfCareDialogWarmup,
+} from './SelfCarePage.dialog-loader'
 import {
   applyRitualStepDraftOverrides,
   buildCompletionInput,
@@ -80,6 +77,23 @@ import {
   scheduleSelfCareEntryOccurrence,
 } from './SelfCarePage.schedule'
 import { SelfCarePageTabs } from './SelfCarePage.tabs'
+
+const SelfCarePlanTab = lazy(() =>
+  loadSelfCarePlanTab().then((module) => ({
+    default: module.SelfCarePlanTab,
+  })),
+)
+
+const SelfCareHistoryTab = lazy(() =>
+  import('./SelfCarePage.history-tab').then((module) => ({
+    default: module.SelfCareHistoryTab,
+  })),
+)
+const SelfCareSettingsTab = lazy(() =>
+  import('./SelfCarePage.settings').then((module) => ({
+    default: module.SelfCareSettingsTab,
+  })),
+)
 
 const SelfCareAnalyticsTab = lazy(() =>
   import('./SelfCarePage.analytics').then((module) => ({
@@ -1010,24 +1024,34 @@ export function SelfCarePage() {
       ) : null}
 
       {hasActiveTabData && activeTab === 'plan' ? (
-        <SelfCarePlanTab
-          canAddCare={canUseSelfCareActions}
-          hiddenScheduledItemIds={hiddenScheduledItemIds}
-          history={history}
-          isBusy={isSelfCareActionBusy}
-          isAddingCare={isAddingCare}
-          plan={plan}
-          todayKey={todayKey}
-          uploadedIcons={uploadedIcons}
-          onCardAction={handleCardAction}
-          onArchiveItem={handleArchiveItem}
-          onAddCare={openCreateDialog}
-          onCancelOccurrence={handleCancelPlannedOccurrence}
-          onEditItem={handleEditItem}
-          onTogglePauseItem={handleTogglePauseItem}
-          onRestartCourse={handleRestartCourse}
-          onScheduleItem={handleScheduleItem}
-        />
+        <Suspense
+          fallback={
+            <PageStateView
+              kind="loading"
+              skeletonVariant="cards"
+              title="Загружаем план"
+            />
+          }
+        >
+          <SelfCarePlanTab
+            canAddCare={canUseSelfCareActions}
+            hiddenScheduledItemIds={hiddenScheduledItemIds}
+            history={history}
+            isBusy={isSelfCareActionBusy}
+            isAddingCare={isAddingCare}
+            plan={plan}
+            todayKey={todayKey}
+            uploadedIcons={uploadedIcons}
+            onCardAction={handleCardAction}
+            onArchiveItem={handleArchiveItem}
+            onAddCare={openCreateDialog}
+            onCancelOccurrence={handleCancelPlannedOccurrence}
+            onEditItem={handleEditItem}
+            onTogglePauseItem={handleTogglePauseItem}
+            onRestartCourse={handleRestartCourse}
+            onScheduleItem={handleScheduleItem}
+          />
+        </Suspense>
       ) : null}
 
       {hasActiveTabData && activeTab === 'rituals' ? (
@@ -1052,15 +1076,27 @@ export function SelfCarePage() {
       ) : null}
 
       {hasActiveTabData && activeTab === 'history' ? (
-        <SelfCareHistoryTab
-          canAddCare={canUseSelfCareActions}
-          defaultCurrency={defaultCurrency}
-          history={history}
-          isBusy={updateCompletionMutation.isPending || !canUseSelfCareActions}
-          isAddingCare={isAddingCare}
-          onAddCare={openCreateDialog}
-          onEditCompletion={setCompletionEditDialogEntry}
-        />
+        <Suspense
+          fallback={
+            <PageStateView
+              kind="loading"
+              skeletonVariant="cards"
+              title="Загружаем историю"
+            />
+          }
+        >
+          <SelfCareHistoryTab
+            canAddCare={canUseSelfCareActions}
+            defaultCurrency={defaultCurrency}
+            history={history}
+            isBusy={
+              updateCompletionMutation.isPending || !canUseSelfCareActions
+            }
+            isAddingCare={isAddingCare}
+            onAddCare={openCreateDialog}
+            onEditCompletion={setCompletionEditDialogEntry}
+          />
+        </Suspense>
       ) : null}
 
       {hasActiveTabData && activeTab === 'analytics' ? (
@@ -1084,14 +1120,24 @@ export function SelfCarePage() {
       ) : null}
 
       {hasActiveTabData && activeTab === 'settings' ? (
-        <SelfCareSettingsTab
-          isBusy={isSelfCareActionBusy}
-          disabledTemplateIds={disabledTemplateIds}
-          settings={settingsResponse}
-          templates={templates}
-          onCreateFromTemplate={handleCreateFromTemplate}
-          onUpdateSettings={handleUpdateSettings}
-        />
+        <Suspense
+          fallback={
+            <PageStateView
+              kind="loading"
+              skeletonVariant="cards"
+              title="Загружаем настройки"
+            />
+          }
+        >
+          <SelfCareSettingsTab
+            isBusy={isSelfCareActionBusy}
+            disabledTemplateIds={disabledTemplateIds}
+            settings={settingsResponse}
+            templates={templates}
+            onCreateFromTemplate={handleCreateFromTemplate}
+            onUpdateSettings={handleUpdateSettings}
+          />
+        </Suspense>
       ) : null}
 
       {canShowCreateDialog && createDialogMode ? (

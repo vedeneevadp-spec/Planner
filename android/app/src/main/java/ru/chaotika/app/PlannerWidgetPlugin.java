@@ -15,21 +15,25 @@ public class PlannerWidgetPlugin extends Plugin {
 
     @PluginMethod
     public void consumePendingCompletedTasks(PluginCall call) {
-        List<String> taskIds = PlannerWidgetStorage.consumePendingCompletedTaskIds(getContext());
-        call.resolve(createTaskIdsResponse(taskIds));
+        synchronized (PlannerWidgetStorage.class) {
+            List<String> taskIds = PlannerWidgetStorage.consumePendingCompletedTaskIds(getContext());
+            call.resolve(createTaskIdsResponse(taskIds));
+        }
     }
 
     @PluginMethod
     public void readPendingCompletedTasks(PluginCall call) {
-        List<String> taskIds = PlannerWidgetStorage.readPendingCompletedTaskIds(getContext());
-        call.resolve(createTaskIdsResponse(taskIds));
+        synchronized (PlannerWidgetStorage.class) {
+            List<String> taskIds = PlannerWidgetStorage.readPendingCompletedTaskIds(getContext());
+            call.resolve(createTaskIdsResponse(taskIds));
+        }
     }
 
     @PluginMethod
     public void ackPendingCompletedTasks(PluginCall call) {
         JSArray taskIdValues = call.getArray("taskIds", new JSArray());
 
-        PlannerWidgetStorage.removePendingCompletedTaskIds(getContext(), toTaskIds(taskIdValues));
+        PlannerWidgetStorage.ackPendingCompletedTaskIds(getContext(), toTaskIds(taskIdValues), call.getString("writeEpoch", "0"));
         call.resolve();
     }
 
@@ -53,7 +57,8 @@ public class PlannerWidgetPlugin extends Plugin {
         PlannerWidgetSyncConfig config = new PlannerWidgetSyncConfig(
             call.getString("apiBaseUrl", ""),
             call.getString("workspaceId", ""),
-            call.getString("timeZone", "")
+            call.getString("timeZone", ""),
+            call.getString("writeEpoch", "0")
         );
 
         if (!config.isValid()) {
@@ -86,7 +91,7 @@ public class PlannerWidgetPlugin extends Plugin {
         call.resolve();
     }
 
-    private static JSObject createTaskIdsResponse(List<String> taskIds) {
+    private JSObject createTaskIdsResponse(List<String> taskIds) {
         JSONArray taskIdValues = new JSONArray();
         JSObject response = new JSObject();
 
@@ -95,6 +100,7 @@ public class PlannerWidgetPlugin extends Plugin {
         }
 
         response.put("taskIds", taskIdValues);
+        response.put("writeEpoch", PlannerWidgetStorage.readPendingWriteEpoch(getContext()));
 
         return response;
     }

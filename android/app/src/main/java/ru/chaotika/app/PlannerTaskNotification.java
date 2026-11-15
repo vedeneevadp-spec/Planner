@@ -22,7 +22,7 @@ final class PlannerTaskNotification {
         if (!"task-reminder".equals(data.get("type")) || !"1".equals(data.get("actionsVersion"))) return null;
         try {
             JSONObject value = new JSONObject();
-            for (String key : new String[] {"taskId", "workspaceId", "recipientUserId", "title", "body", "taskTitle", "notificationTag"}) {
+            for (String key : new String[] {"taskId", "workspaceId", "recipientUserId", "title", "body", "taskTitle", "notificationTag", "workspaceEpoch"}) {
                 value.put(key, data.get(key));
             }
             value.put("apiBaseUrl", apiBaseUrl);
@@ -49,6 +49,7 @@ final class PlannerTaskNotification {
 
     String key() { return userId() + ":" + workspaceId() + ":" + taskId(); }
     String taskId() { return value.optString("taskId"); }
+    String workspaceEpoch() { return value.optString("workspaceEpoch", "0"); }
     String workspaceId() { return value.optString("workspaceId"); }
     String userId() { return value.optString("recipientUserId"); }
     String instanceId() { return value.optString("instanceId"); }

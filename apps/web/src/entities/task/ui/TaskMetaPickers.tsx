@@ -10,6 +10,7 @@ import {
   LightningIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
 
 import {
@@ -433,7 +434,7 @@ export function TaskIconPickerDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.iconPickerOverlay}
       role="dialog"
       aria-modal="true"
@@ -472,7 +473,7 @@ export function TaskIconPickerDialog({
           }}
         />
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

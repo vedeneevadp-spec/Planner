@@ -197,11 +197,11 @@ describe('offline shopping-list workspace lifecycle', () => {
     const secondPurge = clearShoppingListOfflineWorkspaceData(otherWorkspaceId)
 
     expect(readLifecycleState(WORKSPACE_ID)).toEqual({
-      pendingPurgeGeneration: 1,
+      pendingPurgeGeneration: null,
       writeGeneration: 1,
     })
     expect(readLifecycleState(otherWorkspaceId)).toEqual({
-      pendingPurgeGeneration: 1,
+      pendingPurgeGeneration: null,
       writeGeneration: 1,
     })
 

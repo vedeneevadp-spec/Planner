@@ -6,6 +6,7 @@ export interface DueTaskReminder {
   taskId: string
   taskTitle: string
   userId: string
+  workspaceEpoch?: string
   workspaceId: string
 }
 

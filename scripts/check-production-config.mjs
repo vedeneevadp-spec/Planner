@@ -42,7 +42,11 @@ const [
   ),
   readFile(new URL('../deploy/backup.env.example', import.meta.url), 'utf8'),
   readFile(new URL('../.env.production.example', import.meta.url), 'utf8'),
-  readFile(new URL('./deploy-prod.mjs', import.meta.url), 'utf8'),
+  Promise.all(
+    ['./deploy-prod.mjs', './deploy-prod-remote.mjs'].map((file) =>
+      readFile(new URL(file, import.meta.url), 'utf8'),
+    ),
+  ).then((sources) => sources.join('\n')),
   readFile(
     new URL('../deploy/systemd/planner-api.service', import.meta.url),
     'utf8',

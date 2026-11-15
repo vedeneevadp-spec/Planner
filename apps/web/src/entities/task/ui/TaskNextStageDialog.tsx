@@ -1,6 +1,8 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
+
 import styles from './TaskCard.module.css'
 
 interface TaskNextStageDialogProps {
@@ -78,7 +80,7 @@ export function TaskNextStageDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.nextStageOverlay}
       role="dialog"
       aria-modal="true"
@@ -190,7 +192,7 @@ export function TaskNextStageDialog({
           </button>
         </div>
       </form>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

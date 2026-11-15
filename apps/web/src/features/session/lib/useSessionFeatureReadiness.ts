@@ -2,6 +2,7 @@ import type { SessionResponse } from '@planner/contracts'
 import { useCallback, useMemo } from 'react'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import { useWorkspaceWriteEpochSnapshot } from '@/shared/lib/api-client'
 import {
   getDeviceTimeZone,
   getPlannerTimeZone,
@@ -18,6 +19,7 @@ import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 
 export interface SessionFeatureApiConfig {
+  writeEpochSnapshot?: string
   accessToken?: string
   actorUserId: string
   apiBaseUrl: string
@@ -53,6 +55,10 @@ export function useSessionFeatureReadiness(
   const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
+  const writeEpochSnapshot = useWorkspaceWriteEpochSnapshot(
+    session?.workspaceId,
+    session?.actorUserId,
+  )
   const readinessInput = useMemo<ResolveSessionReadinessInput>(
     () => ({
       auth,
@@ -100,8 +106,9 @@ export function useSessionFeatureReadiness(
         workspaceTimeZone: session.workspaceSettings.defaultTimeZone,
       }),
       workspaceId: session.workspaceId,
+      writeEpochSnapshot,
     }
-  }, [auth.accessToken, isApiEnabled, session])
+  }, [auth.accessToken, isApiEnabled, session, writeEpochSnapshot])
 
   return {
     apiConfig,

@@ -124,6 +124,7 @@ export interface PlannerApiClientConfig {
 }
 
 export interface PlannerApiClient {
+  readonly writeEpoch?: string
   autoBuildDailyPlan: (
     input: DailyPlanAutoBuildInput,
   ) => Promise<DailyPlanRecord>
@@ -220,13 +221,14 @@ export function createPlannerApiClient(
   config: PlannerApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): PlannerApiClient {
-  const { request } = createApiRequester(
+  const { request, writeEpoch } = createApiRequester(
     config,
     (message, options) => new PlannerApiError(message, options),
     fetchFn,
   )
 
   return {
+    writeEpoch,
     async getDailyPlan(date, signal) {
       return request({
         path: '/api/v1/daily-plan',

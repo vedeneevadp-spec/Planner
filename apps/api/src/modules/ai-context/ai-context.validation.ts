@@ -19,3 +19,12 @@ export function getAiDateRangeError(from?: string, to?: string): string | null {
 
   return null
 }
+
+export class AiContextValidationError extends Error {
+  readonly code = 'VALIDATION_ERROR'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'AiContextValidationError'
+  }
+}

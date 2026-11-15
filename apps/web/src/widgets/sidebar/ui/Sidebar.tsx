@@ -27,6 +27,7 @@ import {
   SunIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import { PlannerSideTabs } from './PlannerSideTabs'
@@ -345,7 +346,7 @@ export function Sidebar({
                 closeMobileMoreSheet()
               }}
             >
-              <section
+              <ModalSurface
                 id="mobile-more-sheet"
                 className={styles.mobileSheet}
                 role="dialog"
@@ -542,7 +543,7 @@ export function Sidebar({
                     />
                   </section>
                 ) : null}
-              </section>
+              </ModalSurface>
             </div>
           ) : null}
         </div>

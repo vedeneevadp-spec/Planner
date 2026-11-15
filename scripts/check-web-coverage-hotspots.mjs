@@ -14,6 +14,11 @@ const HOTSPOTS = [
   },
   {
     metric: 'lines',
+    min: 30,
+    path: 'apps/web/src/features/self-care/lib/self-care-query-runtime.ts',
+  },
+  {
+    metric: 'lines',
     min: 55,
     path: 'apps/web/src/features/self-care/lib/self-care-api.ts',
   },

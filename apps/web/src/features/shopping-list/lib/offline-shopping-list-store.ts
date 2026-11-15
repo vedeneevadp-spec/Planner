@@ -7,6 +7,12 @@ import {
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
 
+import { readWorkspaceWriteEpoch } from '@/shared/lib/api-client'
+import {
+  assertOfflineMutationsSettled,
+  waitForWorkspaceMutations,
+} from '@/shared/lib/offline-sync'
+
 export type ShoppingListOfflineMutationStatus =
   'conflicted' | 'failed' | 'pending' | 'syncing'
 
@@ -29,6 +35,7 @@ export interface CachedShoppingListSnapshot {
 }
 
 interface ShoppingListOfflineMutationBase {
+  writeEpoch?: string
   actorUserId: string
   attemptCount: number
   createdAt: string
@@ -182,6 +189,11 @@ export async function clearShoppingListOfflineWorkspaceData(
 ): Promise<void> {
   const generation =
     getShoppingListOfflineWorkspaceWriteGeneration(workspaceId) + 1
+  // Invalidate senders first without scheduling deletion. If an in-flight
+  // response is lost, preserve the durable commands so they can be replayed.
+  beginShoppingListOfflineWorkspacePurge(workspaceId, generation, false)
+  await waitForWorkspaceMutations(`offline:shopping:${workspaceId}`)
+  assertOfflineMutationsSettled(workspaceId)
   const markerPersisted = beginShoppingListOfflineWorkspacePurge(
     workspaceId,
     generation,
@@ -334,6 +346,7 @@ export async function enqueueShoppingListOfflineMutation(
   const now = new Date().toISOString()
   const mutation = {
     ...input,
+    writeEpoch: readWorkspaceWriteEpoch(input.workspaceId),
     attemptCount: 0,
     createdAt: now,
     id: generateUuidV7(),
@@ -475,13 +488,25 @@ export async function countConflictedShoppingListOfflineMutations(
 export async function markShoppingListOfflineMutationSyncing(
   mutationId: string,
 ): Promise<void> {
-  await runShoppingListMutationWrite(mutationId, (db, mutation) =>
-    db.mutationQueue.update(mutationId, {
-      attemptCount: mutation.attemptCount + 1,
-      lastError: null,
-      status: 'syncing',
-      updatedAt: new Date().toISOString(),
-    }),
+  await claimShoppingListOfflineMutation(mutationId)
+}
+
+export async function claimShoppingListOfflineMutation(
+  mutationId: string,
+): Promise<ShoppingListOfflineMutationRecord | null> {
+  return (
+    (await runShoppingListMutationWrite(mutationId, async (db, mutation) => {
+      if (!RETRYABLE_QUEUE_STATUSES.includes(mutation.status)) return null
+      const claimed: ShoppingListOfflineMutationRecord = {
+        ...mutation,
+        attemptCount: mutation.attemptCount + 1,
+        lastError: null,
+        status: 'syncing',
+        updatedAt: new Date().toISOString(),
+      }
+      await db.mutationQueue.put(claimed)
+      return claimed
+    })) ?? null
   )
 }
 
@@ -549,7 +574,7 @@ async function getShoppingListOfflineDatabaseForAccess(
   return db
 }
 
-function getShoppingListOfflineWorkspaceWriteGeneration(
+export function getShoppingListOfflineWorkspaceWriteGeneration(
   workspaceId: string,
 ): number {
   ensureShoppingListOfflineLifecycleStorageListener()
@@ -573,7 +598,7 @@ function getShoppingListOfflineWorkspaceWriteGeneration(
   return generation
 }
 
-function isShoppingListOfflineWorkspaceWriteGenerationCurrent(
+export function isShoppingListOfflineWorkspaceWriteGenerationCurrent(
   workspaceId: string,
   expectedWriteGeneration: number,
 ): boolean {
@@ -641,13 +666,13 @@ async function runShoppingListWorkspaceWrite<T>(
   }
 }
 
-async function runShoppingListMutationWrite(
+async function runShoppingListMutationWrite<T>(
   mutationId: string,
   write: (
     db: ShoppingListOfflineDatabase,
     mutation: ShoppingListOfflineMutationRecord,
-  ) => Promise<unknown>,
-): Promise<void> {
+  ) => Promise<T>,
+): Promise<T | undefined> {
   const db = await getShoppingListOfflineDatabaseForAccess()
 
   if (!db) {
@@ -664,7 +689,7 @@ async function runShoppingListMutationWrite(
     mutation.workspaceId,
   )
 
-  await runShoppingListWorkspaceWrite(
+  return runShoppingListWorkspaceWrite(
     mutation.workspaceId,
     writeGeneration,
     async (currentDb) => {
@@ -674,7 +699,7 @@ async function runShoppingListMutationWrite(
         return
       }
 
-      await write(currentDb, currentMutation)
+      return write(currentDb, currentMutation)
     },
   )
 }
@@ -689,17 +714,17 @@ async function waitForShoppingListWorkspaceWrites(
 function beginShoppingListOfflineWorkspacePurge(
   workspaceId: string,
   generation: number,
+  pending = true,
 ): boolean {
   workspaceWriteGenerations.set(workspaceId, generation)
   runtimeInvalidatedWorkspaces.set(workspaceId, generation)
-  localPendingPurgeWorkspaces.set(workspaceId, generation)
+  if (pending) localPendingPurgeWorkspaces.set(workspaceId, generation)
   const lifecycle =
     readStoredShoppingListOfflineWorkspaceLifecycleState(workspaceId)
   return writeStoredShoppingListOfflineWorkspaceLifecycleState(workspaceId, {
-    pendingPurgeGeneration: Math.max(
-      lifecycle.pendingPurgeGeneration ?? 0,
-      generation,
-    ),
+    pendingPurgeGeneration: pending
+      ? Math.max(lifecycle.pendingPurgeGeneration ?? 0, generation)
+      : lifecycle.pendingPurgeGeneration,
     writeGeneration: Math.max(lifecycle.writeGeneration, generation),
   })
 }

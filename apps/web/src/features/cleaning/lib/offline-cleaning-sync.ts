@@ -1,3 +1,4 @@
+import { assertOfflineWorkspaceEpoch } from '@/shared/lib/api-client'
 import {
   getOfflineErrorMessage,
   isBrowserRetryableOfflineError,
@@ -348,6 +349,12 @@ async function applyCleaningOfflineMutation(
   api: CleaningApiClient,
   mutation: CleaningOfflineMutationRecord,
 ): Promise<CleaningServerConfirmation> {
+  assertOfflineWorkspaceEpoch(
+    mutation,
+    api.writeEpoch,
+    (message, options) => new CleaningApiError(message, options),
+  )
+
   const operation = { operationId: mutation.operationId }
 
   if (mutation.type === 'zone.create') {

@@ -13,3 +13,9 @@ export {
   RequestTimeoutError,
   withRequestTimeout,
 } from './request-timeout'
+export { useWorkspaceWriteEpochSnapshot } from './use-workspace-epoch'
+export {
+  assertOfflineWorkspaceEpoch,
+  readWorkspaceWriteEpoch,
+  rememberWorkspaceWriteEpoch,
+} from './workspace-epoch'

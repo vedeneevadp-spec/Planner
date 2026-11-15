@@ -4,6 +4,8 @@ import type { NewTaskInput, TaskRecord } from '@planner/contracts'
 import Dexie from 'dexie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { rememberWorkspaceWriteEpoch } from '@/shared/lib/api-client'
+
 import {
   clearPlannerOfflineWorkspaceData,
   countRetryablePlannerOfflineMutations,
@@ -32,6 +34,23 @@ describe('offline planner workspace lifecycle', () => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     await resetPlannerOfflineDatabaseForTests()
+  })
+
+  it('captures the original restore epoch before awaiting IndexedDB access', async () => {
+    const workspaceId = 'workspace-enqueue-epoch-race'
+    const pending = enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      expectedVersion: 1,
+      taskId: 'old-intent',
+      type: 'task.delete',
+      workspaceId,
+    })
+    rememberWorkspaceWriteEpoch(
+      new Response('{}', {
+        headers: { 'x-workspace-id': workspaceId, 'x-workspace-epoch': '1' },
+      }),
+    )
+    expect((await pending)?.writeEpoch).toBe('0')
   })
 
   it('persists a queued create and its optimistic task in one durable write', async () => {

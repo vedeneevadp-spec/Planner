@@ -8,12 +8,40 @@ import org.json.JSONObject;
 
 final class PlannerWidgetAuthSessionStore {
 
-    private static final String AUTH_SESSION_KEY = "planner.auth.planner.auth.session";
+    static final String AUTH_SESSION_KEY = "planner.auth.planner.auth.session";
+    private static final String AUTH_LOGOUT_KEY = AUTH_SESSION_KEY + ".loggedOut";
     private static final String DEVICE_ID_KEY = "planner.auth.deviceId";
     private static final String LEGACY_PREFERENCES_NAME = "CapacitorStorage";
     private static final Object STORAGE_LOCK = new Object();
 
     private PlannerWidgetAuthSessionStore() {}
+
+    static String readRaw(Context context) {
+        synchronized (STORAGE_LOCK) {
+            if (PlannerSecureStorage.getString(context, AUTH_LOGOUT_KEY, LEGACY_PREFERENCES_NAME) != null) {
+                return null;
+            }
+            return PlannerSecureStorage.getString(context, AUTH_SESSION_KEY, LEGACY_PREFERENCES_NAME);
+        }
+    }
+
+    static boolean setSession(Context context, String value) {
+        synchronized (STORAGE_LOCK) {
+            if (!PlannerSecureStorage.putString(context, AUTH_SESSION_KEY, value, LEGACY_PREFERENCES_NAME)) {
+                return false;
+            }
+            return PlannerSecureStorage.remove(context, AUTH_LOGOUT_KEY, LEGACY_PREFERENCES_NAME);
+        }
+    }
+
+    static boolean removeSession(Context context) {
+        synchronized (STORAGE_LOCK) {
+            if (!PlannerSecureStorage.putString(context, AUTH_LOGOUT_KEY, "1", LEGACY_PREFERENCES_NAME)) {
+                return false;
+            }
+            return PlannerSecureStorage.remove(context, AUTH_SESSION_KEY, LEGACY_PREFERENCES_NAME);
+        }
+    }
 
     static PlannerWidgetAuthSession read(Context context) {
         synchronized (STORAGE_LOCK) {
@@ -110,13 +138,7 @@ final class PlannerWidgetAuthSessionStore {
     }
 
     private static PlannerWidgetAuthSession readLocked(Context context) {
-        String rawSession = PlannerSecureStorage.getString(
-            context,
-            AUTH_SESSION_KEY,
-            LEGACY_PREFERENCES_NAME
-        );
-
-        return PlannerWidgetAuthSession.parse(rawSession);
+        return PlannerWidgetAuthSession.parse(readRaw(context));
     }
 
     private static boolean writeLocked(Context context, PlannerWidgetAuthSession session) {

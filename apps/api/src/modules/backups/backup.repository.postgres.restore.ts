@@ -127,7 +127,6 @@ export async function restorePostgresPersonalWorkspace(
   input: UserBackupRestoreInput,
 ): Promise<UserBackupRestoreResponse> {
   assertPrivilegedRestoreScope(input)
-  const createdAssetPaths: string[] = []
 
   try {
     return await withWriteTransaction(db, null, async (trx) => {
@@ -138,9 +137,29 @@ export async function restorePostgresPersonalWorkspace(
         return operation.existingResponse
       }
 
-      const preparedAssets = await prepareProfileAsset(assetDirectory, input)
+      const currentEpoch = await sql<{ epoch: string }>`
+        select coalesce((select epoch from app.workspace_write_epochs
+          where workspace_id = ${input.context.workspaceId}::uuid), 0)::text as epoch
+      `.execute(trx)
+      if (currentEpoch.rows[0]?.epoch !== (input.expectedWriteEpoch ?? '0')) {
+        throw new HttpError(
+          409,
+          'workspace_restored',
+          'Данные уже восстановлены. Обновите приложение перед новым восстановлением.',
+        )
+      }
 
-      createdAssetPaths.push(...preparedAssets.createdPaths)
+      // Increment under the exclusive restore lock, in the same transaction as
+      // every restored row. Rollback and idempotent retries never advance it.
+      await sql`
+        insert into app.workspace_write_epochs (workspace_id, epoch, restored_at)
+        values (${input.context.workspaceId}::uuid, 1, clock_timestamp())
+        on conflict (workspace_id) do update
+        set epoch = app.workspace_write_epochs.epoch + 1,
+            restored_at = clock_timestamp()
+      `.execute(trx)
+
+      const preparedAssets = await prepareProfileAsset(assetDirectory, input)
 
       const tableResults = createAnchorResults(input)
 
@@ -188,18 +207,8 @@ export async function restorePostgresPersonalWorkspace(
       return response
     })
   } catch (error) {
-    await Promise.all(
-      createdAssetPaths.map((filePath) =>
-        unlink(filePath).catch((unlinkError) => {
-          if (!isFileNotFoundError(unlinkError)) {
-            console.warn(
-              `[backup] Failed to remove staged restore asset ${filePath}.`,
-              unlinkError,
-            )
-          }
-        }),
-      ),
-    )
+    // Preserve staged immutable files on ambiguous commit failures. Offline
+    // garbage collection rechecks live references before collecting orphans.
 
     if (isUniqueViolation(error)) {
       throw new HttpError(
@@ -942,14 +951,5 @@ function isFileExistsError(error: unknown): boolean {
     error !== null &&
     'code' in error &&
     error.code === 'EEXIST'
-  )
-}
-
-function isFileNotFoundError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 'ENOENT'
   )
 }

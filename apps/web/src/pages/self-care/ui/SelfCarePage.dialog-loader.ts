@@ -35,8 +35,16 @@ export function createDialogModuleWarmup(
     )
 }
 
-export const loadSelfCareFormDialogs = createRetryableModuleLoader(
-  () => import('./SelfCarePage.dialogs'),
+export const loadSelfCarePlanTab = createRetryableModuleLoader(
+  () => import('./SelfCarePage.plan-tab'),
+)
+
+export const loadSelfCareFormDialogs = createRetryableModuleLoader(() =>
+  // A scheduled offline create navigates to Plan after the durable enqueue.
+  // Make its destination available before enabling the form, not after saving.
+  Promise.all([import('./SelfCarePage.dialogs'), loadSelfCarePlanTab()]).then(
+    ([dialogs]) => dialogs,
+  ),
 )
 
 export const loadSelfCareActionDialogs = createRetryableModuleLoader(

@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom'
 import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { CloseIcon, EditIcon, MinusIcon, PlusIcon } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import { SelfCareReminderOffsetsField } from './SelfCarePage.form-controls'
@@ -94,7 +95,7 @@ export function SelfCareCourseRestartDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -246,7 +247,7 @@ export function SelfCareCourseRestartDialog({
           </div>
         </form>
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }
@@ -318,7 +319,7 @@ export function SelfCareScheduleDialog({
   ]
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -514,7 +515,7 @@ export function SelfCareScheduleDialog({
           </div>
         </form>
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }
@@ -619,7 +620,7 @@ export function SelfCareCompletionEditDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -820,7 +821,7 @@ export function SelfCareCompletionEditDialog({
           </div>
         </form>
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }
@@ -861,7 +862,7 @@ export function SelfCareMeasurementDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -970,7 +971,7 @@ export function SelfCareMeasurementDialog({
           </div>
         </form>
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }
@@ -1100,7 +1101,7 @@ export function SelfCareExerciseDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -1308,7 +1309,7 @@ export function SelfCareExerciseDialog({
           </div>
         </form>
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

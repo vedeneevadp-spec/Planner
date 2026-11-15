@@ -698,6 +698,11 @@ void describe('Postgres auth runtime functions', () => {
 
     try {
       await seedPasswordResetFixture(fixture)
+      const beforeReset = await client.query<{ verified: boolean }>(
+        'select verified from app.auth_email_verification_status($1::uuid)',
+        [fixture.userId],
+      )
+      assert.equal(beforeReset.rows[0]?.verified, false)
 
       const completionResult = await client.query<{
         display_name: string
@@ -794,6 +799,11 @@ void describe('Postgres auth runtime functions', () => {
         fixture.newPasswordHash,
       )
       assert.equal(resetTokenState.rows[0]?.was_used, true)
+      const afterReset = await client.query<{ verified: boolean }>(
+        'select verified from app.auth_email_verification_status($1::uuid)',
+        [fixture.userId],
+      )
+      assert.equal(afterReset.rows[0]?.verified, true)
       assert.equal(
         Number(refreshTokenState.rows[0]?.revoked_existing_count ?? 0),
         1,

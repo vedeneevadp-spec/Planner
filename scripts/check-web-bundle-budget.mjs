@@ -97,6 +97,7 @@ const publicAssetBudgets = [
   },
 ]
 const forbiddenInitialPreloadPatterns = [
+  /\/assets\/self-care-contracts-[^/]+\.js$/,
   /\/assets\/backup-contracts-[^/]+\.js$/,
   /\/assets\/shopping-contracts-[^/]+\.js$/,
   /\/assets\/integration-contracts-[^/]+\.js$/,

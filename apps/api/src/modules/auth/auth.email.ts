@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import type { PlannerAuthRuntimeConfig } from './auth.model.js'
 
 export interface SendPasswordResetEmailCommand {
@@ -15,6 +16,16 @@ export interface AuthEmailSender {
 
 export class NoopAuthEmailSender implements AuthEmailSender {
   constructor(private readonly appEnv: string) {}
+
+  sendEmailVerificationEmail(): Promise<void> {
+    return Promise.reject(
+      new HttpError(
+        503,
+        'email_delivery_unavailable',
+        'Отправка почты пока недоступна. Попробуйте позже.',
+      ),
+    )
+  }
 
   sendPasswordResetEmail(
     command: SendPasswordResetEmailCommand,
@@ -61,6 +72,19 @@ export class SmtpAuthEmailSender implements AuthEmailSender {
       subject: 'Восстановление доступа к Chaotika',
       text: createPasswordResetText(command.resetUrl),
       to: command.email,
+    })
+  }
+
+  async sendEmailVerificationEmail(command: {
+    email: string
+    code: string
+  }): Promise<void> {
+    await this.transporter.sendMail({
+      from: this.config.emailFrom,
+      to: command.email,
+      subject: 'Подтверждение почты в Chaotika',
+      text: `Ваш код подтверждения: ${command.code}\n\nВведите его в профиле Chaotika в течение 30 минут. Не сообщайте код другим людям. Если вы не запрашивали код, проигнорируйте письмо.`,
+      html: `<p>Ваш код подтверждения: <strong>${escapeHtml(command.code)}</strong></p><p>Введите его в профиле Chaotika в течение 30 минут. Не сообщайте код другим людям. Если вы не запрашивали код, проигнорируйте письмо.</p>`,
     })
   }
 }

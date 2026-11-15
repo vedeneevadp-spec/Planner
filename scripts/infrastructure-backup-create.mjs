@@ -4,6 +4,7 @@ import path from 'node:path'
 
 import { runInfrastructureBackupCommand } from './infrastructure-backup-command.mjs'
 import {
+  assertBackupAssetReferences,
   collectFileInventory,
   copyBackupAssetDirectory,
   createInfrastructureBackupId,
@@ -14,6 +15,7 @@ import {
   verifyInfrastructureBackupSet,
   writeJsonAtomic,
 } from './infrastructure-backup-helpers.mjs'
+import { withInfrastructureBackupSnapshot } from './infrastructure-backup-snapshot.mjs'
 
 const environment = process.env
 const backupRoot = path.resolve(
@@ -41,41 +43,50 @@ try {
     resolveBackupConnectionString(environment),
   )
 
-  await runInfrastructureBackupCommand('pg_dump', [
-    '--format=custom',
-    '--enable-row-security',
-    '--no-owner',
-    '--no-privileges',
-    '--file',
-    dumpPath,
-    connectionString,
-  ])
+  const { assetFiles, assetReferences, assetSourcePresent } =
+    await withInfrastructureBackupSnapshot(
+      connectionString,
+      async ({ snapshotId, assetReferences }) => {
+        await runInfrastructureBackupCommand('pg_dump', [
+          '--format=custom',
+          '--snapshot',
+          snapshotId,
+          '--enable-row-security',
+          '--no-owner',
+          '--no-privileges',
+          '--file',
+          dumpPath,
+          connectionString,
+        ])
 
-  const assetDirectory = path.join(incompleteDirectory, 'assets')
-  let assetSourcePresent = true
+        const assetDirectory = path.join(incompleteDirectory, 'assets')
+        let assetSourcePresent = true
 
-  try {
-    await copyBackupAssetDirectory(assetSourceDirectory, assetDirectory)
-  } catch (error) {
-    if (!isFileNotFoundError(error)) {
-      throw error
-    }
+        try {
+          await stat(assetSourceDirectory)
+        } catch (error) {
+          if (!isFileNotFoundError(error)) {
+            throw error
+          }
 
-    assetSourcePresent = false
+          assetSourcePresent = false
 
-    if (environment.BACKUP_REQUIRE_ASSETS === '1') {
-      throw new Error(
-        `Required API_ICON_ASSET_DIR does not exist: ${assetSourceDirectory}`,
-      )
-    }
+          if (environment.BACKUP_REQUIRE_ASSETS === '1') {
+            throw new Error(
+              `Required API_ICON_ASSET_DIR does not exist: ${assetSourceDirectory}`,
+            )
+          }
+        }
 
-    await mkdir(assetDirectory)
-    console.warn(
-      `[backup] Asset directory does not exist; an empty snapshot was created: ${assetSourceDirectory}`,
+        if (assetSourcePresent)
+          await copyBackupAssetDirectory(assetSourceDirectory, assetDirectory)
+        else await mkdir(assetDirectory)
+
+        const assetFiles = await collectFileInventory(assetDirectory)
+        assertBackupAssetReferences(assetReferences, assetFiles)
+        return { assetFiles, assetReferences, assetSourcePresent }
+      },
     )
-  }
-
-  const assetFiles = await collectFileInventory(assetDirectory)
   const dumpMetadata = await stat(dumpPath)
   const pgDumpVersion = await runInfrastructureBackupCommand(
     'pg_dump',
@@ -93,6 +104,7 @@ try {
     appCommit,
     appVersion: String(packageJson.version ?? 'unknown'),
     assetFiles,
+    assetReferences,
     assetSourceDirectory,
     assetSourcePresent,
     backupId,
@@ -119,6 +131,8 @@ try {
     await runInfrastructureBackupCommand('restic', [
       'backup',
       finalDirectory,
+      '--group-by',
+      'host',
       '--tag',
       'planner',
       '--tag',

@@ -1,6 +1,11 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 
-import { broadcastWorkspaceLocalDataInvalidation } from '@/shared/lib/offline-sync'
+import { withRequestTimeout } from '@/shared/lib/api-client'
+import {
+  assertOfflineMutationsSettled,
+  broadcastWorkspaceLocalDataInvalidation,
+  waitForWorkspaceMutations,
+} from '@/shared/lib/offline-sync'
 
 const RESTORE_MESSAGE_KEY = 'planner.user-backup.restore-message'
 
@@ -9,6 +14,17 @@ export async function prepareWorkspaceForUserBackupRestore(
   queryClient: QueryClient,
   phase: UserBackupLocalCleanupPhase = 'before-restore',
 ): Promise<void> {
+  try {
+    await withRequestTimeout(async () => {
+      await Promise.all([
+        waitForWorkspaceMutations(`offline:shopping:${workspaceId}`),
+        waitForWorkspaceMutations(`offline:habits:${workspaceId}`),
+      ])
+    })
+    assertOfflineMutationsSettled(workspaceId)
+  } catch (error) {
+    throw new UserBackupLocalCleanupError([error], phase)
+  }
   const queryFilters = {
     predicate: (query: { queryKey: QueryKey }) =>
       isWorkspaceLocalDataQuery(query.queryKey, workspaceId),
@@ -24,6 +40,11 @@ export async function prepareWorkspaceForUserBackupRestore(
   const results = await Promise.allSettled(
     createWorkspaceOfflineCleanupTasks(workspaceId),
   )
+  try {
+    await withRequestTimeout(() => waitForWorkspaceMutations(workspaceId))
+  } catch (error) {
+    throw new UserBackupLocalCleanupError([error], phase)
+  }
   const failures = results.flatMap<unknown>((result) =>
     result.status === 'rejected' ? [result.reason as unknown] : [],
   )
@@ -86,7 +107,7 @@ export class UserBackupLocalCleanupError extends Error {
     super(
       phase === 'after-restore'
         ? 'Данные на сервере восстановлены, но безопасно обновить локальные данные не удалось. Закройте другие вкладки приложения, проверьте доступ браузера к хранилищу и повторите восстановление.'
-        : 'Не удалось завершить безопасную очистку локальных данных. Восстановление не начато. Закройте другие вкладки приложения, проверьте доступ браузера к хранилищу и повторите.',
+        : 'Не удалось завершить безопасную очистку локальных данных. Восстановление не начато. Обновите приложение, подключитесь к сети и дождитесь синхронизации изменений. Затем закройте другие вкладки и повторите.',
     )
     this.name = 'UserBackupLocalCleanupError'
     this.failures = failures

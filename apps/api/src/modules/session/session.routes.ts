@@ -69,12 +69,53 @@ const invitationParamsSchema = z.object({
 export function registerSessionRoutes(
   app: FastifyInstance,
   service: SessionService,
+  readEpoch: (userId: string, workspaceId: string) => Promise<string> = () =>
+    Promise.resolve('0'),
 ): void {
-  app.get('/api/v1/session', async (request) => {
+  async function readSnapshotEpochs(
+    session: Awaited<ReturnType<SessionService['resolveSession']>>,
+  ) {
+    const personal = session.workspaces.find(
+      (workspace) => workspace.kind === 'personal',
+    )
+    const ids = [
+      ...new Set([session.workspaceId, ...(personal ? [personal.id] : [])]),
+    ].sort()
+    return Object.fromEntries(
+      await Promise.all(
+        ids.map(
+          async (id) => [id, await readEpoch(session.actorUserId, id)] as const,
+        ),
+      ),
+    )
+  }
+  app.get('/api/v1/session', async (request, reply) => {
     const context = resolveOptionalSessionContext(request)
-    const session = await service.resolveSession(context)
-
-    return withLegacySessionPreferences(sessionResponseSchema.parse(session))
+    let session = await service.resolveSession(context)
+    let epoch = await readSnapshotEpochs(session)
+    // A cached pre-restore profile must never be paired with a new epoch.
+    // Retry the read if restore committed while the fresh snapshot loaded.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const fresh = await service.resolveSession(context, { fresh: true })
+      const nextEpoch = await readSnapshotEpochs(fresh)
+      if (
+        fresh.workspaceId === session.workspaceId &&
+        JSON.stringify(nextEpoch) === JSON.stringify(epoch)
+      ) {
+        reply.header('x-workspace-id', fresh.workspaceId)
+        reply.header('x-workspace-epoch', nextEpoch[fresh.workspaceId])
+        reply.header('x-workspace-epochs', JSON.stringify(nextEpoch))
+        reply.header('x-workspace-actor-id', fresh.actorUserId)
+        return withLegacySessionPreferences(sessionResponseSchema.parse(fresh))
+      }
+      session = fresh
+      epoch = nextEpoch
+    }
+    throw new HttpError(
+      409,
+      'workspace_restored',
+      'Данные восстанавливаются. Повторите загрузку профиля.',
+    )
   })
 
   app.patch(

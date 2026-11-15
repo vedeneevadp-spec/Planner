@@ -24,6 +24,21 @@ export default defineConfig({
   },
   webServer: [
     {
+      command: 'npm run -w apps/api user-backup-restore:helper:source',
+      env: {
+        NODE_ENV: 'test',
+        USER_BACKUP_RESTORE_DATABASE_URL:
+          process.env.E2E_RESTORE_DATABASE_URL ?? databaseUrl,
+        USER_BACKUP_RESTORE_HELPER_SECRET:
+          'planner-e2e-restore-helper-secret-32-chars',
+        API_ICON_ASSET_DIR: 'tmp/e2e-backup-assets',
+        API_BACKUP_RESTORE_HELPER_PORT: '3012',
+      },
+      reuseExistingServer,
+      timeout: 30_000,
+      url: 'http://127.0.0.1:3012/internal/ready',
+    },
+    {
       command: 'npm run -w apps/api start:source',
       env: {
         API_AUTH_MODE: 'jwt',
@@ -34,7 +49,7 @@ export default defineConfig({
         API_STORAGE_DRIVER: 'postgres',
         API_TRUST_PROXY_ADDRESSES: '127.0.0.1,::1',
         AUTH_JWT_SECRET: 'planner-e2e-jwt-secret-with-at-least-32-chars',
-        DATABASE_URL: databaseUrl,
+        DATABASE_URL: process.env.E2E_API_DATABASE_URL ?? databaseUrl,
         NODE_ENV: 'production',
         USER_BACKUP_RESTORE_HELPER_SECRET:
           'planner-e2e-restore-helper-secret-32-chars',

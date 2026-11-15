@@ -417,6 +417,16 @@ describe('native planner widget snapshot', () => {
     ).resolves.toEqual(['task-1', 'task-2'])
   })
 
+  it('does not relabel native completions after restore', async () => {
+    capacitorMocks.readPendingCompletedTasks.mockResolvedValue({
+      taskIds: ['old-task'],
+      writeEpoch: '0',
+    })
+    await expect(
+      readPendingNativePlannerWidgetCompletedTasks('1'),
+    ).resolves.toEqual([])
+  })
+
   it('acknowledges filtered Android widget completions', async () => {
     capacitorMocks.ackPendingCompletedTasks.mockResolvedValue(undefined)
 
@@ -424,6 +434,7 @@ describe('native planner widget snapshot', () => {
 
     expect(capacitorMocks.ackPendingCompletedTasks).toHaveBeenCalledWith({
       taskIds: ['task-1', 'task-2'],
+      writeEpoch: '0',
     })
   })
 

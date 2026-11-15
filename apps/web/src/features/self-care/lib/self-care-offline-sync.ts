@@ -1,5 +1,7 @@
 import type { SelfCareOfflineCommandResponse } from '@planner/contracts'
 
+import { assertOfflineWorkspaceEpoch } from '@/shared/lib/api-client'
+
 import {
   enqueueSelfCareOfflineMutation,
   type EnqueueSelfCareOfflineMutationInput,
@@ -162,6 +164,11 @@ async function drainSelfCareOfflineQueueOnce({
     let response: SelfCareOfflineCommandResponse
 
     try {
+      assertOfflineWorkspaceEpoch(
+        currentMutation,
+        api.writeEpoch,
+        (message, options) => new SelfCareApiError(message, options),
+      )
       response = await api.executeOfflineCommand({
         ...(currentMutation.clientTimeZone
           ? { clientTimeZone: currentMutation.clientTimeZone }

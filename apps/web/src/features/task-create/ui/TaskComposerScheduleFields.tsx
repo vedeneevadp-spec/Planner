@@ -6,7 +6,6 @@ import { CalendarIcon } from '@/shared/ui/Icon'
 import styles from './TaskComposer.module.css'
 
 interface TaskComposerScheduleFieldsProps {
-  isHabitTaskType: boolean
   plannedDate: string
   plannedEndTime: string
   plannedStartTime: string
@@ -17,7 +16,6 @@ interface TaskComposerScheduleFieldsProps {
 }
 
 export function TaskComposerScheduleFields({
-  isHabitTaskType,
   plannedDate,
   plannedEndTime,
   plannedStartTime,
@@ -28,40 +26,34 @@ export function TaskComposerScheduleFields({
 }: TaskComposerScheduleFieldsProps) {
   const scheduleId = useId()
   const [isScheduleExpanded, setIsScheduleExpanded] = useState(false)
-  const showSchedule =
-    isHabitTaskType || Boolean(plannedDate) || isScheduleExpanded
+  const showSchedule = Boolean(plannedDate) || isScheduleExpanded
 
   return (
     <section className={cx(styles.columnSection, styles.scheduleSection)}>
-      {!isHabitTaskType ? (
-        <button
-          className={styles.scheduleToggle}
-          type="button"
-          aria-expanded={showSchedule}
-          aria-controls={scheduleId}
-          onClick={() => {
-            if (showSchedule) {
-              onPlannedDateChange('')
-            }
-            setIsScheduleExpanded(!showSchedule)
-          }}
-        >
-          <CalendarIcon size={16} />
-          <span>{showSchedule ? 'Оставить без даты' : 'Указать дату'}</span>
-        </button>
-      ) : null}
+      <button
+        className={styles.scheduleToggle}
+        type="button"
+        aria-expanded={showSchedule}
+        aria-controls={scheduleId}
+        onClick={() => {
+          if (showSchedule) {
+            onPlannedDateChange('')
+          }
+          setIsScheduleExpanded(!showSchedule)
+        }}
+      >
+        <CalendarIcon size={16} />
+        <span>{showSchedule ? 'Оставить без даты' : 'Указать дату'}</span>
+      </button>
       <div
         id={scheduleId}
         hidden={!showSchedule}
         className={cx(
           styles.composerMain,
-          showTimeFields && !isHabitTaskType
+          showTimeFields
             ? styles.composerMainTimeline
             : styles.composerMainCompact,
-          showTimeFields &&
-            !isHabitTaskType &&
-            !plannedStartTime &&
-            styles.composerMainPair,
+          showTimeFields && !plannedStartTime && styles.composerMainPair,
         )}
       >
         <label className={styles.field}>
@@ -75,7 +67,7 @@ export function TaskComposerScheduleFields({
           />
         </label>
 
-        {showTimeFields && !isHabitTaskType ? (
+        {showTimeFields ? (
           <>
             <label className={styles.field}>
               <span>Старт</span>

@@ -20,11 +20,16 @@ const connectionString =
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 const retries = 30
 const retryDelayMs = 1000
-const statementRetries = 5
-const useStatelessMode = process.env.DB_MIGRATE_MODE === 'stateless'
+const migrationMode = process.env.DB_MIGRATE_MODE?.trim() || 'transactional'
 const migrationLockKey = 7_334_202_605
 
 async function main() {
+  if (migrationMode !== 'transactional') {
+    throw new Error(
+      'Only transactional migrations are supported. Remove DB_MIGRATE_MODE=stateless and use a direct/session-persistent MIGRATE_DATABASE_URL; partial DDL replay cannot preserve migration locks or atomic permissions.',
+    )
+  }
+
   const migrationFiles = (await readdir(migrationsDirectory))
     .filter((fileName) => fileName.endsWith('.sql'))
     .sort((left, right) => left.localeCompare(right))
@@ -34,14 +39,7 @@ async function main() {
     return
   }
 
-  console.log(
-    `Using ${useStatelessMode ? 'stateless' : 'transactional'} migration mode.`,
-  )
-
-  if (useStatelessMode) {
-    await runStatelessMigrations(migrationFiles)
-    return
-  }
+  console.log('Using transactional migration mode.')
 
   await runTransactionalMigrations(migrationFiles)
 }
@@ -96,113 +94,6 @@ async function runTransactionalMigrations(migrationFiles) {
     await releaseMigrationLock(client).catch(() => undefined)
     await closePgClient(client)
   }
-}
-
-async function runStatelessMigrations(migrationFiles) {
-  await withConnectedClient(
-    async (client) => {
-      await ensureSchemaMigrationsTable(client)
-    },
-    { logSuccess: true },
-  )
-
-  for (const fileName of migrationFiles) {
-    const filePath = path.join(migrationsDirectory, fileName)
-    const sql = await readFile(filePath, 'utf8')
-    const checksum = createMigrationChecksum(sql)
-    const alreadyApplied = await withConnectedClient((client) =>
-      getMigrationRecord(client, fileName),
-    )
-
-    if (alreadyApplied) {
-      await withConnectedClient((client) =>
-        assertMigrationChecksum(client, fileName, checksum, alreadyApplied),
-      )
-      console.log(`Skipping already applied migration: ${fileName}`)
-      continue
-    }
-
-    const statements = splitSqlStatements(sql)
-
-    console.log(`Applying migration: ${fileName}`)
-
-    for (const [index, statement] of statements.entries()) {
-      console.log(
-        `Running statement ${index + 1}/${statements.length}: ${summarizeStatement(statement)}`,
-      )
-      await runStatementWithRetry(statement)
-    }
-
-    await withConnectedClient((client) =>
-      recordMigration(client, {
-        checksum,
-        fileName,
-        statementCount: statements.length,
-      }),
-    )
-  }
-}
-
-async function runStatementWithRetry(statement) {
-  let lastError = null
-
-  for (let attempt = 1; attempt <= statementRetries; attempt += 1) {
-    const client = await connectWithRetry()
-
-    try {
-      await client.query(statement)
-      return
-    } catch (error) {
-      lastError = error
-
-      if (isAlreadyExistsError(error)) {
-        console.log(
-          `Skipping existing object (${error.code ?? 'unknown'}): ${summarizeStatement(statement)}`,
-        )
-        return
-      }
-
-      if (!isTransientConnectionError(error) || attempt === statementRetries) {
-        throw error
-      }
-
-      console.log(
-        `Transient database error for statement. Retry ${attempt}/${statementRetries} in ${retryDelayMs}ms.`,
-      )
-      await wait(retryDelayMs)
-    } finally {
-      await closePgClient(client)
-    }
-  }
-
-  throw lastError
-}
-
-async function withConnectedClient(callback, options = {}) {
-  let lastError = null
-
-  for (let attempt = 1; attempt <= statementRetries; attempt += 1) {
-    const client = await connectWithRetry(options)
-
-    try {
-      return await callback(client)
-    } catch (error) {
-      lastError = error
-
-      if (!isTransientConnectionError(error) || attempt === statementRetries) {
-        throw error
-      }
-
-      console.log(
-        `Transient database error for migration metadata. Retry ${attempt}/${statementRetries} in ${retryDelayMs}ms.`,
-      )
-      await wait(retryDelayMs)
-    } finally {
-      await closePgClient(client)
-    }
-  }
-
-  throw lastError
 }
 
 async function connectWithRetry(options = {}) {
@@ -543,18 +434,10 @@ function readDollarQuoteTag(sql, startIndex) {
   return null
 }
 
-function isAlreadyExistsError(error) {
-  return (
-    typeof error?.code === 'string' &&
-    ['42P06', '42P07', '42710', '42723'].includes(error.code)
-  )
-}
-
 function isTransientConnectionError(error) {
   if (typeof error?.code === 'string') {
     return ['ETIMEDOUT', 'ECONNRESET', 'EPIPE'].includes(error.code)
   }
-
   return (
     error instanceof Error &&
     (error.message.includes('Client has encountered a connection error') ||

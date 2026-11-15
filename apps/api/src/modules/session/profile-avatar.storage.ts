@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -48,7 +49,7 @@ export class LocalProfileAvatarStorage implements ProfileAvatarStorage {
     const filePath = path.join(this.rootDirectory, fileName)
 
     await mkdir(this.rootDirectory, { recursive: true })
-    await writeFile(filePath, parsedAvatar.buffer)
+    await writeFile(filePath, parsedAvatar.buffer, { flag: 'wx' })
 
     return `${PROFILE_AVATAR_PUBLIC_PATH_PREFIX}${fileName}`
   }
@@ -117,7 +118,7 @@ function buildProfileAvatarFileName(
   input: StoreProfileAvatarInput,
   extension: string,
 ): string {
-  return `${sanitizeFileNamePart(input.userId)}-${Date.now()}.${extension}`
+  return `${sanitizeFileNamePart(input.userId)}-${randomUUID()}.${extension}`
 }
 
 function sanitizeFileNamePart(value: string): string {

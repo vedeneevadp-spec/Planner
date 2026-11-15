@@ -1,15 +1,21 @@
 import type { ChaosInboxItemRecord } from '@planner/contracts'
 
+import { assertOfflineWorkspaceEpoch } from '@/shared/lib/api-client'
 import {
   createOfflineDrainErrorHandler,
   createOfflineDrainResult,
   drainOfflineQueue,
   getOfflineErrorMessage,
   isBrowserRetryableOfflineError,
+  trackOfflineMutation,
+  withWorkspaceMutationLock,
 } from '@/shared/lib/offline-sync'
 
 import {
+  claimShoppingListOfflineMutation,
   completeShoppingListOfflineMutation,
+  getShoppingListOfflineWorkspaceWriteGeneration,
+  isShoppingListOfflineWorkspaceWriteGenerationCurrent,
   listRetryableShoppingListOfflineMutations,
   markShoppingListOfflineMutationConflicted,
   markShoppingListOfflineMutationFailed,
@@ -43,13 +49,28 @@ interface OfflineMutationCallbacks {
   onItemSynced?: (item: ChaosInboxItemRecord) => void
 }
 
-export async function drainShoppingListOfflineQueue({
+export function drainShoppingListOfflineQueue(
+  options: DrainShoppingListOfflineQueueOptions,
+): Promise<ShoppingListOfflineDrainResult> {
+  return withWorkspaceMutationLock(
+    `offline:shopping:${options.workspaceId}`,
+    () => drainShoppingListOfflineQueueUnlocked(options),
+  )
+}
+
+async function drainShoppingListOfflineQueueUnlocked({
   actorUserId,
   api,
   onItemDeleted,
   onItemSynced,
   workspaceId,
 }: DrainShoppingListOfflineQueueOptions): Promise<ShoppingListOfflineDrainResult> {
+  const generation = getShoppingListOfflineWorkspaceWriteGeneration(workspaceId)
+  const isCurrent = () =>
+    isShoppingListOfflineWorkspaceWriteGenerationCurrent(
+      workspaceId,
+      generation,
+    )
   const result = createOfflineDrainResult<ShoppingListOfflineDrainResult>({
     conflicted: 0,
   })
@@ -64,14 +85,17 @@ export async function drainShoppingListOfflineQueue({
   }
 
   return drainOfflineQueue({
+    isCurrent,
     adapter: {
+      claimMutation: claimShoppingListOfflineMutation,
       completeMutation: completeShoppingListOfflineMutation,
       getMutationId: (mutation) => mutation.id,
       listRetryableMutations: () =>
         listRetryableShoppingListOfflineMutations(workspaceId, actorUserId),
       markMutationSyncing: markShoppingListOfflineMutationSyncing,
     },
-    apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
+    apply: (mutation) =>
+      applyOfflineMutation(api, mutation, callbacks, isCurrent),
     result,
     onError: (input) =>
       createOfflineDrainErrorHandler<ShoppingListOfflineDrainResult>({
@@ -111,34 +135,54 @@ async function applyOfflineMutation(
   api: ShoppingListApiClient,
   mutation: ShoppingListOfflineMutationRecord,
   callbacks: OfflineMutationCallbacks,
+  isCurrent: () => boolean,
 ): Promise<void> {
-  if (mutation.type === 'shopping.create') {
-    const item = await createShoppingListItemIdempotently(api, mutation)
+  assertOfflineWorkspaceEpoch(
+    mutation,
+    api.writeEpoch,
+    (message, options) => new ShoppingListApiError(message, options),
+  )
 
-    await commitSyncedShoppingListItem(mutation, item, callbacks)
+  if (mutation.type === 'shopping.create') {
+    const item = await trackOfflineMutation(
+      mutation.workspaceId,
+      mutation.id,
+      () => createShoppingListItemIdempotently(api, mutation),
+    )
+
+    if (!isCurrent()) return
+    await commitSyncedShoppingListItem(mutation, item, callbacks, isCurrent)
 
     return
   }
 
   if (mutation.type === 'shopping.update') {
-    const item = await api.updateItem(mutation.itemId, mutation.patch)
+    const item = await trackOfflineMutation(
+      mutation.workspaceId,
+      mutation.id,
+      () => api.updateItem(mutation.itemId, mutation.patch),
+    )
 
-    await commitSyncedShoppingListItem(mutation, item, callbacks)
+    if (!isCurrent()) return
+    await commitSyncedShoppingListItem(mutation, item, callbacks, isCurrent)
 
     return
   }
 
   try {
-    await api.removeItem(mutation.itemId)
+    await trackOfflineMutation(mutation.workspaceId, mutation.id, () =>
+      api.removeItem(mutation.itemId),
+    )
   } catch (error) {
     if (!isMissingShoppingListItemError(error)) {
       throw error
     }
   }
 
+  if (!isCurrent()) return
   if (!(await hasLaterShoppingListMutation(mutation))) {
     await removeCachedShoppingListItem(mutation.workspaceId, mutation.itemId)
-    callbacks.onItemDeleted?.(mutation.itemId)
+    if (isCurrent()) callbacks.onItemDeleted?.(mutation.itemId)
   }
 }
 
@@ -189,6 +233,7 @@ async function commitSyncedShoppingListItem(
   mutation: ShoppingListOfflineMutationRecord,
   item: ChaosInboxItemRecord,
   callbacks: OfflineMutationCallbacks,
+  isCurrent: () => boolean,
 ): Promise<void> {
   if (await hasLaterShoppingListMutation(mutation)) {
     // A newer local command already projected its state into the cache. Do not
@@ -198,7 +243,7 @@ async function commitSyncedShoppingListItem(
   }
 
   await upsertCachedShoppingListItem(mutation.workspaceId, item)
-  callbacks.onItemSynced?.(item)
+  if (isCurrent()) callbacks.onItemSynced?.(item)
 }
 
 async function hasLaterShoppingListMutation(

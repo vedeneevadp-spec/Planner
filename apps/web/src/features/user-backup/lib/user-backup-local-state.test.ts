@@ -1,6 +1,11 @@
 import { QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  trackOfflineMutation,
+  withWorkspaceMutationLock,
+} from '@/shared/lib/offline-sync'
+
 const mocks = vi.hoisted(() => ({
   clearCleaning: vi.fn(() => Promise.resolve()),
   clearHabit: vi.fn(() => Promise.resolve()),
@@ -141,7 +146,7 @@ describe('user backup local state', () => {
     await expect(cleanup).rejects.toSatisfy(
       (error: unknown) =>
         getUserBackupErrorMessage(error) ===
-        'Не удалось завершить безопасную очистку локальных данных. Восстановление не начато. Закройте другие вкладки приложения, проверьте доступ браузера к хранилищу и повторите.',
+        'Не удалось завершить безопасную очистку локальных данных. Восстановление не начато. Обновите приложение, подключитесь к сети и дождитесь синхронизации изменений. Затем закройте другие вкладки и повторите.',
     )
   })
 
@@ -162,6 +167,52 @@ describe('user backup local state', () => {
     await expect(preparation).rejects.toThrow('Восстановление не начато.')
     expect(mocks.clearCleaning).not.toHaveBeenCalled()
     expect(mocks.clearPlanner).not.toHaveBeenCalled()
+  })
+
+  it('waits for a sent queue write before preparing the server restore', async () => {
+    const workspaceId = 'backup-active-command'
+    let release!: () => void
+    const response = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const write = withWorkspaceMutationLock(
+      `offline:shopping:${workspaceId}`,
+      () => trackOfflineMutation(workspaceId, 'command', () => response),
+    )
+    const preparation = prepareWorkspaceForUserBackupRestore(
+      workspaceId,
+      createQueryClient(),
+    )
+    await Promise.resolve()
+    expect(mocks.clearShopping).not.toHaveBeenCalled()
+    release()
+    await Promise.all([write, preparation])
+    expect(mocks.clearShopping).toHaveBeenCalledWith(workspaceId)
+  })
+
+  it('does not purge or call server restore after an ambiguous queue failure', async () => {
+    const workspaceId = 'backup-ambiguous-command'
+    let reject!: (error: Error) => void
+    const response = new Promise<void>((_, no) => {
+      reject = no
+    })
+    const write = withWorkspaceMutationLock(
+      `offline:shopping:${workspaceId}`,
+      () => trackOfflineMutation(workspaceId, 'command', () => response),
+    ).catch(() => undefined)
+    const restore = vi.fn()
+    const preparation = prepareWorkspaceForUserBackupRestore(
+      workspaceId,
+      createQueryClient(),
+    ).then(restore)
+    const rejected = expect(preparation).rejects.toBeInstanceOf(
+      UserBackupLocalCleanupError,
+    )
+    reject(new TypeError('Lost response'))
+    await Promise.all([write, rejected])
+    expect(mocks.clearShopping).not.toHaveBeenCalled()
+    expect(restore).not.toHaveBeenCalled()
+    await trackOfflineMutation(workspaceId, 'command', () => Promise.resolve())
   })
 })
 

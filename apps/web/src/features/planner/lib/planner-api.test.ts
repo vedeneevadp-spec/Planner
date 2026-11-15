@@ -210,19 +210,20 @@ describe('plannerApi', () => {
   })
 
   it('forwards abort signals for query-driven task fetches', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify([]), {
-        status: 200,
-      }),
-    )
+    const fetchMock = vi.fn<typeof fetch>(() => new Promise(() => {}))
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
-    const signal = new AbortController().signal
-
-    await api.listTasks({}, signal)
+    const controller = new AbortController()
+    const reason = new DOMException('Task query cancelled.', 'AbortError')
+    const pending = api.listTasks({}, controller.signal)
+    const rejected = expect(pending).rejects.toBe(reason)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     const [, requestInit] = fetchMock.mock.calls[0]!
 
-    expect(requestInit?.signal).toBe(signal)
+    controller.abort(reason)
+    await rejected
+    expect(requestInit?.signal?.aborted).toBe(true)
+    expect(requestInit?.signal?.reason).toBe(reason)
   })
 
   it('sends the configured client timezone header', async () => {

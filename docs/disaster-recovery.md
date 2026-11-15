@@ -31,8 +31,14 @@ Provider snapshots Timeweb могут быть дополнительным сл
 
 Manifest содержит версию формата, backup ID, timestamps, host, app version,
 commit, версию `pg_dump`, SHA-256 и размер dump, а также рекурсивный inventory
-ассетов с SHA-256. Symlink в asset tree запрещен. До публикации набора
-выполняются checksum validation и `pg_restore --list`.
+ассетов с SHA-256 и список файлов, на которые ссылается снимок БД. Symlink в
+asset tree запрещен. Backup удерживает `REPEATABLE READ READ ONLY` transaction,
+экспортирует snapshot и передает его `pg_dump --snapshot`; список ссылок
+читается в той же transaction. До публикации набора выполняются checksum
+validation, `pg_restore --list` и проверка наличия каждой ссылки в inventory.
+Имена новых файлов уникальны и содержимое существующих файлов не перезаписывается.
+Если API удалил старый файл во время копирования, backup завершается с ошибкой
+и не публикует неполный набор. Следующий запуск снимает актуальные ссылки.
 
 После локальной проверки set загружается Restic в offsite repository с tags
 `planner`, `kind:infrastructure` и `backup-id:<id>`. Restic шифрует содержимое
@@ -72,7 +78,13 @@ BACKUP_LOCAL_KEEP_DAYS
 DB_DEPLOY_BACKUP_KEEP
 ```
 
-Weekly job запускает `restic forget --prune`. Offsite storage желательно
+Weekly job запускает `restic forget --prune --group-by host` с AND-фильтром
+`--tag planner,kind:infrastructure`. Timestamp-каталоги и уникальные backup-id
+tags не создают отдельные retention groups. Перед изменением политики можно
+запустить `BACKUP_PRUNE_DRY_RUN=1 npm run backup:prune`: Restic покажет выборку
+без удаления, локальные наборы также сохраняются. Временный полностью
+изолированный тест политики: `node scripts/restic-retention-smoke.mjs`
+(нужен Restic в PATH; опционально `RESTIC_BIN`). Offsite storage желательно
 защитить bucket versioning/object lock и отдельными credentials без доступа к
 удалению вне backup prefix.
 
@@ -109,6 +121,9 @@ Prerequisites на VPS:
 
 Не загружайте secrets в git и не передавайте connection strings аргументами
 диагностических команд, которые могут попасть в shell history.
+Репозиторные backup/drill команды удаляют пароль из argv PostgreSQL tools и
+передают его через временный `PGPASSFILE` с mode `0600`; файл удаляется после
+завершения команды, в том числе при ошибке.
 
 ## Операционная проверка
 
@@ -131,7 +146,7 @@ sudo -u planner jq . /opt/planner/shared/state/restore-drill-status.json
 Проверка Restic выполняется с environment из `/etc/planner/backup.env`:
 
 ```bash
-restic snapshots --tag planner --tag kind:infrastructure
+restic snapshots --tag planner,kind:infrastructure
 restic check
 ```
 
@@ -241,6 +256,32 @@ sudo find /var/lib/planner/icon-assets -type f -exec chmod 0660 {} +
 При частичном повреждении asset storage DB и assets все равно восстанавливаются
 из одного backup set, чтобы не получить ссылки на файлы из другого момента
 времени.
+
+## Очистка неиспользуемых ассетов
+
+`npm run assets:gc` по умолчанию выполняет только dry-run. Задайте
+`API_ICON_ASSET_DIR`, `INFRASTRUCTURE_BACKUP_DIR` и maintenance `DATABASE_URL`
+с полным чтением ссылок (owner/BYPASSRLS). Runtime login отклоняется: неполный
+RLS-результат нельзя использовать для удаления файлов.
+
+Утилита проверяет все завершённые локальные backup sets, их checksum и dump,
+требует хотя бы одну успешную копию и отказывается работать при `.incomplete-*`.
+Она сохраняет файлы, упомянутые в БД или действующих локальных backup, включая
+soft-deleted иконки. У старых manifest без списка ссылок сохраняется весь inventory.
+В кандидаты попадают только обычные файлы старше семи дней; symlink запрещён.
+Повторно проверяются inode, размер и mtime перед удалением.
+
+`npm run assets:gc -- --apply` предназначен для отдельного окна обслуживания.
+Предварительно остановите API, restore helper, reminder worker, backup/prune/drill
+services и их timers. Утилита сама службы не останавливает: проверяет их состояние
+через systemd и отсутствие других DB connections до и после построения плана.
+Во время обслуживания не запускайте deployment, ручные загрузки или другие
+подключения. После проверки результата возобновите службы и timers.
+
+Не запускайте `--apply` как периодический online job. Файлы после неопределённого
+результата commit сохраняются намеренно; dry-run показывает кандидатов для
+последующей проверяемой уборки. Отдельная offsite копия уже содержит собственные
+байты ассетов и не зависит от наличия файла в рабочем storage.
 
 ## Acceptance checklist
 

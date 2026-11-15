@@ -196,6 +196,23 @@ function assertSecureNativeAuthStorage() {
     /registerPluginInstance\(PlannerAuthStoragePlugin\(\)\)/,
   )
   assert.doesNotMatch(nativeSessionStorage, /@capacitor\/preferences/)
+  const requiredMethods = [
+    'get',
+    'set',
+    'remove',
+    'prepareRefresh',
+    'commitRefresh',
+  ]
+  for (const method of requiredMethods) {
+    assert.ok(
+      iosAppDelegate.includes(`CAPPluginMethod(name: "${method}"`),
+      `iOS secure storage is missing the JS bridge method ${method}.`,
+    )
+    assert.ok(
+      iosAppDelegate.includes(`@objc func ${method}(`),
+      `iOS secure storage is missing the implementation of ${method}.`,
+    )
+  }
 }
 
 function readSingleMatch(content, pattern, label) {

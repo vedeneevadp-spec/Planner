@@ -10,6 +10,7 @@ import {
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import {
   SelfCareCustomCreateForm,
@@ -122,7 +123,7 @@ export function SelfCareCreateDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -336,7 +337,7 @@ export function SelfCareCreateDialog({
           ) : null
         ) : null}
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }
@@ -380,7 +381,7 @@ export function SelfCareEditDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
@@ -423,7 +424,7 @@ export function SelfCareEditDialog({
           onSubmit={onSubmit}
         />
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

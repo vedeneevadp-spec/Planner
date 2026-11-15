@@ -395,6 +395,11 @@ void test('PostgresSessionRepository keeps session lifecycle working under runti
       email: inviteeEmail,
       userId: inviteeUserId,
     })
+    // This scenario exercises an invitation after mailbox ownership was proven.
+    await connection.pool.query(
+      'update app.users set email_verified_at = now() where id = $1',
+      [inviteeUserId],
+    )
 
     const ownerSession = await repository.resolve({
       actorUserId: undefined,

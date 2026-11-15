@@ -1,16 +1,27 @@
 import { spawn } from 'node:child_process'
 
 import { redactConnectionString } from './infrastructure-backup-helpers.mjs'
+import { withPgToolCredentials } from './pg-tool-credentials.mjs'
 
 export async function runInfrastructureBackupCommand(
   command,
   args,
   options = {},
 ) {
+  return withPgToolCredentials(
+    command,
+    args,
+    options.env ?? process.env,
+    (safeArgs, safeEnv) =>
+      runCommand(command, safeArgs, { ...options, env: safeEnv }),
+  )
+}
+
+async function runCommand(command, args, options) {
   const capture = options.capture === true
   const child = spawn(command, args, {
     env: options.env ?? process.env,
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : (options.stdio ?? 'inherit'),
   })
   let stdout = ''
   let stderr = ''

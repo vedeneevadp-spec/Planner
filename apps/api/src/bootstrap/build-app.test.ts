@@ -3471,7 +3471,11 @@ void describe('buildApiApp', () => {
   })
 
   void it('accepts matching workspace invitations after user confirmation', async () => {
-    const sessionService = new SessionService(new MemorySessionRepository())
+    const sessionService = new SessionService(
+      new MemorySessionRepository(),
+      undefined,
+      { isVerified: () => Promise.resolve(true) },
+    )
     const setupApp = buildApiApp({
       config: createTestConfig(),
       database: null,

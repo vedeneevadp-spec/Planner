@@ -22,3 +22,9 @@ export {
   type WorkspaceLocalDataInvalidationReason,
   WorkspaceLocalDataInvalidationUnavailableError,
 } from './workspace-local-data-invalidation'
+export {
+  assertOfflineMutationsSettled,
+  trackOfflineMutation,
+  waitForWorkspaceMutations,
+  withWorkspaceMutationLock,
+} from './workspace-mutation-lock'

@@ -24,6 +24,60 @@ const CONFIG = {
 const RESOURCE = createMcpResource(CONFIG.publicBaseUrl)
 
 void describe('McpOAuthService', () => {
+  void it('binds refresh to its client and allows only one concurrent rotation', async () => {
+    const repository = new MemoryMcpOAuthTokenRepository()
+    const service = new McpOAuthService(repository, CONFIG)
+    await repository.createToken({
+      accessTokenHash: hashOpaqueToken('access-before-rotation'),
+      refreshTokenHash: hashOpaqueToken('refresh-before-rotation'),
+      clientId: 'chatgpt',
+      issuer: CONFIG.oauthIssuer,
+      resource: RESOURCE,
+      expiresAt: new Date(Date.now() + 60_000),
+      scopes: ['haotika:tasks.read'],
+      userId: USER_ID,
+    })
+    const input = {
+      grantType: 'refresh_token' as const,
+      refreshToken: 'refresh-before-rotation',
+      clientId: 'chatgpt',
+    }
+    for (const clientId of ['wrong-client', undefined]) {
+      await assert.rejects(
+        service.exchangeToken({ ...input, clientId }),
+        (error) =>
+          error instanceof McpHaotikaError && error.code === 'UNAUTHORIZED',
+      )
+    }
+    const results = await Promise.allSettled([
+      service.exchangeToken(input),
+      service.exchangeToken(input),
+    ])
+    assert.equal(
+      results.filter((result) => result.status === 'fulfilled').length,
+      1,
+    )
+    assert.equal(
+      results.filter((result) => result.status === 'rejected').length,
+      1,
+    )
+    await assert.rejects(
+      service.authenticateBearer('Bearer access-before-rotation', [
+        'haotika:tasks.read',
+      ]),
+    )
+    await assert.rejects(service.exchangeToken(input))
+    const success = results.find((result) => result.status === 'fulfilled')
+    assert.equal(success?.status, 'fulfilled')
+    if (success?.status === 'fulfilled') {
+      const auth = await service.authenticateBearer(
+        `Bearer ${success.value.access_token}`,
+        ['haotika:tasks.read'],
+      )
+      assert.equal(auth.userId, USER_ID)
+      assert.equal(success.value.scope, 'haotika:tasks.read')
+    }
+  })
   void it('requires every day or week scope for both empty and omitted include', async () => {
     const repository = new MemoryMcpOAuthTokenRepository()
     const service = new McpOAuthService(repository, CONFIG)

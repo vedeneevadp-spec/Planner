@@ -60,30 +60,34 @@ export async function downloadUserBackup(
   options: DownloadUserBackupOptions,
   fetchFn: typeof fetch = fetch,
 ): Promise<DownloadUserBackupResult> {
-  const { send } = createUserBackupRequester(options, fetchFn)
-  const response = await send({
-    actorHeader: 'always',
-    fallbackErrorMessage: 'Failed to download backup.',
-    path: '/api/v1/backups/export',
-  })
+  const { requestResponse } = createUserBackupRequester(options, fetchFn)
+  return requestResponse(
+    {
+      actorHeader: 'always',
+      fallbackErrorMessage: 'Failed to download backup.',
+      path: '/api/v1/backups/export',
+      timeoutMs: 120_000,
+    },
+    async (response) => {
+      if (!response.ok) {
+        const payload = await readResponsePayload(response)
 
-  if (!response.ok) {
-    const payload = await readResponsePayload(response)
+        throwApiError({
+          createError: (message, errorOptions) =>
+            new UserBackupApiError(message, errorOptions),
+          fallbackCode: 'backup_export_failed',
+          fallbackMessage: 'Failed to download backup.',
+          payload,
+          response,
+        })
+      }
 
-    throwApiError({
-      createError: (message, errorOptions) =>
-        new UserBackupApiError(message, errorOptions),
-      fallbackCode: 'backup_export_failed',
-      fallbackMessage: 'Failed to download backup.',
-      payload,
-      response,
-    })
-  }
-
-  return {
-    fileName: getBackupFileName(response.headers),
-    text: await readResponseText(response, options.onProgress),
-  }
+      return {
+        fileName: getBackupFileName(response.headers),
+        text: await readResponseText(response, options.onProgress),
+      }
+    },
+  )
 }
 
 export async function previewUserBackupImport(
@@ -125,6 +129,7 @@ export async function restoreUserBackupImport(
     },
     method: 'POST',
     path: '/api/v1/backups/import/restore',
+    timeoutMs: 120_000,
     responseSchema: userBackupRestoreResponseSchema,
     writeAccess: true,
   })

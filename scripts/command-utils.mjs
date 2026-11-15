@@ -6,6 +6,7 @@ function resolveCommand(baseName) {
 
 export async function runCommand(command, args, options = {}) {
   const child = spawn(command, args, {
+    cwd: options.cwd,
     env: options.env ?? process.env,
     stdio: 'inherit',
   })

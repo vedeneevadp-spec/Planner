@@ -152,9 +152,7 @@ async function resolveBackupSetDirectory(restoreRoot) {
     'restore',
     'latest',
     '--tag',
-    'planner',
-    '--tag',
-    'kind:infrastructure',
+    'planner,kind:infrastructure',
     '--target',
     restoreRoot,
   ])

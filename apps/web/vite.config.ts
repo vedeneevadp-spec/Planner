@@ -15,6 +15,7 @@ const shouldAnalyzeBundle = process.env.ANALYZE_BUNDLE === '1'
 const shoppingContractsPath = path.join(contractsPath, 'chaos-inbox.ts')
 const integrationContractsPath = path.join(contractsPath, 'integrations.ts')
 const googleAuthContractsPath = path.join(contractsPath, 'google-auth.ts')
+const selfCareContractsPath = path.join(contractsPath, 'self-care.ts')
 
 export default defineConfig({
   root: appRoot,
@@ -43,13 +44,20 @@ export default defineConfig({
         moduleSideEffects: (id) =>
           id === shoppingContractsPath ||
           id === integrationContractsPath ||
-          id === googleAuthContractsPath
+          id === googleAuthContractsPath ||
+          id === selfCareContractsPath
             ? false
             : undefined,
       },
       output: {
         codeSplitting: {
           groups: [
+            {
+              includeDependenciesRecursively: false,
+              name: 'self-care-contracts',
+              priority: 100,
+              test: (id) => id === selfCareContractsPath,
+            },
             {
               includeDependenciesRecursively: false,
               name: 'google-auth-contracts',

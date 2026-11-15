@@ -4,6 +4,8 @@ import type {
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
 
+import { readWorkspaceWriteEpoch } from '@/shared/lib/api-client'
+
 export interface SelfCareCachedRead<TData> {
   data: TData
   lastSuccessfulSyncAt: string
@@ -74,6 +76,7 @@ export class SelfCareOfflinePurgeUnavailableError extends Error {
 }
 
 export interface SelfCareOfflineMutationRecord {
+  writeEpoch?: string
   actorUserId: string
   attemptCount: number
   clientTimeZone?: string | undefined
@@ -571,6 +574,7 @@ export async function updateCachedSelfCareReadDataIfUnchanged<TData>(
 export async function enqueueSelfCareOfflineMutation(
   input: EnqueueSelfCareOfflineMutationInput,
 ): Promise<SelfCareOfflineMutationRecord | null> {
+  const writeEpoch = readWorkspaceWriteEpoch(input.workspaceId)
   const db = getSelfCareOfflineDatabase()
   const generation =
     input.expectedWriteGeneration ??
@@ -618,6 +622,7 @@ export async function enqueueSelfCareOfflineMutation(
         const now = new Date().toISOString()
         const record: SelfCareOfflineMutationRecord = {
           actorUserId: input.actorUserId,
+          writeEpoch,
           attemptCount: 0,
           ...(input.clientTimeZone
             ? { clientTimeZone: input.clientTimeZone }

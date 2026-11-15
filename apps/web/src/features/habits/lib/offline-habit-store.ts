@@ -12,6 +12,11 @@ import {
 import Dexie, { type Table } from 'dexie'
 
 import {
+  assertOfflineMutationsSettled,
+  waitForWorkspaceMutations,
+} from '@/shared/lib/offline-sync'
+
+import {
   removeEntryInTodayResponse,
   removeHabitFromTodayResponse,
   upsertEntryInTodayResponse,
@@ -218,6 +223,11 @@ export async function clearHabitOfflineWorkspaceData(
   workspaceId: string,
 ): Promise<void> {
   const generation = getHabitOfflineWorkspaceWriteGeneration(workspaceId) + 1
+  // Invalidate senders first without scheduling deletion. If an in-flight
+  // response is lost, preserve the durable commands so they can be replayed.
+  beginHabitOfflineWorkspacePurge(workspaceId, generation, false)
+  await waitForWorkspaceMutations(`offline:habits:${workspaceId}`)
+  assertOfflineMutationsSettled(workspaceId)
   const markerPersisted = beginHabitOfflineWorkspacePurge(
     workspaceId,
     generation,
@@ -536,6 +546,10 @@ export async function enqueueHabitOfflineMutation(
           .filter(
             (mutation) =>
               mutation.actorUserId === input.actorUserId &&
+              mutation.status !== 'syncing' &&
+              // An attempted command may have reached the server. Preserve
+              // its exact payload for reconciliation, even after a timeout.
+              mutation.attemptCount === 0 &&
               RETRYABLE_QUEUE_STATUSES.includes(mutation.status),
           )
           .toArray()
@@ -631,15 +645,25 @@ export async function countConflictedHabitOfflineMutations(
 export async function markHabitOfflineMutationSyncing(
   mutationId: string,
 ): Promise<void> {
-  await runHabitMutationWrite(mutationId, (db, mutation) =>
-    db.mutationQueue.update(mutationId, {
-      attemptCount: mutation.attemptCount + 1,
-      conflictActualVersion: null,
-      conflictExpectedVersion: null,
-      lastError: null,
-      status: 'syncing',
-      updatedAt: new Date().toISOString(),
-    }),
+  await claimHabitOfflineMutation(mutationId)
+}
+
+export async function claimHabitOfflineMutation(
+  mutationId: string,
+): Promise<HabitOfflineMutationRecord | null> {
+  return (
+    (await runHabitMutationWrite(mutationId, async (db, mutation) => {
+      if (!RETRYABLE_QUEUE_STATUSES.includes(mutation.status)) return null
+      const claimed: HabitOfflineMutationRecord = {
+        ...mutation,
+        attemptCount: mutation.attemptCount + 1,
+        lastError: null,
+        status: 'syncing',
+        updatedAt: new Date().toISOString(),
+      }
+      await db.mutationQueue.put(claimed)
+      return claimed
+    })) ?? null
   )
 }
 
@@ -711,7 +735,9 @@ async function getHabitOfflineDatabaseForAccess(
   return db
 }
 
-function getHabitOfflineWorkspaceWriteGeneration(workspaceId: string): number {
+export function getHabitOfflineWorkspaceWriteGeneration(
+  workspaceId: string,
+): number {
   ensureHabitOfflineLifecycleStorageListener()
   const runtimeGeneration = workspaceWriteGenerations.get(workspaceId) ?? 0
   const persistedGeneration =
@@ -731,7 +757,7 @@ function getHabitOfflineWorkspaceWriteGeneration(workspaceId: string): number {
   return generation
 }
 
-function isHabitOfflineWorkspaceWriteGenerationCurrent(
+export function isHabitOfflineWorkspaceWriteGenerationCurrent(
   workspaceId: string,
   expectedWriteGeneration: number,
 ): boolean {
@@ -792,13 +818,13 @@ async function runHabitWorkspaceWrite<T>(
   }
 }
 
-async function runHabitMutationWrite(
+async function runHabitMutationWrite<T>(
   mutationId: string,
   write: (
     db: HabitOfflineDatabase,
     mutation: HabitOfflineMutationRecord,
-  ) => Promise<unknown>,
-): Promise<void> {
+  ) => Promise<T>,
+): Promise<T | undefined> {
   const db = await getHabitOfflineDatabaseForAccess()
 
   if (!db) {
@@ -815,7 +841,7 @@ async function runHabitMutationWrite(
     mutation.workspaceId,
   )
 
-  await runHabitWorkspaceWrite(
+  return runHabitWorkspaceWrite(
     mutation.workspaceId,
     writeGeneration,
     async (currentDb) => {
@@ -825,7 +851,7 @@ async function runHabitMutationWrite(
         return
       }
 
-      await write(currentDb, currentMutation)
+      return write(currentDb, currentMutation)
     },
   )
 }
@@ -838,16 +864,16 @@ async function waitForHabitWorkspaceWrites(workspaceId: string): Promise<void> {
 function beginHabitOfflineWorkspacePurge(
   workspaceId: string,
   generation: number,
+  pending = true,
 ): boolean {
   workspaceWriteGenerations.set(workspaceId, generation)
   runtimeInvalidatedWorkspaces.set(workspaceId, generation)
-  localPendingPurgeWorkspaces.set(workspaceId, generation)
+  if (pending) localPendingPurgeWorkspaces.set(workspaceId, generation)
   const lifecycle = readStoredHabitOfflineWorkspaceLifecycleState(workspaceId)
   return writeStoredHabitOfflineWorkspaceLifecycleState(workspaceId, {
-    pendingPurgeGeneration: Math.max(
-      lifecycle.pendingPurgeGeneration ?? 0,
-      generation,
-    ),
+    pendingPurgeGeneration: pending
+      ? Math.max(lifecycle.pendingPurgeGeneration ?? 0, generation)
+      : lifecycle.pendingPurgeGeneration,
     writeGeneration: Math.max(lifecycle.writeGeneration, generation),
   })
 }
@@ -1656,4 +1682,19 @@ function compareOfflineMutations(
   }
 
   return left.createdAt.localeCompare(right.createdAt)
+}
+
+// Legacy UI is retired. Preserve every queued payload, including conflicts,
+// for a user-controlled export; never replay it into the migrated care model.
+export async function exportLegacyHabitCommands(
+  workspaceId: string,
+  actorUserId: string,
+): Promise<HabitOfflineMutationRecord[]> {
+  const db = await getHabitOfflineDatabaseForAccess(workspaceId)
+  if (!db) throw new Error('Не удалось прочитать локальные изменения привычек.')
+  return db.mutationQueue
+    .where('workspaceId')
+    .equals(workspaceId)
+    .filter((mutation) => mutation.actorUserId === actorUserId)
+    .toArray()
 }

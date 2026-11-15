@@ -9,12 +9,9 @@ import { selfCareCompletionSchema } from '@planner/contracts'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  SelfCareHistoryTab,
-  SelfCarePlanTab,
-  SelfCareRitualsTab,
-  SelfCareTodayTab,
-} from './SelfCarePage.components'
+import { SelfCareRitualsTab, SelfCareTodayTab } from './SelfCarePage.components'
+import { SelfCareHistoryTab } from './SelfCarePage.history-tab'
+import { SelfCarePlanTab } from './SelfCarePage.plan-tab'
 
 vi.mock('@/features/session', () => ({
   usePlannerTimeZone: () => 'Asia/Novosibirsk',

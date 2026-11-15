@@ -78,6 +78,7 @@ const LOCAL_DATA_CLEANUP_FAILED_MESSAGE =
 export function useSessionAuthController(): SessionAuthState {
   const isAuthEnabled = plannerApiConfig.authProvider === 'planner'
   const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
+  const authGenerationRef = useRef(0)
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const blockedNativeRefreshTokenRef = useRef<string | null>(null)
   const deferredRefreshRetryCountRef = useRef(0)
@@ -187,20 +188,29 @@ export function useSessionAuthController(): SessionAuthState {
   )
 
   const persistAuthSession = useCallback(
-    async (session: {
-      accessToken: string
-      expiresAt: string
-      refreshToken?: string | undefined
-      user: {
-        email: string
-        id: string
-      }
-    }): Promise<void> => {
+    async (
+      session: {
+        accessToken: string
+        expiresAt: string
+        refreshToken?: string | undefined
+        user: {
+          email: string
+          id: string
+        }
+      },
+      generation: number,
+    ): Promise<void> => {
+      if (generation !== authGenerationRef.current) return
+      const committedGeneration = ++authGenerationRef.current
+      sessionRecoveryRef.current = null
+      setIsRecoveringSession(false)
       const storedSession = toStoredAuthSession(session, {
         includeRefreshToken: isNativeSessionRuntime,
       })
 
       await writeStoredAuthSession(storedSession)
+      if (committedGeneration !== authGenerationRef.current) return
+      pendingSignOutNoticeRef.current = null
       cancelPasswordRecovery()
       restoreStoredAuthSession(storedSession)
     },
@@ -219,7 +229,9 @@ export function useSessionAuthController(): SessionAuthState {
         }
       },
       attemptedStoredSession: StoredAuthSession | null,
-    ): Promise<void> => {
+      generation: number,
+    ): Promise<boolean> => {
+      if (generation !== authGenerationRef.current) return false
       const refreshedStoredSession = toStoredAuthSession(session, {
         includeRefreshToken: isNativeSessionRuntime,
       })
@@ -234,13 +246,19 @@ export function useSessionAuthController(): SessionAuthState {
         await writeStoredAuthSession(refreshedStoredSession)
       }
 
+      if (generation !== authGenerationRef.current) return false
       restoreStoredAuthSession(committedSession)
+      return true
     },
     [isNativeSessionRuntime, restoreStoredAuthSession],
   )
 
   const clearAuthSession = useCallback(
     async (notice: string | false | null) => {
+      const generation = ++authGenerationRef.current
+      pendingSignOutNoticeRef.current = notice
+      sessionRecoveryRef.current = null
+      setIsRecoveringSession(false)
       const actorUserId = snapshot.userId ?? getLastActorUserId()
       const refreshToken = isNativeSessionRuntime
         ? snapshot.refreshToken
@@ -256,7 +274,8 @@ export function useSessionAuthController(): SessionAuthState {
 
       clearRefreshTimer()
       deferredRefreshRetryCountRef.current = 0
-      if (isNativeSessionRuntime) {
+      const nativePushCleanup = (async () => {
+        if (!isNativeSessionRuntime) return
         const { unregisterStoredNativePushDevice } =
           await import('./native-push-notifications')
 
@@ -265,29 +284,58 @@ export function useSessionAuthController(): SessionAuthState {
           actorUserId,
           apiBaseUrl: plannerApiConfig.apiBaseUrl,
         })
-      }
+      })().catch((error: unknown) => {
+        console.warn(
+          'Failed to unregister native push device during sign out.',
+          error,
+        )
+      })
 
-      pendingSignOutNoticeRef.current = notice
       blockedNativeRefreshTokenRef.current = null
       setAuthNotice(notice === false ? null : notice)
       setIsSignInRequired(false)
       clearCachedPlannerSession(actorUserId)
       clearSelectedWorkspaceId(actorUserId)
       clearLastActorUserId()
-      await clearStoredAuthSession()
+      const storageCleanup = clearStoredAuthSession().then(
+        () => null,
+        (error: unknown) => error,
+      )
       dispatchAuthState({ type: 'auth.session_cleared' })
-      const offlineCleanupResult = await offlineCleanup
+      // Revocation must not wait for a blocked IndexedDB cleanup or an
+      // unresolved offline write. Keep local cleanup and remote logout independent.
+      const remoteSignOut = (async () => {
+        if (!isNativeSessionRuntime || refreshToken) {
+          await signOutAuthSession(
+            refreshToken ? { refreshToken } : {},
+            await createAuthRequestOptions({ requireDeviceId: false }),
+          )
+        }
+      })().catch((error: unknown) => {
+        if (!isUnauthorizedAuthApiError(error)) {
+          console.error('Failed to revoke auth session.', error)
+        }
+      })
+      const [offlineCleanupResult, storageCleanupError] = await Promise.all([
+        offlineCleanup,
+        storageCleanup,
+        nativePushCleanup,
+      ])
 
-      if (offlineCleanupResult.failures.length > 0) {
-        setAuthNotice(LOCAL_DATA_CLEANUP_FAILED_MESSAGE)
+      if (offlineCleanupResult.failures.length > 0 || storageCleanupError) {
+        if (generation === authGenerationRef.current)
+          setAuthNotice(LOCAL_DATA_CLEANUP_FAILED_MESSAGE)
         console.error(
           'Failed to clear offline workspace data after session removal.',
           offlineCleanupResult.failures,
+          storageCleanupError,
         )
         recordClientEvent(
           'auth_local_data_cleanup_failed',
           {
-            failureCount: offlineCleanupResult.failures.length,
+            failureCount:
+              offlineCleanupResult.failures.length +
+              (storageCleanupError ? 1 : 0),
             workspaceCount: offlineCleanupResult.workspaceIds.length,
           },
           { level: 'error' },
@@ -304,20 +352,10 @@ export function useSessionAuthController(): SessionAuthState {
         { level: notice === false ? 'info' : 'warn' },
       )
 
-      if (!isNativeSessionRuntime || refreshToken) {
-        await signOutAuthSession(
-          refreshToken ? { refreshToken } : {},
-          await createAuthRequestOptions({
-            requireDeviceId: false,
-          }),
-        ).catch((error) => {
-          if (!isUnauthorizedAuthApiError(error)) {
-            console.error('Failed to revoke auth session.', error)
-          }
-        })
-      }
+      await remoteSignOut
 
-      pendingSignOutNoticeRef.current = null
+      if (generation === authGenerationRef.current)
+        pendingSignOutNoticeRef.current = null
     },
     [
       clearRefreshTimer,
@@ -393,15 +431,19 @@ export function useSessionAuthController(): SessionAuthState {
     async (
       options: SessionRecoveryOptions = {},
     ): Promise<SessionRecoveryResult> => {
+      if (pendingSignOutNoticeRef.current !== null) return 'signed_out'
       if (sessionRecoveryRef.current) {
         return sessionRecoveryRef.current
       }
 
       setIsRecoveringSession(true)
+      const generation = authGenerationRef.current
       const recovery = (async () => {
         setAuthNotice(null)
 
         const storedSession = await readStoredAuthSession()
+        if (generation !== authGenerationRef.current)
+          return 'signed_out' as const
         const recoveryCommand = transitionSessionAuthMachine({
           blockedRefreshToken: options.retryDeniedRefresh
             ? null
@@ -440,10 +482,15 @@ export function useSessionAuthController(): SessionAuthState {
               if (isNativeSessionRuntime && refreshStoredSession) {
                 refreshStoredSession =
                   await prepareStoredAuthSessionRefresh(refreshStoredSession)
+                if (generation !== authGenerationRef.current)
+                  return 'signed_out' as const
                 attemptedRefreshToken =
                   refreshStoredSession.refreshToken ?? attemptedRefreshToken
               }
 
+              const requestOptions = await createAuthRequestOptions()
+              if (generation !== authGenerationRef.current)
+                return 'signed_out' as const
               const refreshedSession = await refreshAuthSession(
                 attemptedRefreshToken
                   ? {
@@ -456,19 +503,26 @@ export function useSessionAuthController(): SessionAuthState {
                         : {}),
                     }
                   : {},
-                await createAuthRequestOptions(),
+                requestOptions,
               )
+              if (generation !== authGenerationRef.current)
+                return 'signed_out' as const
               recordClientEvent('auth_refresh_succeeded', {
                 nativeRuntime: isNativeSessionRuntime,
                 tokenTransport: attemptedRefreshToken ? 'body' : 'cookie',
               })
-              await persistRefreshedAuthSession(
+              const committed = await persistRefreshedAuthSession(
                 refreshedSession,
                 refreshStoredSession,
+                generation,
               )
 
-              return 'recovered' as const
+              return committed
+                ? ('recovered' as const)
+                : ('signed_out' as const)
             } catch (error) {
+              if (generation !== authGenerationRef.current)
+                return 'signed_out' as const
               recordClientEvent(
                 'auth_refresh_failed',
                 {
@@ -513,6 +567,8 @@ export function useSessionAuthController(): SessionAuthState {
                       )
                       return null
                     })
+                  if (generation !== authGenerationRef.current)
+                    return 'signed_out' as const
 
                   const storageCommand = transitionSessionAuthMachine({
                     error: refreshFailureCommand.error,
@@ -587,8 +643,10 @@ export function useSessionAuthController(): SessionAuthState {
             )
         }
       })().finally(() => {
-        sessionRecoveryRef.current = null
-        setIsRecoveringSession(false)
+        if (sessionRecoveryRef.current === recovery) {
+          sessionRecoveryRef.current = null
+          setIsRecoveringSession(false)
+        }
       })
 
       sessionRecoveryRef.current = recovery
@@ -612,7 +670,10 @@ export function useSessionAuthController(): SessionAuthState {
 
   const restoreSession =
     useCallback(async (): Promise<SessionRecoveryResult> => {
+      if (pendingSignOutNoticeRef.current !== null) return 'signed_out'
+      const generation = authGenerationRef.current
       const storedSession = await readStoredAuthSession()
+      if (generation !== authGenerationRef.current) return 'signed_out'
       const restoreCommand = transitionSessionAuthMachine({
         currentHasAccessToken: Boolean(snapshot.sessionAccessToken),
         isAuthEnabled,
@@ -798,13 +859,14 @@ export function useSessionAuthController(): SessionAuthState {
 
   const signInWithPassword = useCallback(
     async (email: string, password: string) => {
+      const generation = authGenerationRef.current
       setAuthNotice(null)
 
       const session = await signInWithPasswordApi(
         { email, password },
         await createAuthRequestOptions(),
       )
-      await persistAuthSession(session)
+      await persistAuthSession(session, generation)
     },
     [createAuthRequestOptions, persistAuthSession],
   )
@@ -816,6 +878,7 @@ export function useSessionAuthController(): SessionAuthState {
 
   const signInWithGoogle = useCallback(
     async (input: GoogleAuthSignInInput) => {
+      const generation = authGenerationRef.current
       setAuthNotice(null)
       const { signInWithGoogle: signInWithGoogleApi } =
         await import('./google-auth-api')
@@ -823,20 +886,21 @@ export function useSessionAuthController(): SessionAuthState {
         input,
         await createAuthRequestOptions(),
       )
-      await persistAuthSession(session)
+      await persistAuthSession(session, generation)
     },
     [createAuthRequestOptions, persistAuthSession],
   )
 
   const signUpWithPassword = useCallback(
     async (input: PasswordSignUpInput) => {
+      const generation = authGenerationRef.current
       setAuthNotice(null)
 
       const session = await signUpWithPasswordApi(
         input,
         await createAuthRequestOptions(),
       )
-      await persistAuthSession(session)
+      await persistAuthSession(session, generation)
 
       return {
         requiresEmailConfirmation: false,
@@ -855,6 +919,7 @@ export function useSessionAuthController(): SessionAuthState {
 
   const updatePassword = useCallback(
     async (password: string, currentPassword?: string) => {
+      const generation = authGenerationRef.current
       setAuthNotice(null)
 
       if (passwordResetToken) {
@@ -865,7 +930,7 @@ export function useSessionAuthController(): SessionAuthState {
           },
           await createAuthRequestOptions(),
         )
-        await persistAuthSession(session)
+        await persistAuthSession(session, generation)
         return
       }
 
@@ -881,7 +946,7 @@ export function useSessionAuthController(): SessionAuthState {
         snapshot.sessionAccessToken,
         await createAuthRequestOptions(),
       )
-      await persistAuthSession(session)
+      await persistAuthSession(session, generation)
     },
     [
       createAuthRequestOptions,

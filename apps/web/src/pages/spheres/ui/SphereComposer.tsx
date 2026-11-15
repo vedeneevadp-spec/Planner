@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import { SphereForm, type SphereFormValues } from './SphereForm'
 import styles from './SpheresPage.module.css'
@@ -83,7 +84,7 @@ export function SphereComposer({
 
       {isOpen && typeof document !== 'undefined'
         ? createPortal(
-            <div
+            <ModalSurface
               className={styles.modalOverlay}
               role="dialog"
               aria-modal="true"
@@ -127,7 +128,7 @@ export function SphereComposer({
                   }}
                 />
               </section>
-            </div>,
+            </ModalSurface>,
             document.body,
           )
         : null}

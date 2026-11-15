@@ -1,0 +1,215 @@
+{
+  "date": "2026-11-15",
+  "scope": "Local remediation of the remaining audit debt and server fencing for writes after personal JSON restore",
+  "status": "completed_with_environment_limits",
+  "git": {
+    "branch": "codex/audit-remediation-20261115",
+    "baseCommit": "6a6a9d7638846f76f0122e82b9ceab25144e5c19",
+    "uncommitted": true
+  },
+  "logsRoot": "tmp/debt-reaudit-20261115",
+  "checks": {
+    "ci": {
+      "status": "passed",
+      "exitCode": 0,
+      "command": "npm run ci",
+      "log": "ci-final.log",
+      "includes": [
+        "lint",
+        "format",
+        "typecheck",
+        "unit tests",
+        "dependency audits",
+        "deadcode:strict",
+        "coverage guards",
+        "OpenAPI",
+        "mobile:ci-check",
+        "build",
+        "bundle budgets"
+      ]
+    },
+    "web": {
+      "status": "passed",
+      "tests": 1450,
+      "files": 156,
+      "lineCoveragePercent": 76.32,
+      "branchCoveragePercent": 70.05,
+      "log": "ci-final.log"
+    },
+    "apiUnit": {
+      "status": "passed",
+      "tests": 499,
+      "lineCoveragePercent": 90.74,
+      "branchCoveragePercent": 84.62,
+      "log": "ci-final.log"
+    },
+    "postgres": {
+      "status": "passed",
+      "tests": 129,
+      "skipped": 0,
+      "includesOptInMigrationTests": 2,
+      "log": "postgres-final-verified.log"
+    },
+    "postgresCoverage": {
+      "status": "passed",
+      "tests": 60,
+      "lineCoveragePercent": 81.98,
+      "branchCoveragePercent": 73.03,
+      "log": "ci-final.log"
+    },
+    "poolerContracts": {
+      "status": "passed",
+      "tests": 14,
+      "lineCoveragePercent": 91.76,
+      "branchCoveragePercent": 75.21,
+      "log": "ci-final.log"
+    },
+    "scripts": {
+      "status": "passed",
+      "tests": 73,
+      "log": "ci-final.log"
+    },
+    "e2e": {
+      "status": "passed",
+      "tests": 34,
+      "workers": 1,
+      "log": "e2e-complete.log"
+    },
+    "productionApiArtifact": {
+      "status": "passed",
+      "productionDependenciesOnly": true,
+      "nonOwnerDatabaseRole": true,
+      "log": "api-artifact-final-verified.log"
+    },
+    "productionPwa": {
+      "status": "passed",
+      "scenario": "waiting worker and preservation of document and unsaved form",
+      "log": "pwa-final-verified.log"
+    },
+    "android": {
+      "status": "passed",
+      "jvmTests": 32,
+      "suites": 8,
+      "debugApkBuilt": true,
+      "instrumentationApkBuilt": true,
+      "instrumentationExecuted": false,
+      "log": "android-build-final.log",
+      "budgetLog": "android-budget-verified.log"
+    },
+    "iosAuthRegression": {
+      "status": "passed",
+      "log": "swift-final.log"
+    },
+    "iosFullBuild": {
+      "status": "blocked_environment",
+      "reason": "Xcode fails loading IDESimulatorFoundation because the installed DVTDownloads lacks a required symbol, before app compilation",
+      "log": "ios-full-final.log"
+    },
+    "dependencyAudits": {
+      "status": "passed",
+      "productionVulnerabilities": 0,
+      "fullVulnerabilities": 0,
+      "log": "ci-final.log"
+    },
+    "freshMigrations": {
+      "status": "passed",
+      "count": 120,
+      "log": "migrations-final-3.log"
+    },
+    "migrationReplay": {
+      "status": "passed",
+      "verifiedChecksums": 120,
+      "log": "migrations-replay-final.log"
+    },
+    "databasePermissions": {
+      "status": "passed",
+      "runtimeLog": "security-runtime-final.log",
+      "restoreRoleLog": "restore-privileges-final.log"
+    },
+    "restoreGuardScope": {
+      "status": "passed",
+      "restorePolicyTables": 32,
+      "guardedDomainTables": 35,
+      "guardedProfileColumns": 9,
+      "missingTables": [],
+      "log": "restore-guard-scope.json"
+    },
+    "bundle": {
+      "status": "passed",
+      "initialJsKiB": 771.6,
+      "previousStageInitialJsKiB": 789.3,
+      "unchangedInitialLimitKiB": 790,
+      "entryJsKiB": 102.9,
+      "selfCareRouteJsKiB": 112.2,
+      "calendarRouteJsKiB": 39.9,
+      "log": "ci-final.log"
+    },
+    "assetGc": {
+      "status": "passed",
+      "defaultMode": "dry-run",
+      "verifiedLocalBackups": 1,
+      "orphanCandidates": 1,
+      "candidateBytes": 16,
+      "runtimeRoleRejected": true,
+      "newDatabaseSessionDetected": true,
+      "productionDeletionExecuted": false,
+      "logs": [
+        "gc-backup-3.log",
+        "gc-dry-run.json",
+        "gc-runtime-rejection.log",
+        "gc-final-regression.log"
+      ]
+    },
+    "visualReview": {
+      "status": "passed",
+      "views": [
+        "calendar desktop",
+        "self-care plan",
+        "self-care settings desktop",
+        "self-care history mobile",
+        "backup/recovery desktop"
+      ],
+      "pageErrors": 0,
+      "log": "visual-check.log"
+    }
+  },
+  "restoreRegressions": [
+    "Real PostgreSQL advisory lock contention: older write commits before restore or is rejected afterward",
+    "P4009 maps to HTTP 409 workspace_restored; metadata cannot be overwritten by the runtime role",
+    "Restore rollback and idempotent replay do not advance the epoch",
+    "Session snapshots and selected/personal workspace epochs remain consistent through restore",
+    "Old shared-to-personal copy and profile update fail; current operations succeed",
+    "Offline commands capture their epoch before the first asynchronous wait",
+    "Late Android bridge responses and commands retain their original client; stale ACK cannot remove new-generation pending IDs",
+    "API key, Alice and MCP original issuance survives refresh; credential creation is serialized against restore",
+    "Direct RPC conflicts fail immediately without deadlocking privileged restore",
+    "Owner/BYPASSRLS maintenance without user claims remains possible"
+  ],
+  "intermediateFailures": [
+    "Offline care creation needed the lazy Plan chunk before opening its form; fixed and rerun",
+    "A new regression test used a restricted internal import; changed to the public API and full CI rerun",
+    "A fixed password-recovery E2E email accumulated the real per-email rate limit; fixture is now unique per run, with production limits unchanged"
+  ],
+  "limits": [
+    "Production, remote CI, physical Android/iOS devices, external SMTP/FCM/OAuth and offsite disaster recovery were not exercised",
+    "Android instrumentation test APK was compiled but its tests were not executed on a device",
+    "Pinned Gradle 9.8.2 builds successfully; AGP/Capacitor/generated Cordova deprecations remain an external compatibility issue for a future Gradle upgrade",
+    "Full infrastructure database rollback also rewinds epoch metadata and requires separate invalidation of sessions, keys and offline queues",
+    "Tests and bounded SQL result checks are not a production load benchmark"
+  ],
+  "rollout": {
+    "executed": false,
+    "requiredMigrations": ["000115", "000116", "000117", "000118", "000119"],
+    "coordinatedApiWebNativeUpdate": true,
+    "legacyEpochDefault": "0",
+    "oldIntegrationsRequireNewCredentialOrRelink": true
+  },
+  "cleanup": {
+    "container": "planner-debt-20261115",
+    "status": "removed",
+    "ownedTestPortsClosed": true,
+    "logs": ["cleanup.log", "cleanup-ports.json"]
+  },
+  "completedAt": "2026-11-15T14:48:35.385915+00:00",
+  "confirmedOpenP1P2InReviewedScope": 0
+}

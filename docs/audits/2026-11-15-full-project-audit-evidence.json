@@ -1,0 +1,295 @@
+{
+  "date": "2026-11-15",
+  "timezone": "Asia/Novosibirsk",
+  "scope": "Local code and isolated runtime audit; no production changes",
+  "local_commit": "6a6a9d7638846f76f0122e82b9ceab25144e5c19",
+  "remote_main_observed": "a832be3f240e38a9763f8e74453d67726bd525b3",
+  "remote_drift": "package.json/package-lock.json only: glob14.0.4->14.0.5; minimatch override11.0.5->11.0.8",
+  "checks": [
+    {
+      "name": "lint",
+      "result": "passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/lint.log"
+    },
+    {
+      "name": "format",
+      "result": "passed before report creation",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/format.log"
+    },
+    {
+      "name": "typecheck",
+      "result": "passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/typecheck.log"
+    },
+    {
+      "name": "web_unit",
+      "result": "1404 passed in 147 files",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/web-tests.log"
+    },
+    {
+      "name": "api_unit",
+      "result": "481 passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-tests-unrestricted.log"
+    },
+    {
+      "name": "postgres",
+      "result": "122 passed, 2 opt-in skipped then passed separately",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/postgres-tests.log"
+    },
+    {
+      "name": "voice_migration",
+      "result": "2 passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/voice-migration.log"
+    },
+    {
+      "name": "pooler_contracts",
+      "result": "14 passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/postgres-pooler-tests.log"
+    },
+    {
+      "name": "script_tests",
+      "result": "66 passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/scripts-tests.log"
+    },
+    {
+      "name": "e2e",
+      "result": "32 passed; workers=1; browser mobile bridge mocks",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/e2e.log"
+    },
+    {
+      "name": "android_unit",
+      "result": "31 passed, fresh rerun",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/android-unit-fresh.log"
+    },
+    {
+      "name": "migrations",
+      "result": "115 files applied to empty isolated PostgreSQL18",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/migrations.log"
+    },
+    {
+      "name": "non_owner_rls",
+      "result": "passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/runtime-role.log"
+    },
+    {
+      "name": "build_budget",
+      "result": "passed; initial JS 786.9 KiB uncompressed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/build.log"
+    },
+    {
+      "name": "static_gates",
+      "result": "passed except toolchain",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/static-gates.log"
+    },
+    {
+      "name": "toolchain",
+      "result": "failed: npm12.2.1 versus required12.2.2; node26.13.0 correct",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/static-gates.log"
+    },
+    {
+      "name": "web_coverage",
+      "result": "passed",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/web-coverage.log"
+    },
+    {
+      "name": "api_coverage",
+      "result": "passed; excludes PostgreSQL repositories",
+      "log": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-coverage.log"
+    }
+  ],
+  "findings": [
+    {
+      "id": "A01",
+      "priority": "P1",
+      "title": "Unverified email can accept workspace invitation",
+      "evidence_level": "runtime isolated PostgreSQL",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-invitation-postgres-repro.log"
+    },
+    {
+      "id": "A02",
+      "priority": "P1",
+      "title": "Alice accepts revoked session",
+      "evidence_level": "Fastify inject and inactive session validator",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-security-repro.log"
+    },
+    {
+      "id": "A03",
+      "priority": "P1",
+      "title": "Shopping queue sends commands after purge",
+      "evidence_level": "fake-indexeddb with held network response",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/offline-queue-repro.log"
+    },
+    {
+      "id": "A04",
+      "priority": "P1 iOS",
+      "title": "Native refresh plugin contract mismatch",
+      "evidence_level": "static Swift/TypeScript; no physical device",
+      "artifact": null
+    },
+    {
+      "id": "A05",
+      "priority": "P2",
+      "title": "MCP refresh non-atomic and client binding missing",
+      "evidence_level": "repository double; no concurrent PostgreSQL MCP test",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-security-repro.log"
+    },
+    {
+      "id": "A06",
+      "priority": "P2 conditional",
+      "title": "Anonymous Alice parsing may invoke paid provider",
+      "evidence_level": "stub fetch; production LLM enablement unknown",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-security-repro.log"
+    },
+    {
+      "id": "A07",
+      "priority": "P2",
+      "title": "Shopping first page hides active items",
+      "evidence_level": "real client and MemoryChaosInboxRepository",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/web-additional-repro-output.json"
+    },
+    {
+      "id": "A08",
+      "priority": "P2 legacy",
+      "title": "Habit queue ACK deletes newer change",
+      "evidence_level": "runtime local repro; current UI path disabled",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/offline-queue-repro.log"
+    },
+    {
+      "id": "A09",
+      "priority": "P2",
+      "title": "Avatar postcommit cleanup deletes saved new file",
+      "evidence_level": "service with storage failure double",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-security-repro.log"
+    },
+    {
+      "id": "A10",
+      "priority": "P2",
+      "title": "Database and asset backups can disagree",
+      "evidence_level": "static concurrency trace; production not inspected",
+      "artifact": null
+    },
+    {
+      "id": "A11",
+      "priority": "P2",
+      "title": "Restic retention groups unique backup paths",
+      "evidence_level": "static plus official documentation",
+      "artifact": null
+    },
+    {
+      "id": "A12",
+      "priority": "P2 conditional",
+      "title": "Database credentials in backup process arguments",
+      "evidence_level": "static; production process visibility unknown",
+      "artifact": null
+    },
+    {
+      "id": "A13",
+      "priority": "P2 local dev",
+      "title": "Development database bound on all interfaces",
+      "evidence_level": "compose and docker ps; external reachability untested",
+      "artifact": null
+    },
+    {
+      "id": "A14",
+      "priority": "P2",
+      "title": "Modal keyboard focus escapes",
+      "evidence_level": "Chromium 19 Tab presses",
+      "artifact": "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/modal-focus-result.json"
+    }
+  ],
+  "additional_risks": [
+    "Generic API requester lacks operation deadline",
+    "PWA controllerchange reload ignores dirty drafts; real update not tested"
+  ],
+  "web_coverage": {
+    "lines": {
+      "total": 16487,
+      "covered": 12112,
+      "skipped": 0,
+      "pct": 73.46
+    },
+    "statements": {
+      "total": 16891,
+      "covered": 12362,
+      "skipped": 0,
+      "pct": 73.18
+    },
+    "functions": {
+      "total": 4923,
+      "covered": 3552,
+      "skipped": 0,
+      "pct": 72.15
+    },
+    "branches": {
+      "total": 15281,
+      "covered": 10420,
+      "skipped": 0,
+      "pct": 68.18
+    },
+    "branchesTrue": {
+      "total": 0,
+      "covered": 0,
+      "skipped": 0,
+      "pct": 100
+    }
+  },
+  "api_unit_coverage": {
+    "lines_pct": 90.72,
+    "branches_pct": 84.44,
+    "functions_pct": 86.4,
+    "postgres_repositories_excluded": true
+  },
+  "android_unit": {
+    "tests": 31,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "npm_audit": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "dependencies": {
+      "prod": 131,
+      "dev": 605,
+      "optional": 100,
+      "peer": 7,
+      "peerOptional": 0,
+      "total": 736
+    }
+  },
+  "github": {
+    "ci": "https://github.com/vedeneevadp-spec/Planner/actions/runs/43606372544",
+    "security": "https://github.com/vedeneevadp-spec/Planner/actions/runs/43606372513",
+    "open_code_scanning": 35,
+    "codeql": 2,
+    "scorecard": 33,
+    "open_dependabot": 0
+  },
+  "sources": [
+    "https://restic.readthedocs.io/en/stable/060_forget.html#removing-snapshots-according-to-a-policy",
+    "https://www.postgresql.org/docs/current/libpq-pgpass.html"
+  ],
+  "not_checked": [
+    "Live production environment and filesystem permissions",
+    "Live offsite repository and restore drill",
+    "Physical mobile devices and real native authentication",
+    "Real SMTP/FCM/Google/Yandex delivery",
+    "Load tests",
+    "Full Git history secrets scan",
+    "PostgreSQL coverage",
+    "Local iOS build"
+  ],
+  "reproduction_scripts": [
+    "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-security-repro.mjs",
+    "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/api-invitation-postgres-repro.mjs",
+    "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/web-additional-repro.mts",
+    "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-2026-11-15/modal-focus-repro.mjs",
+    "/Users/daryavedeneeva/ Projects  /Planner/tmp/audit-web-mobile-20261115.mts"
+  ]
+}

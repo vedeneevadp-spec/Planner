@@ -56,7 +56,7 @@ final class PlannerWidgetStorage {
         return isSupportedRoute(route) ? route : null;
     }
 
-    static List<String> consumePendingCompletedTaskIds(Context context) {
+    static synchronized List<String> consumePendingCompletedTaskIds(Context context) {
         List<String> pendingTaskIds = readPendingCompletedTaskIds(context);
 
         removePendingCompletedTaskIds(context, pendingTaskIds);
@@ -64,11 +64,13 @@ final class PlannerWidgetStorage {
         return pendingTaskIds;
     }
 
-    static List<String> readPendingCompletedTaskIds(Context context) {
+    static synchronized List<String> readPendingCompletedTaskIds(Context context) {
         SharedPreferences preferences = getPreferences(context);
         Set<String> taskIds = preferences.getStringSet(PENDING_COMPLETED_TASK_IDS_KEY, Collections.emptySet());
         List<String> pendingTaskIds = new ArrayList<>();
 
+        PlannerWidgetSyncConfig config = readSyncConfig(context);
+        if (config != null && !config.writeEpoch.equals(readPendingWriteEpoch(context))) return pendingTaskIds;
         for (String taskId : taskIds) {
             if (isSupportedTaskId(taskId)) {
                 pendingTaskIds.add(taskId);
@@ -78,7 +80,13 @@ final class PlannerWidgetStorage {
         return pendingTaskIds;
     }
 
-    static void removePendingCompletedTaskIds(Context context, List<String> completedTaskIds) {
+    static synchronized void ackPendingCompletedTaskIds(Context context, List<String> taskIds, String writeEpoch) {
+        if (readPendingWriteEpoch(context).equals(writeEpoch)) {
+            removePendingCompletedTaskIds(context, taskIds);
+        }
+    }
+
+    static synchronized void removePendingCompletedTaskIds(Context context, List<String> completedTaskIds) {
         if (completedTaskIds == null || completedTaskIds.isEmpty()) {
             return;
         }
@@ -126,7 +134,7 @@ final class PlannerWidgetStorage {
         );
     }
 
-    static boolean writeSyncConfig(Context context, PlannerWidgetSyncConfig config) {
+    static synchronized boolean writeSyncConfig(Context context, PlannerWidgetSyncConfig config) {
         if (config == null) {
             return false;
         }
@@ -137,7 +145,7 @@ final class PlannerWidgetStorage {
             .commit();
     }
 
-    static boolean clearSyncConfig(Context context) {
+    static synchronized boolean clearSyncConfig(Context context) {
         return getPreferences(context).edit().remove(SYNC_CONFIG_KEY).commit();
     }
 
@@ -232,7 +240,11 @@ final class PlannerWidgetStorage {
         }
     }
 
-    static boolean storePendingCompletedTaskId(Context context, String taskId) {
+    static String readPendingWriteEpoch(Context context) {
+        return getPreferences(context).getString("planner.widget.pending.writeEpoch", "0");
+    }
+
+    static synchronized boolean storePendingCompletedTaskId(Context context, String taskId) {
         if (!isSupportedTaskId(taskId)) {
             return false;
         }
@@ -242,8 +254,12 @@ final class PlannerWidgetStorage {
             preferences.getStringSet(PENDING_COMPLETED_TASK_IDS_KEY, Collections.emptySet())
         );
 
+        PlannerWidgetSyncConfig config = readSyncConfig(context);
+        String epoch = config == null ? "0" : config.writeEpoch;
+        if (!epoch.equals(readPendingWriteEpoch(context))) pendingTaskIds.clear();
         pendingTaskIds.add(taskId);
-        preferences.edit().putStringSet(PENDING_COMPLETED_TASK_IDS_KEY, pendingTaskIds).apply();
+        preferences.edit().putStringSet(PENDING_COMPLETED_TASK_IDS_KEY, pendingTaskIds)
+            .putString("planner.widget.pending.writeEpoch", epoch).commit();
 
         return true;
     }
@@ -322,8 +338,14 @@ final class PlannerWidgetSyncConfig {
     final String apiBaseUrl;
     final String timeZone;
     final String workspaceId;
+    final String writeEpoch;
 
     PlannerWidgetSyncConfig(String apiBaseUrl, String workspaceId, String timeZone) {
+        this(apiBaseUrl, workspaceId, timeZone, "0");
+    }
+
+    PlannerWidgetSyncConfig(String apiBaseUrl, String workspaceId, String timeZone, String writeEpoch) {
+        this.writeEpoch = writeEpoch != null && writeEpoch.matches("0|[1-9][0-9]{0,18}") ? writeEpoch : "0";
         this.apiBaseUrl = normalizeBaseUrl(apiBaseUrl);
         this.workspaceId = workspaceId == null ? "" : workspaceId.trim();
         this.timeZone = timeZone == null ? "" : timeZone.trim();
@@ -342,6 +364,7 @@ final class PlannerWidgetSyncConfig {
             other != null &&
             apiBaseUrl.equals(other.apiBaseUrl) &&
             workspaceId.equals(other.workspaceId) &&
+            writeEpoch.equals(other.writeEpoch) &&
             timeZone.equals(other.timeZone)
         );
     }
@@ -354,6 +377,7 @@ final class PlannerWidgetSyncConfig {
             value.put("timeZone", timeZone);
             value.put("version", VERSION);
             value.put("workspaceId", workspaceId);
+            value.put("writeEpoch", writeEpoch);
         } catch (JSONException exception) {
             throw new IllegalStateException("Failed to serialize widget sync config.", exception);
         }
@@ -376,7 +400,8 @@ final class PlannerWidgetSyncConfig {
             PlannerWidgetSyncConfig config = new PlannerWidgetSyncConfig(
                 value.optString("apiBaseUrl", ""),
                 value.optString("workspaceId", ""),
-                value.optString("timeZone", "")
+                value.optString("timeZone", ""),
+                value.optString("writeEpoch", "0")
             );
 
             return config.isValid() ? config : null;

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -50,7 +51,7 @@ export class LocalIconAssetStorage implements IconAssetStorage {
     const filePath = path.join(this.rootDirectory, fileName)
 
     await mkdir(this.rootDirectory, { recursive: true })
-    await writeFile(filePath, parsedIcon.buffer)
+    await writeFile(filePath, parsedIcon.buffer, { flag: 'wx' })
 
     return `/api/v1/icon-assets/${fileName}`
   }
@@ -109,7 +110,7 @@ function buildIconAssetFileName(
   input: StoreIconAssetInput,
   extension: string,
 ): string {
-  return `${sanitizeFileNamePart(input.iconAssetId)}.${extension}`
+  return `${sanitizeFileNamePart(input.iconAssetId)}-${randomUUID()}.${extension}`
 }
 
 function sanitizeFileNamePart(value: string): string {

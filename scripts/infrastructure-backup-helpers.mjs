@@ -192,6 +192,7 @@ export function createInfrastructureBackupManifest(input) {
     assets: {
       directory: 'assets',
       files: input.assetFiles,
+      ...(input.assetReferences ? { references: input.assetReferences } : {}),
       sourceDirectory: input.assetSourceDirectory,
       sourcePresent: input.assetSourcePresent,
       ...assetSummary,
@@ -286,6 +287,14 @@ export function parseInfrastructureBackupManifest(value) {
 
   const calculatedAssetSummary = summarizeFileInventory(value.assets.files)
 
+  if (value.assets.references !== undefined) {
+    if (!Array.isArray(value.assets.references))
+      throw new Error('Asset references must be an array.')
+    for (const reference of value.assets.references)
+      assertSafeRelativePath(reference, 'asset reference')
+    assertBackupAssetReferences(value.assets.references, value.assets.files)
+  }
+
   if (
     calculatedAssetSummary.fileCount !== value.assets.fileCount ||
     calculatedAssetSummary.totalBytes !== value.assets.totalBytes
@@ -302,6 +311,38 @@ export function parseInfrastructureBackupManifest(value) {
   assertNonEmptyString(value.source.host, 'source host')
 
   return value
+}
+
+export function assertBackupAssetReferences(references, files) {
+  const paths = new Set(files.map((file) => file.path))
+  for (const reference of references) {
+    if (!paths.has(reference))
+      throw new Error(
+        `Database snapshot references a missing backup asset: ${reference}`,
+      )
+  }
+}
+
+export function createResticRetentionArgs({
+  keepDaily,
+  keepWeekly,
+  keepMonthly,
+  dryRun = false,
+}) {
+  return [
+    'forget',
+    '--tag',
+    'planner,kind:infrastructure',
+    '--group-by',
+    'host',
+    '--keep-daily',
+    String(keepDaily),
+    '--keep-weekly',
+    String(keepWeekly),
+    '--keep-monthly',
+    String(keepMonthly),
+    ...(dryRun ? ['--dry-run'] : ['--prune']),
+  ]
 }
 
 export async function readInfrastructureBackupManifest(backupSetDirectory) {

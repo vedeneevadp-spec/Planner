@@ -76,6 +76,7 @@ export interface CleaningZoneDeleteOptions extends CleaningDeleteOptions {
 }
 
 export interface CleaningApiClient {
+  readonly writeEpoch?: string
   completeTask: (
     taskId: string,
     input?: CleaningTaskActionInput,
@@ -129,7 +130,7 @@ export function createCleaningApiClient(
   config: CleaningApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): CleaningApiClient {
-  const { request } = createApiRequester(
+  const { request, writeEpoch } = createApiRequester(
     config,
     (message, options) => new CleaningApiError(message, options),
     fetchFn,
@@ -140,6 +141,7 @@ export function createCleaningApiClient(
   )
 
   return {
+    writeEpoch,
     completeTask(taskId, input = createDefaultActionInput(), options) {
       return request({
         body: cleaningTaskActionInputSchema.parse(input),

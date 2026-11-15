@@ -1120,6 +1120,34 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['auth'],
       }),
     },
+    '/api/v1/email-verification': {
+      get: createJsonOperation({
+        operationId: 'getEmailVerificationStatus',
+        responseSchema: 'EmailVerificationStatus',
+        security: authenticatedSecurity(),
+        summary: 'Read mailbox verification status for the authenticated user',
+        tags: ['auth'],
+      }),
+    },
+    '/api/v1/email-verification/request': {
+      post: createJsonOperation({
+        operationId: 'requestEmailVerification',
+        noContentDescription: 'Verification code sent to the account email.',
+        security: authenticatedSecurity(),
+        summary: 'Send a short-lived mailbox verification code',
+        tags: ['auth'],
+      }),
+    },
+    '/api/v1/email-verification/confirm': {
+      post: createJsonOperation({
+        operationId: 'confirmEmailVerification',
+        requestSchema: 'EmailVerificationConfirmInput',
+        responseSchema: 'EmailVerificationStatus',
+        security: authenticatedSecurity(),
+        summary: 'Confirm mailbox ownership with a single-use code',
+        tags: ['auth'],
+      }),
+    },
     '/api/v1/auth/sign-out': {
       post: createJsonOperation({
         noContentDescription: 'Auth session revoked.',

@@ -15,6 +15,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import {
+  assertBackupAssetReferences,
   collectFileInventory,
   copyBackupAssetDirectory,
   createDatabaseUrl,
@@ -22,6 +23,7 @@ import {
   createInfrastructureBackupId,
   createInfrastructureBackupManifest,
   createPgToolConnectionString,
+  createResticRetentionArgs,
   findLatestInfrastructureBackupSet,
   hashFile,
   parseInfrastructureBackupManifest,
@@ -32,6 +34,121 @@ import {
   verifyInfrastructureBackupSet,
   writeJsonAtomic,
 } from './infrastructure-backup-helpers.mjs'
+import { withInfrastructureBackupSnapshot } from './infrastructure-backup-snapshot.mjs'
+import { withPgToolCredentials } from './pg-tool-credentials.mjs'
+
+test('PostgreSQL tools receive a private password file, never credentials in argv', async () => {
+  let passwordFile
+  await assert.rejects(
+    () =>
+      withPgToolCredentials(
+        'pg_dump',
+        [
+          '--file',
+          'backup.dump',
+          'postgres://backup:p%3Aa%5Css@db.test:5433/planner?sslmode=require',
+        ],
+        { PGPASSWORD: 'ignored', PATH: '/usr/bin' },
+        async (args, env) => {
+          assert.equal(
+            args.at(-1),
+            'postgres://backup@db.test:5433/planner?sslmode=require',
+          )
+          assert.equal(env.PGPASSWORD, undefined)
+          passwordFile = env.PGPASSFILE
+          assert.equal((await stat(passwordFile)).mode & 0o777, 0o600)
+          assert.equal(
+            await readFile(passwordFile, 'utf8'),
+            'db.test:5433:planner:backup:p\\:a\\\\ss\n',
+          )
+          throw new Error('simulated pg_dump failure')
+        },
+      ),
+    /simulated pg_dump failure/,
+  )
+  await assert.rejects(access(passwordFile), { code: 'ENOENT' })
+  await withPgToolCredentials(
+    'createdb',
+    ['--maintenance-db=postgres://backup@db.test/postgres?password=secret'],
+    {},
+    (args) => {
+      assert.equal(
+        args[0],
+        '--maintenance-db=postgres://backup@db.test/postgres',
+      )
+    },
+  )
+})
+
+test('backup uses one exported database snapshot and refuses a deleted referenced asset', async () => {
+  const events = []
+  const client = {
+    async connect() {
+      events.push('connect')
+    },
+    async end() {
+      events.push('end')
+    },
+    async query(sql) {
+      events.push(sql)
+      if (sql.includes('pg_export_snapshot'))
+        return { rows: [{ snapshot_id: '00000003-00000010-1' }] }
+      if (sql.includes('avatar_url'))
+        return {
+          rows: [{ kind: 'profile', value: '/api/v1/profile-assets/old.png' }],
+        }
+      return { rows: [] }
+    },
+  }
+  await assert.rejects(
+    () =>
+      withInfrastructureBackupSnapshot(
+        'unused',
+        async ({ snapshotId, assetReferences }) => {
+          assert.equal(snapshotId, '00000003-00000010-1')
+          assert.deepEqual(assetReferences, ['profiles/old.png'])
+          // A concurrent profile change removed old.png after the database snapshot.
+          assertBackupAssetReferences(assetReferences, [
+            { path: 'profiles/new.png' },
+          ])
+        },
+        { client },
+      ),
+    /missing backup asset: profiles\/old.png/,
+  )
+  assert.equal(events[1], 'begin isolation level repeatable read read only')
+  assert.deepEqual(events.slice(-2), ['rollback', 'end'])
+  assert.doesNotThrow(() =>
+    assertBackupAssetReferences(
+      ['profiles/old.png'],
+      [{ path: 'profiles/old.png' }],
+    ),
+  )
+})
+
+test('retention groups timestamp paths together and confines deletion to infrastructure snapshots', () => {
+  const args = createResticRetentionArgs({
+    keepDaily: 14,
+    keepWeekly: 8,
+    keepMonthly: 12,
+  })
+  assert.deepEqual(args.slice(0, 5), [
+    'forget',
+    '--tag',
+    'planner,kind:infrastructure',
+    '--group-by',
+    'host',
+  ])
+  assert.equal(args.at(-1), '--prune')
+  const dryRun = createResticRetentionArgs({
+    keepDaily: 1,
+    keepWeekly: 1,
+    keepMonthly: 1,
+    dryRun: true,
+  })
+  assert.ok(dryRun.includes('--dry-run'))
+  assert.ok(!dryRun.includes('--prune'))
+})
 import {
   buildBackupAlertEmail,
   buildBackupAlertRequest,

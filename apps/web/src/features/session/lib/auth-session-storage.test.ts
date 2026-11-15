@@ -57,6 +57,7 @@ import {
 } from './auth-session-storage'
 
 const AUTH_SESSION_STORAGE_KEY = 'planner.auth.session'
+const NATIVE_LOGOUT_STORAGE_KEY = 'planner.auth.nativeLoggedOut'
 const REMEMBER_SESSION_STORAGE_KEY = 'planner.rememberSession'
 
 const session: StoredAuthSession = {
@@ -69,6 +70,8 @@ const session: StoredAuthSession = {
 
 describe('auth-session-storage', () => {
   beforeEach(() => {
+    capacitorMocks.durableGet.mockReset()
+    capacitorMocks.durableGet.mockResolvedValue({ value: null })
     capacitorMocks.commitRefresh.mockReset()
     capacitorMocks.commitRefresh.mockImplementation(
       (options: { refreshedSession: string }) =>
@@ -259,5 +262,156 @@ describe('auth-session-storage', () => {
     ).toBe(true)
 
     errorSpy.mockRestore()
+  })
+
+  it('keeps a durable logout marker when native removal fails and blocks stale credentials', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    capacitorMocks.durableGet.mockResolvedValue({
+      value: JSON.stringify(session),
+    })
+    capacitorMocks.durableRemove.mockRejectedValue(
+      new Error('Keychain unavailable'),
+    )
+
+    await expect(clearStoredAuthSession()).rejects.toBeInstanceOf(
+      AuthSessionStorageError,
+    )
+    expect(
+      window.localStorage.getItem(NATIVE_LOGOUT_STORAGE_KEY),
+    ).not.toBeNull()
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+    await expect(
+      prepareStoredAuthSessionRefresh(session),
+    ).rejects.toBeInstanceOf(AuthSessionStorageError)
+    await expect(
+      commitStoredAuthSessionRefresh(session, session),
+    ).rejects.toBeInstanceOf(AuthSessionStorageError)
+    expect(capacitorMocks.durableGet).not.toHaveBeenCalled()
+    expect(capacitorMocks.prepareRefresh).not.toHaveBeenCalled()
+    expect(capacitorMocks.commitRefresh).not.toHaveBeenCalled()
+  })
+
+  it('unblocks a fresh native login only after its durable write succeeds', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    await clearStoredAuthSession()
+    let finishWrite!: () => void
+    capacitorMocks.durableSet.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishWrite = resolve
+      }),
+    )
+    const write = writeStoredAuthSession(session)
+    await vi.waitFor(() => expect(capacitorMocks.durableSet).toHaveBeenCalled())
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+    finishWrite()
+    await write
+    expect(window.localStorage.getItem(NATIVE_LOGOUT_STORAGE_KEY)).toBeNull()
+    capacitorMocks.durableGet.mockResolvedValue({
+      value: JSON.stringify(session),
+    })
+    await expect(readStoredAuthSession()).resolves.toEqual(session)
+  })
+
+  it('does not remove the logout marker after a failed new sign-in write', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    await clearStoredAuthSession()
+    capacitorMocks.durableSet.mockRejectedValue(
+      new Error('Storage unavailable'),
+    )
+    await expect(writeStoredAuthSession(session)).rejects.toBeInstanceOf(
+      AuthSessionStorageError,
+    )
+    expect(
+      window.localStorage.getItem(NATIVE_LOGOUT_STORAGE_KEY),
+    ).not.toBeNull()
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+  })
+
+  it('serializes logout after an already-running native sign-in write', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    let finishWrite!: () => void
+    capacitorMocks.durableSet.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishWrite = resolve
+      }),
+    )
+    const write = writeStoredAuthSession(session)
+    const writeRejected = expect(write).rejects.toBeInstanceOf(
+      AuthSessionStorageError,
+    )
+    await vi.waitFor(() => expect(capacitorMocks.durableSet).toHaveBeenCalled())
+    const clear = clearStoredAuthSession()
+    expect(capacitorMocks.durableRemove).not.toHaveBeenCalled()
+    finishWrite()
+    await writeRejected
+    await clear
+    expect(capacitorMocks.durableRemove).toHaveBeenCalledTimes(1)
+    expect(
+      window.localStorage.getItem(NATIVE_LOGOUT_STORAGE_KEY),
+    ).not.toBeNull()
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+  })
+
+  it('still removes native credentials when web logout persistence runs out of quota', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new DOMException('Quota full', 'QuotaExceededError')
+      })
+    await expect(clearStoredAuthSession()).rejects.toBeInstanceOf(
+      AuthSessionStorageError,
+    )
+    expect(capacitorMocks.durableRemove).toHaveBeenCalledTimes(1)
+    expect(window.localStorage.getItem(NATIVE_LOGOUT_STORAGE_KEY)).toBeNull()
+    capacitorMocks.durableGet.mockResolvedValue({
+      value: JSON.stringify(session),
+    })
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+    expect(capacitorMocks.durableGet).not.toHaveBeenCalled()
+    setItem.mockRestore()
+    await writeStoredAuthSession(session)
+    await expect(readStoredAuthSession()).resolves.toEqual(session)
+  })
+
+  it('keeps app resume signed out and aggregates failures when both logout stores fail', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new DOMException('Quota full', 'QuotaExceededError')
+      })
+    capacitorMocks.durableRemove.mockRejectedValue(
+      new Error('Native storage unavailable'),
+    )
+    const failure: unknown = await clearStoredAuthSession().catch(
+      (error: unknown) => error,
+    )
+    expect(
+      failure instanceof AuthSessionStorageError &&
+        failure.cause instanceof AggregateError &&
+        failure.cause.errors.length === 2,
+    ).toBe(true)
+    expect(capacitorMocks.durableRemove).toHaveBeenCalledTimes(1)
+    capacitorMocks.durableGet.mockResolvedValue({
+      value: JSON.stringify(session),
+    })
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+    setItem.mockRestore()
+    await writeStoredAuthSession(session)
+    await expect(readStoredAuthSession()).resolves.toEqual(session)
+  })
+
+  it('returns signed out without an unhandled bootstrap error when the logout marker cannot be read', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Storage denied', 'SecurityError')
+    })
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+    expect(capacitorMocks.durableGet).not.toHaveBeenCalled()
   })
 })

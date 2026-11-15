@@ -51,14 +51,17 @@ void describe('Postgres Google sign-in identities', () => {
     await client.connect()
   })
   after(async () => {
-    await client.query(
-      'delete from app.auth_google_nonce_uses where nonce_hash = any($1::text[])',
-      [nonces],
-    )
-    await client.query('delete from app.users where id = any($1::uuid[])', [
-      userIds,
-    ])
-    await client.end()
+    try {
+      await client.query(
+        'delete from app.auth_google_nonce_uses where nonce_hash = any($1::text[])',
+        [nonces],
+      )
+      await client.query('delete from app.users where id = any($1::uuid[])', [
+        userIds,
+      ])
+    } finally {
+      await client.end()
+    }
   })
 
   void it('creates a password-reset-compatible account and keeps the same id on subsequent sign-ins', async () => {
@@ -75,6 +78,11 @@ void describe('Postgres Google sign-in identities', () => {
       [first[3]],
     )
     assert.equal(credential.rows[0]?.password_hash, 'external:google')
+    const proof = await client.query<{ verified: boolean }>(
+      'select verified from app.auth_email_verification_status($1::uuid)',
+      [first[3]],
+    )
+    assert.equal(proof.rows[0]?.verified, true)
     await assert.rejects(complete(first), /google_challenge_invalid/)
   })
 
@@ -86,6 +94,11 @@ void describe('Postgres Google sign-in identities', () => {
       "select * from app.auth_create_user_with_credential($1::uuid, $2::public.citext, 'Existing', 'existing-hash')",
       [existingId, email],
     )
+    const beforeLink = await client.query<{ verified: boolean }>(
+      'select verified from app.auth_email_verification_status($1::uuid)',
+      [existingId],
+    )
+    assert.equal(beforeLink.rows[0]?.verified, false)
     const values = command({ email })
     await assert.rejects(complete(values), /google_link_required/)
     const used = await client.query(
@@ -105,6 +118,11 @@ void describe('Postgres Google sign-in identities', () => {
       [existingId],
     )
     assert.equal(credential.rows[0]?.password_hash, 'existing-hash')
+    const afterLink = await client.query<{ verified: boolean }>(
+      'select verified from app.auth_email_verification_status($1::uuid)',
+      [existingId],
+    )
+    assert.equal(afterLink.rows[0]?.verified, true)
   })
 
   void it('claims a concurrent challenge only once', async () => {

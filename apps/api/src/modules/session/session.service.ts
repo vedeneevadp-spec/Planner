@@ -37,15 +37,21 @@ export class SessionService {
   constructor(
     repository: SessionRepository,
     profileAvatarStorage: ProfileAvatarStorage = new NoopProfileAvatarStorage(),
+    private readonly emailVerifier?: {
+      isVerified(userId: string): Promise<boolean>
+    },
   ) {
     this.repository = repository
     this.profileAvatarStorage = profileAvatarStorage
   }
 
-  async resolveSession(context: SessionContext) {
+  async resolveSession(
+    context: SessionContext,
+    options: { fresh?: boolean } = {},
+  ) {
     const cacheKey = getAuthSessionCacheKey(context)
 
-    if (cacheKey) {
+    if (cacheKey && !options.fresh) {
       const cached = this.authSessionCache.get(cacheKey)
 
       if (cached && cached.expiresAt > Date.now()) {
@@ -252,6 +258,13 @@ export class SessionService {
   async listReceivedWorkspaceInvitations(context: SessionContext) {
     const session = await this.resolveSession(context)
 
+    if (
+      context.auth &&
+      !(await this.emailVerifier?.isVerified(session.actorUserId))
+    ) {
+      return []
+    }
+
     return withRepositoryErrorMapping(() =>
       this.repository.listReceivedWorkspaceInvitations(session, context.auth),
     )
@@ -262,6 +275,8 @@ export class SessionService {
     invitationId: string,
   ) {
     const session = await this.resolveSession(context)
+
+    await this.assertInvitationEmailVerified(context, session.actorUserId)
 
     await withRepositoryErrorMapping(() =>
       this.repository.acceptWorkspaceInvitation(
@@ -280,6 +295,8 @@ export class SessionService {
   ) {
     const session = await this.resolveSession(context)
 
+    await this.assertInvitationEmailVerified(context, session.actorUserId)
+
     await withRepositoryErrorMapping(() =>
       this.repository.declineWorkspaceInvitation(
         session,
@@ -289,6 +306,19 @@ export class SessionService {
     )
 
     this.authSessionCache.clear()
+  }
+
+  private async assertInvitationEmailVerified(
+    context: SessionContext,
+    userId: string,
+  ): Promise<void> {
+    if (context.auth && !(await this.emailVerifier?.isVerified(userId))) {
+      throw new HttpError(
+        403,
+        'email_verification_required',
+        'Подтвердите email в профиле, чтобы принимать приглашения.',
+      )
+    }
   }
 
   async updateAdminUserRole(
@@ -359,8 +389,9 @@ export class SessionService {
       nextAvatarUrl = null
     }
 
+    let profile: UserProfile
     try {
-      const profile = await withRepositoryErrorMapping(() =>
+      profile = await withRepositoryErrorMapping(() =>
         this.repository.updateUserProfile(
           session,
           {
@@ -370,29 +401,31 @@ export class SessionService {
           context.auth,
         ),
       )
-
-      this.authSessionCache.clear()
-
-      if (
-        previousAvatarUrl &&
-        previousAvatarUrl !== nextAvatarUrl &&
-        !previousAvatarUrl.startsWith('data:')
-      ) {
-        await this.profileAvatarStorage.deleteProfileAvatar(previousAvatarUrl)
-      }
-
-      return profile
     } catch (error) {
-      if (storedAvatarUrl) {
-        try {
-          await this.profileAvatarStorage.deleteProfileAvatar(storedAvatarUrl)
-        } catch {
-          // Best-effort cleanup for freshly uploaded avatars.
-        }
-      }
-
+      // A disconnected database may have committed before losing its reply.
+      // Keep the immutable upload until its ownership can be reconciled;
+      // deleting it here could break an already committed profile.
+      this.authSessionCache.clear()
       throw error
     }
+    this.authSessionCache.clear()
+
+    // The database now owns the new avatar. Cleanup failure must never roll
+    // it back or turn a committed profile update into a retryable error.
+    if (
+      previousAvatarUrl &&
+      previousAvatarUrl !== nextAvatarUrl &&
+      !previousAvatarUrl.startsWith('data:')
+    ) {
+      try {
+        await this.profileAvatarStorage.deleteProfileAvatar(previousAvatarUrl)
+      } catch {
+        console.warn(
+          '[profile] Failed to remove an obsolete avatar after commit.',
+        )
+      }
+    }
+    return profile
   }
 
   private async deleteUserAccount(

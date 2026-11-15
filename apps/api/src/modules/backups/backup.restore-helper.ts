@@ -25,6 +25,10 @@ export const USER_BACKUP_RESTORE_SIGNATURE_MAX_AGE_MS = 60_000
 
 const internalRestoreInputSchema = z
   .object({
+    expectedWriteEpoch: z
+      .string()
+      .regex(/^(0|[1-9][0-9]{0,18})$/)
+      .default('0'),
     archive: userBackupArchiveSchema,
     archiveDigest: z.string().regex(/^[a-f0-9]{64}$/),
     context: z
@@ -242,6 +246,7 @@ function toInternalRestoreInput(
   input: UserBackupRestoreInput,
 ): InternalRestoreInput {
   return internalRestoreInputSchema.parse({
+    expectedWriteEpoch: input.expectedWriteEpoch ?? '0',
     archive: input.archive,
     archiveDigest: input.archiveDigest,
     context: {

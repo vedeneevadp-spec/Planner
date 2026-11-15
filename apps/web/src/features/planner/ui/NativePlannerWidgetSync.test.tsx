@@ -1,10 +1,11 @@
 import type { TaskRecord } from '@planner/contracts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
+import { rememberWorkspaceWriteEpoch } from '@/shared/lib/api-client'
 
 import { NativePlannerWidgetSync } from './NativePlannerWidgetSync'
 
@@ -42,7 +43,7 @@ interface WidgetListenerHandle {
 
 const mocks = vi.hoisted(() => ({
   ackPendingNativePlannerWidgetCompletedTasks:
-    vi.fn<(taskIds: string[]) => Promise<void>>(),
+    vi.fn<(taskIds: string[], writeEpoch: string) => Promise<void>>(),
   addNativePlannerWidgetResumeListener:
     vi.fn<(listener: () => void) => Promise<WidgetListenerHandle>>(),
   buildNativePlannerWidgetSnapshot:
@@ -152,8 +153,9 @@ vi.mock('../lib/usePlanner', () => ({
 vi.mock('../lib/native-planner-widget', () => ({
   ackPendingNativePlannerWidgetCompletedTasks: (
     taskIds: string[],
+    writeEpoch: string,
   ): Promise<void> =>
-    mocks.ackPendingNativePlannerWidgetCompletedTasks(taskIds),
+    mocks.ackPendingNativePlannerWidgetCompletedTasks(taskIds, writeEpoch),
   addNativePlannerWidgetResumeListener: (listener: () => void) =>
     mocks.addNativePlannerWidgetResumeListener(listener),
   buildNativePlannerWidgetSnapshot: (
@@ -213,6 +215,7 @@ const baseTask: Task = {
 describe('NativePlannerWidgetSync', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mocks.ackPendingNativePlannerWidgetCompletedTasks.mockResolvedValue(
       undefined,
     )
@@ -292,6 +295,7 @@ describe('NativePlannerWidgetSync', () => {
         mocks.configureNativePlannerWidgetBackgroundSync,
       ).toHaveBeenCalledWith({
         apiBaseUrl: 'http://localhost:3000',
+        writeEpoch: '0',
         timeZone: 'Europe/Astrakhan',
         workspaceId: 'personal-workspace',
       })
@@ -405,8 +409,120 @@ describe('NativePlannerWidgetSync', () => {
     await waitFor(() => {
       expect(
         mocks.ackPendingNativePlannerWidgetCompletedTasks,
-      ).toHaveBeenCalledWith(['task-1'])
+      ).toHaveBeenCalledWith(['task-1'], '0')
     })
+  })
+
+  it('drops a delayed bridge response when restore changes the generation', async () => {
+    let release!: (ids: string[]) => void
+    const pending = new Promise<string[]>((resolve) => {
+      release = resolve
+    })
+    mocks.readPendingNativePlannerWidgetCompletedTasks.mockReturnValueOnce(
+      pending,
+    )
+    const setTaskStatus = vi.fn().mockResolvedValue(true)
+    mocks.usePlanner.mockReturnValue(createPlannerStub({ setTaskStatus }))
+    renderSync()
+    await waitFor(() =>
+      expect(
+        mocks.readPendingNativePlannerWidgetCompletedTasks,
+      ).toHaveBeenCalled(),
+    )
+    const workspaceId = mocks.useSessionFeatureReadiness().session.workspaceId
+    await act(async () => {
+      rememberWorkspaceWriteEpoch(
+        new Response('{}', {
+          headers: { 'x-workspace-id': workspaceId, 'x-workspace-epoch': '1' },
+        }),
+      )
+      release(['task-1'])
+      await pending
+    })
+    expect(setTaskStatus).not.toHaveBeenCalled()
+    expect(
+      mocks.ackPendingNativePlannerWidgetCompletedTasks,
+    ).not.toHaveBeenCalled()
+  })
+
+  it('stops between native completions if restore finishes during the first write', async () => {
+    let release!: (result: boolean) => void
+    const pending = new Promise<boolean>((resolve) => {
+      release = resolve
+    })
+    const setTaskStatus = vi
+      .fn()
+      .mockReturnValueOnce(pending)
+      .mockResolvedValue(true)
+    mocks.usePlanner.mockReturnValue(
+      createPlannerStub({
+        setTaskStatus,
+        tasks: [baseTask, { ...baseTask, id: 'task-2' }],
+      }),
+    )
+    mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
+      'task-1',
+      'task-2',
+    ])
+    renderSync()
+    await waitFor(() => expect(setTaskStatus).toHaveBeenCalledTimes(1))
+    const workspaceId = mocks.useSessionFeatureReadiness().session.workspaceId
+    await act(async () => {
+      rememberWorkspaceWriteEpoch(
+        new Response('{}', {
+          headers: { 'x-workspace-id': workspaceId, 'x-workspace-epoch': '1' },
+        }),
+      )
+      release(true)
+      await pending
+    })
+    expect(setTaskStatus).toHaveBeenCalledTimes(1)
+    expect(
+      mocks.ackPendingNativePlannerWidgetCompletedTasks,
+    ).not.toHaveBeenCalled()
+  })
+
+  it('does not defer a fresh native command because the same task failed before restore', async () => {
+    const setTaskStatus = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true)
+    mocks.usePlanner.mockReturnValue(createPlannerStub({ setTaskStatus }))
+    mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
+      'task-1',
+    ])
+    const rendered = renderSync()
+    await waitFor(() => expect(setTaskStatus).toHaveBeenCalledTimes(1))
+    const readiness = mocks.useSessionFeatureReadiness()
+    const oldApi = mocks.createPlannerApiClient() as Record<string, unknown>
+    act(() => {
+      rememberWorkspaceWriteEpoch(
+        new Response('{}', {
+          headers: {
+            'x-workspace-id': readiness.session.workspaceId,
+            'x-workspace-epoch': '1',
+          },
+        }),
+      )
+      mocks.createPlannerApiClient.mockReturnValue({
+        ...oldApi,
+        writeEpoch: '1',
+      })
+      mocks.useSessionFeatureReadiness.mockReturnValue({
+        ...readiness,
+        apiConfig: { ...readiness.apiConfig },
+      })
+      mocks.usePlanner.mockReturnValue(
+        createPlannerStub({ setTaskStatus, tasks: [baseTask] }),
+      )
+      rendered.rerenderSync()
+    })
+    await waitFor(() => expect(setTaskStatus).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(
+        mocks.ackPendingNativePlannerWidgetCompletedTasks,
+      ).toHaveBeenCalledWith(['task-1'], '1'),
+    )
   })
 
   it('keeps failed widget completions pending and does not overwrite the widget snapshot', async () => {
@@ -448,7 +564,7 @@ describe('NativePlannerWidgetSync', () => {
     await waitFor(() => {
       expect(
         mocks.ackPendingNativePlannerWidgetCompletedTasks,
-      ).toHaveBeenCalledWith(['task-1'])
+      ).toHaveBeenCalledWith(['task-1'], '0')
     })
     expect(setTaskStatus).not.toHaveBeenCalled()
   })
@@ -544,7 +660,7 @@ describe('NativePlannerWidgetSync', () => {
     await waitFor(() => {
       expect(
         mocks.ackPendingNativePlannerWidgetCompletedTasks,
-      ).toHaveBeenCalledWith(['personal-task'])
+      ).toHaveBeenCalledWith(['personal-task'], '0')
     })
     expect(mocks.enqueuePlannerOfflineMutation).not.toHaveBeenCalled()
   })
@@ -581,7 +697,7 @@ describe('NativePlannerWidgetSync', () => {
     await waitFor(() => {
       expect(
         mocks.ackPendingNativePlannerWidgetCompletedTasks,
-      ).toHaveBeenCalledWith(['cleaning:kitchen'])
+      ).toHaveBeenCalledWith(['cleaning:kitchen'], '0')
     })
   })
 })

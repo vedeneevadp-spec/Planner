@@ -55,6 +55,7 @@ const aliceWebhookResponseSchema = z.union([
 // Names stay stable for clients. Shapes, required fields, defaults, enums and
 // limits come from the actual validators instead of a second handwritten model.
 export const openApiInputContracts = {
+  EmailVerificationConfirmInput: contracts.emailVerificationConfirmInputSchema,
   GoogleAuthSignInInput: contracts.googleAuthSignInInputSchema,
   UserBackupArchiveInput: backup.userBackupArchiveSchema,
   AddEmojiSetItemsInput: contracts.addEmojiSetItemsInputSchema,
@@ -157,6 +158,7 @@ export const openApiInputContracts = {
 } satisfies Record<string, z.ZodType>
 
 export const openApiOutputContracts = {
+  EmailVerificationStatus: contracts.emailVerificationStatusSchema,
   OAuthError: z.object({ error: z.string(), error_description: z.string() }),
   AdminUserListResponse: contracts.adminUserListResponseSchema,
   AdminUserRecord: contracts.adminUserRecordSchema,

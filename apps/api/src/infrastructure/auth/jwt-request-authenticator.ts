@@ -33,7 +33,7 @@ export class JwtRequestAuthenticator implements RequestAuthenticator {
   ) {}
 
   async authenticate(
-    request: FastifyRequest,
+    request: Pick<FastifyRequest, 'headers'>,
   ): Promise<AuthenticatedRequestContext> {
     const accessToken = readBearerToken(request.headers.authorization)
 

@@ -25,6 +25,7 @@ export interface UserBackupPreviewInput {
 }
 
 export interface UserBackupRestoreInput {
+  expectedWriteEpoch?: string
   archive: UserBackupArchive
   archiveDigest: string
   context: UserBackupContext & {

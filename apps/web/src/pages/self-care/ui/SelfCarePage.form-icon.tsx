@@ -10,6 +10,7 @@ import {
   ImageStackIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
+import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import { SELF_CARE_ICON_PICKER_OPEN_DATA_KEY } from './SelfCarePage.icon-picker-state'
 import styles from './SelfCarePage.module.css'
@@ -115,7 +116,7 @@ export function SelfCareIconPickerDialog({
   }
 
   return createPortal(
-    <div
+    <ModalSurface
       className={cx(styles.modalOverlay, styles.iconPickerDialogOverlay)}
       role="dialog"
       aria-modal="true"
@@ -156,7 +157,7 @@ export function SelfCareIconPickerDialog({
           }}
         />
       </section>
-    </div>,
+    </ModalSurface>,
     document.body,
   )
 }

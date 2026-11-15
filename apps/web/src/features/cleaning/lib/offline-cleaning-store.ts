@@ -8,6 +8,8 @@ import {
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
 
+import { readWorkspaceWriteEpoch } from '@/shared/lib/api-client'
+
 import type {
   CleaningOfflineMutationInput,
   CleaningOfflineMutationRecord,
@@ -508,6 +510,7 @@ export async function enqueueCleaningOfflineMutation(
     input.workspaceId,
   ),
 ): Promise<CleaningOfflineMutationRecord> {
+  const writeEpoch = readWorkspaceWriteEpoch(input.workspaceId)
   const db = await getCleaningOfflineDatabaseForAccess()
 
   if (!db) {
@@ -542,6 +545,7 @@ export async function enqueueCleaningOfflineMutation(
         .map((mutation) => mutation.operationId)
       const next = {
         ...input,
+        writeEpoch,
         attemptCount: 0,
         conflictActualVersion: null,
         conflictExpectedVersion: null,

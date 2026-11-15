@@ -14,6 +14,7 @@ interface DueTaskReminderRow {
   task_id: string
   task_title: string
   user_id: string
+  workspace_epoch: string
   workspace_id: string
 }
 
@@ -48,7 +49,8 @@ export class PostgresTaskReminderRepository implements TaskReminderRepository {
           reminder.task_id,
           task.title as task_title,
           reminder.user_id,
-          reminder.workspace_id
+          reminder.workspace_id,
+          app.read_workspace_write_epoch(reminder.user_id, reminder.workspace_id) as workspace_epoch
         from app.task_reminders as reminder
         inner join app.tasks as task
           on task.id = reminder.task_id
@@ -142,6 +144,7 @@ function mapDueTaskReminder(row: DueTaskReminderRow): DueTaskReminder {
     taskId: row.task_id,
     taskTitle: row.task_title,
     userId: row.user_id,
+    workspaceEpoch: row.workspace_epoch,
     workspaceId: row.workspace_id,
   }
 }

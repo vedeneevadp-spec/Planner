@@ -58,18 +58,10 @@ vi.mock('./SelfCarePage.action-dialogs', () => ({
 }))
 
 vi.mock('./SelfCarePage.components', () => ({
-  SelfCareHistoryTab: ({ isBusy }: { isBusy: boolean }) => (
-    <div data-read-only={String(isBusy)} data-testid="history-tab" />
-  ),
-  SelfCarePlanTab: ({ isBusy }: { isBusy: boolean }) => (
-    <div data-read-only={String(isBusy)} data-testid="plan-tab" />
-  ),
   SelfCareRitualsTab: ({ isBusy }: { isBusy: boolean }) => (
     <div data-read-only={String(isBusy)} data-testid="rituals-tab" />
   ),
-  SelfCareSettingsTab: ({ isBusy }: { isBusy: boolean }) => (
-    <div data-read-only={String(isBusy)} data-testid="settings-tab" />
-  ),
+
   SelfCareTodayTab: ({ isBusy }: { isBusy: boolean }) => (
     <div data-read-only={String(isBusy)} data-testid="today-tab" />
   ),
@@ -747,3 +739,21 @@ function createSessionFeatureReadiness(
     sessionQuery: { refetch: mocks.retrySession },
   }
 }
+
+vi.mock('./SelfCarePage.history-tab', () => ({
+  SelfCareHistoryTab: ({ isBusy }: { isBusy: boolean }) => (
+    <div data-read-only={String(isBusy)} data-testid="history-tab" />
+  ),
+}))
+
+vi.mock('./SelfCarePage.settings', () => ({
+  SelfCareSettingsTab: ({ isBusy }: { isBusy: boolean }) => (
+    <div data-read-only={String(isBusy)} data-testid="settings-tab" />
+  ),
+}))
+
+vi.mock('./SelfCarePage.plan-tab', () => ({
+  SelfCarePlanTab: ({ isBusy }: { isBusy: boolean }) => (
+    <div data-read-only={String(isBusy)} data-testid="plan-tab" />
+  ),
+}))
