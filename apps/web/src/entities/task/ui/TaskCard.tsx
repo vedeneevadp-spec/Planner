@@ -16,7 +16,11 @@ import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { getTaskResource } from '../model/resource'
 import { getRoutineTaskFrequencyLabel } from '../model/routine-task'
 import { resolveTaskCardActionPolicy } from '../model/task-card-policy'
-import { getTaskNecessityLabel, getTaskTypeValue } from '../model/task-meta'
+import {
+  DEFAULT_TASK_NECESSITY,
+  getTaskNecessityLabel,
+  getTaskTypeValue,
+} from '../model/task-meta'
 import { getTaskRecurrenceLabel } from '../model/task-recurrence'
 import styles from './TaskCard.module.css'
 import { TaskEditDialog } from './TaskEditDialog'
@@ -659,16 +663,20 @@ export function TaskCard({
             ) : null}
 
             <div className={styles.meta}>
-              <span
-                className={cx(
-                  styles.metaChip,
-                  styles.necessityChip,
-                  task.necessity === 'required' && styles.necessityChipRequired,
-                  task.necessity === 'optional' && styles.necessityChipOptional,
-                )}
-              >
-                {getTaskNecessityLabel(task.necessity)}
-              </span>
+              {task.necessity !== DEFAULT_TASK_NECESSITY || isDetailView ? (
+                <span
+                  className={cx(
+                    styles.metaChip,
+                    styles.necessityChip,
+                    task.necessity === 'required' &&
+                      styles.necessityChipRequired,
+                    task.necessity === 'optional' &&
+                      styles.necessityChipOptional,
+                  )}
+                >
+                  {getTaskNecessityLabel(task.necessity)}
+                </span>
+              ) : null}
               {task.importance === 'important' ? (
                 <span className={cx(styles.metaChip, styles.markerChipStrong)}>
                   Важное

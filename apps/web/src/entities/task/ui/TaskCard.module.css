@@ -178,6 +178,10 @@
   gap: 0.42rem 0.55rem;
 }
 
+.meta:empty {
+  display: none;
+}
+
 .quickActions {
   display: inline-flex;
   position: relative;

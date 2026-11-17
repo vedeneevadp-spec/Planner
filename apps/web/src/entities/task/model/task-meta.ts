@@ -5,6 +5,9 @@ export type TaskTypeValue = '' | 'important' | 'routine' | 'habit'
 export type ResourceValue =
   '' | '-1' | '-2' | '-3' | '-4' | '0' | '1' | '2' | '3' | '4'
 
+/** Necessity new tasks get; cards don't badge it to keep them quiet. */
+export const DEFAULT_TASK_NECESSITY: Task['necessity'] = 'desired'
+
 export const TASK_NECESSITY_LABELS: Record<Task['necessity'], string> = {
   desired: 'Желательно',
   optional: 'По возможности',

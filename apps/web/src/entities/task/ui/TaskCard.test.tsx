@@ -155,6 +155,18 @@ describe('TaskCard', () => {
     expect(screen.getByText('Обязательно')).toBeVisible()
   })
 
+  it('does not badge the default necessity on cards', () => {
+    renderTaskCard(createTask({ necessity: 'desired' }))
+
+    expect(screen.queryByText('Желательно')).not.toBeInTheDocument()
+  })
+
+  it('keeps the default necessity visible in the detail view', () => {
+    renderTaskCard(createTask({ necessity: 'desired' }), { variant: 'detail' })
+
+    expect(screen.getByText('Желательно')).toBeVisible()
+  })
+
   it("hides today's date while preserving its time and other planned dates", () => {
     const today = renderTaskCard(
       createTask({
