@@ -1,5 +1,6 @@
 import { appIcons } from './app-icons'
 import {
+  canRenderIconValue,
   getImageIconAssetId,
   getSvgIconName,
   isAppIconName,
@@ -19,25 +20,31 @@ export function IconMark({
   value,
 }: IconMarkProps) {
   const rootClassName = className ? `${styles.mark} ${className}` : styles.mark
-  const imageAssetId = getImageIconAssetId(value)
 
-  if (imageAssetId) {
-    const uploadedIcon = uploadedIcons.find((icon) => icon.id === imageAssetId)
-
+  if (!canRenderIconValue(value, uploadedIcons)) {
     return (
       <span className={rootClassName}>
-        {uploadedIcon ? (
-          <img
-            className={styles.image}
-            src={uploadedIcon.value}
-            alt=""
-            aria-hidden="true"
-          />
-        ) : (
-          <span className={styles.placeholder} aria-hidden="true">
-            ?
-          </span>
-        )}
+        <span className={styles.placeholder} aria-hidden="true">
+          •
+        </span>
+      </span>
+    )
+  }
+
+  const imageAssetId = getImageIconAssetId(value)
+  const uploadedIcon = imageAssetId
+    ? uploadedIcons.find((icon) => icon.id === imageAssetId)
+    : undefined
+
+  if (uploadedIcon) {
+    return (
+      <span className={rootClassName}>
+        <img
+          className={styles.image}
+          src={uploadedIcon.value}
+          alt=""
+          aria-hidden="true"
+        />
       </span>
     )
   }
@@ -74,10 +81,6 @@ export function IconMark({
 
 function getFallbackIcon(value: string): { isCompact: boolean; value: string } {
   const trimmedValue = value.trim()
-
-  if (!trimmedValue) {
-    return { isCompact: false, value: '•' }
-  }
 
   if (!/[0-9A-Za-z]/.test(trimmedValue)) {
     return { isCompact: false, value: trimmedValue }

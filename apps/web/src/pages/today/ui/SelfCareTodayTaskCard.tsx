@@ -1,6 +1,10 @@
 import type { SelfCareTodayItem } from '@planner/contracts'
 
-import { IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
+import {
+  canRenderIconValue,
+  IconMark,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 
 import { formatSelfCareTaskMeta } from '../lib/today-self-care'
 import { TodayRoutineLinkCard } from './TodayRoutineCard'
@@ -22,13 +26,17 @@ export function SelfCareTodayTaskCard({
   uploadedIcons,
   variant,
 }: SelfCareTodayTaskCardProps) {
-  const icon = entry.item.icon?.trim()
+  const icon = entry.item.icon
 
   return (
     <TodayRoutineLinkCard
       ariaLabel={ariaLabel ?? `Открыть заботу: ${entry.item.title}`}
       icon={
-        icon ? <IconMark value={icon} uploadedIcons={uploadedIcons} /> : '✓'
+        canRenderIconValue(icon, uploadedIcons) ? (
+          <IconMark value={icon} uploadedIcons={uploadedIcons} />
+        ) : (
+          '✓'
+        )
       }
       meta={meta ?? formatSelfCareTaskMeta(entry, plannerTimeZone)}
       title={entry.item.title}

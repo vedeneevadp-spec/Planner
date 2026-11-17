@@ -42,6 +42,45 @@ export function isAppIconName(value: string): value is AppIconName {
   return value in appIcons
 }
 
+// Identifiers like `credit-card` come from icon sets the app doesn't ship
+// (seed data, API and MCP clients). Short text such as `AB` is a deliberate mark.
+const ICON_IDENTIFIER_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
+
+function isUnknownIconIdentifier(value: string): boolean {
+  if (isSvgIconValue(value)) {
+    return !isAppIconName(getSvgIconName(value))
+  }
+
+  return (
+    value.length > 2 &&
+    ICON_IDENTIFIER_PATTERN.test(value) &&
+    !isAppIconName(value)
+  )
+}
+
+/**
+ * Whether `value` resolves to something worth drawing: a bundled icon, an
+ * uploaded image that is available, or an emoji/short text mark.
+ */
+export function canRenderIconValue(
+  value: string | null | undefined,
+  uploadedIcons: UploadedIconAsset[] = [],
+): value is string {
+  const trimmedValue = value?.trim() ?? ''
+
+  if (!trimmedValue) {
+    return false
+  }
+
+  const imageAssetId = getImageIconAssetId(trimmedValue)
+
+  if (imageAssetId) {
+    return uploadedIcons.some((icon) => icon.id === imageAssetId)
+  }
+
+  return !isUnknownIconIdentifier(trimmedValue)
+}
+
 export function getIconLabel(
   value: string,
   uploadedIcons: UploadedIconAsset[] = [],

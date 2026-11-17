@@ -155,6 +155,15 @@ describe('TaskCard', () => {
     expect(screen.getByText('Обязательно')).toBeVisible()
   })
 
+  it('skips task icons the app cannot draw', () => {
+    renderTaskCard(createTask({ icon: 'credit-card', title: 'Подписки' }))
+
+    const heading = screen.getByRole('heading', { name: 'Подписки' })
+
+    expect(heading.parentElement).not.toHaveTextContent('CC')
+    expect(heading.parentElement).not.toHaveTextContent('•')
+  })
+
   it('does not badge the default necessity on cards', () => {
     renderTaskCard(createTask({ necessity: 'desired' }))
 

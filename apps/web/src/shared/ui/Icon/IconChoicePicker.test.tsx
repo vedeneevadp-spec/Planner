@@ -41,4 +41,15 @@ describe('IconChoicePicker', () => {
       expect(container).not.toHaveTextContent('?')
     },
   )
+
+  it.each(['credit-card', 'image:missing-asset'])(
+    'shows a neutral mark instead of initials or ? for %s',
+    (value) => {
+      const { container } = render(<IconMark value={value} />)
+
+      expect(container).toHaveTextContent('•')
+      expect(container).not.toHaveTextContent('?')
+      expect(container).not.toHaveTextContent('CC')
+    },
+  )
 })

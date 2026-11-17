@@ -10,7 +10,12 @@ import type { Sphere } from '@/entities/sphere'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate, formatTimeRange } from '@/shared/lib/date'
-import { CheckIcon, IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
+import {
+  canRenderIconValue,
+  CheckIcon,
+  IconMark,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import { getTaskResource } from '../model/resource'
@@ -364,7 +369,7 @@ export function TaskCard({
           <>
             <div className={styles.cardHeader}>
               <div className={styles.titleRow}>
-                {task.icon ? (
+                {canRenderIconValue(task.icon, uploadedIcons) ? (
                   <IconMark
                     className={styles.taskIcon}
                     value={task.icon}
@@ -645,10 +650,12 @@ export function TaskCard({
                         style={{ backgroundColor: sphere.color }}
                         aria-hidden="true"
                       >
-                        <IconMark
-                          value={sphere.icon}
-                          uploadedIcons={uploadedIcons}
-                        />
+                        {canRenderIconValue(sphere.icon, uploadedIcons) ? (
+                          <IconMark
+                            value={sphere.icon}
+                            uploadedIcons={uploadedIcons}
+                          />
+                        ) : null}
                       </span>
                     ) : null}
                     <span>{projectTitle}</span>
