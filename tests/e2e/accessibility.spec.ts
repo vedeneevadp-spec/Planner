@@ -84,7 +84,7 @@ test('keeps desktop and mobile screens free of blocking accessibility violations
     for (const route of [
       {
         path: '/today',
-        ready: () => page.getByRole('region', { name: 'Антиперегруз' }),
+        ready: () => page.getByRole('region', { name: 'Ресурс дня' }),
       },
       {
         path: '/shopping',

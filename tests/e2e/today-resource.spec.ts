@@ -24,7 +24,7 @@ async function captureResourceState(
   ]) {
     await page.setViewportSize(viewport)
     await page
-      .getByRole('region', { name: 'Антиперегруз' })
+      .getByRole('region', { name: 'Ресурс дня' })
       .scrollIntoViewIfNeeded()
     expect(
       await page.evaluate(
@@ -41,9 +41,9 @@ async function captureResourceState(
 }
 
 async function expandResourcePanel(page: Page) {
-  const panel = page.getByRole('region', { name: 'Антиперегруз' })
+  const panel = page.getByRole('region', { name: 'Ресурс дня' })
   await expect(panel).toBeVisible()
-  const expand = panel.getByRole('button', { name: 'Открыть антиперегруз' })
+  const expand = panel.getByRole('button', { name: 'Открыть ресурс дня' })
   if (await expand.count()) await expand.click()
   return panel
 }
@@ -205,7 +205,7 @@ test('defaults task forms to neutral and preserves legacy unknown resource cover
   let panel = await expandResourcePanel(page)
   await expect(panel.getByText(/^Оценено /)).toHaveCount(0)
   await expect(
-    panel.getByText('неполная оценка', { exact: true }),
+    panel.getByText('12 задач без оценки', { exact: true }),
   ).toBeVisible()
   await expect(panel.getByText('Нагрузка неизвестна')).toBeVisible()
   await expect(

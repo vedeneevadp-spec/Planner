@@ -8,7 +8,7 @@ import {
   analyzeDailyLoad,
   ENERGY_MODE_CONFIGS,
   type EnergyMode,
-  getLoadStateLabel,
+  getLoadBadgeLabel,
   getUnloadCandidates,
 } from '../lib/resource-plan'
 import styles from './ResourcePlanPanel.module.css'
@@ -47,22 +47,38 @@ export function ResourcePlanPanel({
       aria-labelledby="resource-plan-title"
     >
       <div className={styles.header}>
-        <div>
-          <p id="resource-plan-title" className={styles.eyebrow}>
-            Антиперегруз
+        <div className={styles.heading}>
+          <p id="resource-plan-title" className={styles.title}>
+            Ресурс дня
           </p>
+          {!isExpanded ? (
+            <span
+              className={styles.selectedMode}
+              aria-label={`Установленный режим: ${activeConfig.label}`}
+            >
+              {activeConfig.label}
+            </span>
+          ) : null}
         </div>
-        {!isExpanded ? (
-          <span
-            className={styles.selectedMode}
-            aria-label={`Установленный режим: ${activeConfig.label}`}
-          >
-            {activeConfig.label}
+        {!isExpanded && hasKnownLoad && !isEmpty ? (
+          <span className={styles.miniMeter} aria-hidden="true">
+            <span
+              className={cx(styles.meterFill, styles[analysis.assessedState])}
+              style={{ width: `${meterWidth}%` }}
+            />
           </span>
         ) : null}
         <div className={styles.headerControls}>
-          <span className={cx(styles.stateBadge, styles[analysis.state])}>
-            {isEmpty ? 'нет задач' : getLoadStateLabel(analysis.state)}
+          <span
+            className={cx(
+              styles.stateBadge,
+              styles[analysis.state],
+              analysis.state === 'unknown' &&
+                analysis.unassessedTaskCount > 0 &&
+                styles.unassessed,
+            )}
+          >
+            {getLoadBadgeLabel(analysis, isEmpty)}
           </span>
           <button
             className={cx(
@@ -72,7 +88,7 @@ export function ResourcePlanPanel({
             type="button"
             aria-expanded={isExpanded}
             aria-label={
-              isExpanded ? 'Свернуть антиперегруз' : 'Открыть антиперегруз'
+              isExpanded ? 'Свернуть ресурс дня' : 'Открыть ресурс дня'
             }
             onClick={() => setIsExpanded((value) => !value)}
           >

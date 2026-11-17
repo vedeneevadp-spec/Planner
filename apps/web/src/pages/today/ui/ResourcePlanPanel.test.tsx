@@ -52,7 +52,7 @@ describe('ResourcePlanPanel', () => {
     )
 
     const toggle = screen.getByRole('button', {
-      name: 'Открыть антиперегруз',
+      name: 'Открыть ресурс дня',
     })
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -112,11 +112,9 @@ describe('ResourcePlanPanel', () => {
       />,
     )
     expect(screen.queryByText(/^Оценено /)).not.toBeInTheDocument()
-    expect(screen.getByText('неполная оценка')).toBeVisible()
+    expect(screen.getByText('12 задач без оценки')).toBeVisible()
     expect(screen.queryByText('спокойно')).not.toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(screen.getByText('Нагрузка неизвестна')).toBeVisible()
     expect(screen.getByText('— из 8 ресурса')).toBeVisible()
     expect(
@@ -143,10 +141,8 @@ describe('ResourcePlanPanel', () => {
       />,
     )
     expect(screen.queryByText(/^Оценено /)).not.toBeInTheDocument()
-    expect(screen.getByText('неполная оценка')).toBeVisible()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    expect(screen.getByText('1 задача без оценки')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(screen.getByText('Оценённая часть')).toBeVisible()
     expect(
       screen.queryByText(/План задач укладывается/),
@@ -179,11 +175,9 @@ describe('ResourcePlanPanel', () => {
         onChooseTaskDate={vi.fn()}
       />,
     )
-    expect(screen.getByText('неполная оценка')).toBeVisible()
+    expect(screen.getByText('1 задача без оценки')).toBeVisible()
     expect(screen.queryByText('перегруз')).not.toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(
       screen.getByRole('heading', { name: 'Оценённая часть выше лимита' }),
     ).toBeVisible()
@@ -214,7 +208,7 @@ describe('ResourcePlanPanel', () => {
       ).not.toBeInTheDocument()
       expect(screen.queryByText('нет задач')).not.toBeInTheDocument()
       fireEvent.click(
-        screen.getByRole('button', { name: 'Открыть антиперегруз' }),
+        screen.getByRole('button', { name: 'Открыть ресурс дня' }),
       )
       expect(
         screen.queryByText(/Список задач может быть неполным или устаревшим/),
@@ -269,9 +263,7 @@ describe('ResourcePlanPanel', () => {
     )
 
     expect(screen.getByText('перегруз')).toBeVisible()
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
 
     const titles = screen
       .getAllByRole('button', { name: 'Подобрать день' })

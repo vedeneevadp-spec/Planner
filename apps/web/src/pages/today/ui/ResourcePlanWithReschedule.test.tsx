@@ -77,7 +77,7 @@ function View() {
   )
 }
 function openPicker() {
-  const expand = screen.queryByRole('button', { name: 'Открыть антиперегруз' })
+  const expand = screen.queryByRole('button', { name: 'Открыть ресурс дня' })
   if (expand) fireEvent.click(expand)
   fireEvent.click(screen.getAllByRole('button', { name: 'Подобрать день' })[0]!)
 }

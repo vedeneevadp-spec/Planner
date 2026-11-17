@@ -1813,14 +1813,14 @@ describe('TodayPage', () => {
   it('shows resource planning only in a personal workspace', () => {
     const personal = renderTodayPage({ tasks: [] })
 
-    expect(screen.getByText('Антиперегруз')).toBeVisible()
+    expect(screen.getByText('Ресурс дня')).toBeVisible()
     expect(mocks.selfCareDashboardRequest).toHaveBeenCalledTimes(2)
 
     personal.unmount()
     mocks.selfCareDashboardRequest.mockClear()
     renderTodayPage({ kind: 'shared', tasks: [] })
 
-    expect(screen.queryByText('Антиперегруз')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ресурс дня')).not.toBeInTheDocument()
     expect(mocks.selfCareDashboardRequest).not.toHaveBeenCalled()
   })
 
@@ -1844,13 +1844,11 @@ describe('TodayPage', () => {
           createTask({ plannedDate: getDateKey(new Date()), resource: -2 }),
         ],
       })
-      const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+      const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
       expect(panel.getByText('неполная оценка')).toBeVisible()
       expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
-      fireEvent.click(
-        panel.getByRole('button', { name: 'Открыть антиперегруз' }),
-      )
+      fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
       expect(panel.getByText('Оценённая часть')).toBeVisible()
       expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
       expect(
@@ -1889,13 +1887,13 @@ describe('TodayPage', () => {
         }),
       ),
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
@@ -1916,13 +1914,13 @@ describe('TodayPage', () => {
         }),
       ),
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
@@ -1953,14 +1951,12 @@ describe('TodayPage', () => {
       renderTodayPage({
         tasks: [createTask({ plannedDate: getTodayDate('UTC'), resource: -2 })],
       })
-      const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+      const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
       expect(panel.getByText('неполная оценка')).toBeVisible()
       expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
       expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
-      fireEvent.click(
-        panel.getByRole('button', { name: 'Открыть антиперегруз' }),
-      )
+      fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
       expect(panel.getByText('Оценённая часть')).toBeVisible()
       expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
     },
@@ -2001,12 +1997,12 @@ describe('TodayPage', () => {
         }),
       ],
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(screen.getByText('Оценённая задача из кеша')).toBeVisible()
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('неполная оценка')).toBeVisible()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Оценённая часть')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
     expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
@@ -2022,7 +2018,7 @@ describe('TodayPage', () => {
         createTask({ plannedDate: getDateKey(new Date()), resource: -2 }),
       ],
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
     expect(panel.getByText('неполная оценка')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
     await waitFor(() => {
@@ -2037,7 +2033,7 @@ describe('TodayPage', () => {
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
@@ -2051,13 +2047,13 @@ describe('TodayPage', () => {
     renderTodayPage({
       tasks: [createTask({ plannedDate: getDateKey(new Date()), resource: 0 })],
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(screen.getByText('Не обновились: Забота на сегодня.')).toBeVisible()
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
   })
@@ -2065,9 +2061,7 @@ describe('TodayPage', () => {
   it('persists only a newly selected energy mode', () => {
     renderTodayPage({ tasks: [] })
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     fireEvent.click(screen.getByRole('button', { name: /Норм/ }))
 
     expect(mocks.updateUserPreferences).not.toHaveBeenCalled()
@@ -2101,9 +2095,7 @@ describe('TodayPage', () => {
       ],
     })
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     fireEvent.click(
       screen.getAllByRole('button', { name: 'Подобрать день' })[0]!,
     )
