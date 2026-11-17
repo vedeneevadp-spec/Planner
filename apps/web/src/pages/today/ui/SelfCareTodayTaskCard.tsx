@@ -2,6 +2,7 @@ import type { SelfCareTodayItem } from '@planner/contracts'
 
 import {
   canRenderIconValue,
+  HeartIcon,
   IconMark,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
@@ -35,7 +36,8 @@ export function SelfCareTodayTaskCard({
         canRenderIconValue(icon, uploadedIcons) ? (
           <IconMark value={icon} uploadedIcons={uploadedIcons} />
         ) : (
-          '✓'
+          // A check mark here read as "already done"; the heart just marks care.
+          <HeartIcon size={18} />
         )
       }
       meta={meta ?? formatSelfCareTaskMeta(entry, plannerTimeZone)}
