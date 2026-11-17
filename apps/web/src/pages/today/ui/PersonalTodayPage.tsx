@@ -15,6 +15,7 @@ import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import type { EnergyMode } from '../lib/resource-plan'
 import {
   buildTodaySelfCareModel,
+  formatOverdueSelfCareMeta,
   getSelfCareTaskKey,
 } from '../lib/today-self-care'
 import { buildTodayTaskModel } from '../lib/today-task-model'
@@ -113,15 +114,21 @@ export function PersonalTodayPage({
       variant={taskCardVariant}
     />
   ))
-  const selfCareOverdueTaskCards = selfCareModel.overdueEntries.map((entry) => (
-    <SelfCareTodayTaskCard
-      key={`overdue-${getSelfCareTaskKey(entry)}`}
-      entry={entry}
-      plannerTimeZone={plannerTimeZone}
-      uploadedIcons={uploadedIcons}
-      variant={taskCardVariant}
-    />
-  ))
+  const selfCareOverdueTaskCards = selfCareModel.overdueGroups.map((group) => {
+    const meta = formatOverdueSelfCareMeta(group)
+
+    return (
+      <SelfCareTodayTaskCard
+        key={`overdue-${group.entry.item.id}`}
+        ariaLabel={`Открыть заботу: ${group.entry.item.title}, ${meta}`}
+        entry={group.entry}
+        meta={meta}
+        plannerTimeZone={plannerTimeZone}
+        uploadedIcons={uploadedIcons}
+        variant={taskCardVariant}
+      />
+    )
+  })
   const selfCareTomorrowTaskCards = selfCareModel.tomorrowEntries.map(
     (entry) => (
       <SelfCareTodayTaskCard
