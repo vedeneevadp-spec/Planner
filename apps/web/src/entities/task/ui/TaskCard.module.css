@@ -60,15 +60,12 @@
   z-index: 2;
 }
 
+/* Importance is a thin edge marker plus the «Важное» chip, not a fill:
+   tinted cards stopped standing out once most of the list was tinted. */
 .important {
-  border-color: var(--danger-border-strong);
   box-shadow:
     inset 4px 0 0 rgba(140, 75, 36, 0.5),
     var(--shadow-soft);
-}
-
-.important::before {
-  background: rgba(239, 202, 130, 0.1);
 }
 
 .inProgress {
@@ -82,9 +79,10 @@
   background: var(--accent-muted);
 }
 
-.warning {
-  background: var(--warning-bg);
-  border-color: var(--danger-border);
+/* Overdue cards keep the neutral surface; the missed date carries the tone. */
+.warning .detailText {
+  color: var(--warning);
+  font-weight: 650;
 }
 
 .success {
