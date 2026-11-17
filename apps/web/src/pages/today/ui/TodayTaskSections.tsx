@@ -304,26 +304,30 @@ export function TodayTaskSections({
         taskView,
       )}
 
-      {renderTaskSection({
-        ...common,
-        emptyMessage: copy.flexible,
-        key: 'flexible',
-        sectionTasks: model.flexibleTasks,
-        title: 'Актуальное',
-      })}
-
-      {renderTaskSection({
-        ...common,
-        emptyMessage: copy.overdue,
-        key: 'overdue',
-        options: {
-          extraItemCount: extras.overdue?.itemCount ?? 0,
-          extraItems: extras.overdue?.items,
-          tone: 'warning',
-        },
-        sectionTasks: model.overdueTasks,
-        title: 'Требуют внимания',
-      })}
+      {renderTaskSectionGroup(
+        [
+          renderTaskSection({
+            ...common,
+            emptyMessage: copy.overdue,
+            key: 'overdue',
+            options: {
+              extraItemCount: extras.overdue?.itemCount ?? 0,
+              extraItems: extras.overdue?.items,
+              tone: 'warning',
+            },
+            sectionTasks: model.overdueTasks,
+            title: 'Требуют внимания',
+          }),
+          renderTaskSection({
+            ...common,
+            emptyMessage: copy.flexible,
+            key: 'flexible',
+            sectionTasks: model.flexibleTasks,
+            title: 'Актуальное',
+          }),
+        ],
+        taskView,
+      )}
 
       {renderTaskSectionGroup(
         [

@@ -1570,6 +1570,29 @@ describe('TodayPage', () => {
     ).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('shows overdue tasks before undated ones', () => {
+    renderTodayPage({
+      tasks: [
+        createTask({ id: 'flexible', title: 'Задача без даты' }),
+        createTask({
+          id: 'overdue',
+          plannedDate: getDateKey(addDays(new Date(), -1)),
+          title: 'Просроченная задача',
+        }),
+      ],
+    })
+
+    const overdueToggle = screen.getByRole('button', {
+      name: 'Требуют внимания',
+    })
+    const flexibleToggle = screen.getByRole('button', { name: 'Актуальное' })
+
+    expect(
+      overdueToggle.compareDocumentPosition(flexibleToggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('keeps other tasks expanded when no earlier task section is visible', () => {
     renderTodayPage({
       tasks: [createTask({ plannedDate: getDateKey(addDays(new Date(), 3)) })],
