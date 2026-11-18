@@ -246,6 +246,14 @@ Release notes ведутся как пользовательский докум�
 - текст должен описывать пользовательский эффект, а не внутреннюю реализацию
 - store release notes копируются из того же раздела с учетом лимитов площадки
 
+Версия приложения хранится в одном месте — `version` корневого
+`package.json`. Меняйте её только командой
+`npm run version:set -- --version=X.Y.Z --build=N` (или `mobile:release
+--version/--build`): она синхронно обновляет `package-lock.json`, Android и
+iOS. `npm run version:check` (входит в `npm run check` и CI) требует, чтобы
+версия совпадала везде, включая последний раздел `## vX.Y.Z` в release notes.
+Эту же версию API записывает в резервные копии.
+
 Если релиз включает store build, обновить версии native приложений.
 
 Android:

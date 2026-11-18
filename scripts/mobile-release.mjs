@@ -15,12 +15,20 @@ import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 
+import {
+  replaceAndroidVersion,
+  replaceIosVersion,
+  replacePackageLockVersion,
+  replacePackageVersion,
+} from './app-version.mjs'
 import { assertAndroidFirebaseConfig } from './mobile-release-android-config.mjs'
 import { assertGooglePlayArtifact } from './google-play-artifact.mjs'
 import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
 
 const repoRoot = process.cwd()
 const androidBuildGradlePath = path.join(repoRoot, 'android/app/build.gradle')
+const packageJsonPath = path.join(repoRoot, 'package.json')
+const packageLockPath = path.join(repoRoot, 'package-lock.json')
 const androidDirectoryPath = path.join(repoRoot, 'android')
 const androidReleaseApkDirectoryPath = path.join(
   repoRoot,
@@ -540,6 +548,8 @@ function upsertProperty(content, key, value) {
 async function updateNativeVersions({ version, buildNumber, dryRun }) {
   const androidBuildGradle = await readFile(androidBuildGradlePath, 'utf8')
   const iosProject = await readFile(iosProjectPath, 'utf8')
+  const packageJson = await readFile(packageJsonPath, 'utf8')
+  const packageLock = await readFile(packageLockPath, 'utf8')
 
   const nextAndroidBuildGradle = replaceAndroidVersion(androidBuildGradle, {
     buildNumber,
@@ -549,74 +559,25 @@ async function updateNativeVersions({ version, buildNumber, dryRun }) {
     buildNumber,
     version,
   })
+  // package.json "version" is the source of truth checked by npm run version:check.
+  const nextPackageJson = version
+    ? replacePackageVersion(packageJson, version)
+    : packageJson
+  const nextPackageLock = version
+    ? replacePackageLockVersion(packageLock, version)
+    : packageLock
 
   if (dryRun) {
     console.log(
-      '[mobile-release] Dry run: android/app/build.gradle and ios/App/App.xcodeproj/project.pbxproj were not updated.',
+      '[mobile-release] Dry run: package.json, package-lock.json, android/app/build.gradle and ios/App/App.xcodeproj/project.pbxproj were not updated.',
     )
     return
   }
 
   await writeFile(androidBuildGradlePath, nextAndroidBuildGradle)
   await writeFile(iosProjectPath, nextIosProject)
-}
-
-function replaceAndroidVersion(content, { version, buildNumber }) {
-  let result = content
-
-  if (buildNumber !== undefined) {
-    const pattern = /^(\s*versionCode\s+)\d+$/m
-    if (!pattern.test(result)) {
-      throw new Error('Could not find versionCode in android/app/build.gradle.')
-    }
-
-    result = result.replace(pattern, `$1${buildNumber}`)
-  }
-
-  if (version) {
-    const pattern = /^(\s*versionName\s+)"[^"]+"$/m
-    if (!pattern.test(result)) {
-      throw new Error('Could not find versionName in android/app/build.gradle.')
-    }
-
-    result = result.replace(pattern, `$1"${version}"`)
-  }
-
-  return result
-}
-
-function replaceIosVersion(content, { version, buildNumber }) {
-  let result = content
-
-  if (buildNumber !== undefined) {
-    const matches = result.match(/CURRENT_PROJECT_VERSION = \d+;/g)
-    if (!matches || matches.length < 2) {
-      throw new Error(
-        'Could not find CURRENT_PROJECT_VERSION entries in iOS project file.',
-      )
-    }
-
-    result = result.replace(
-      /CURRENT_PROJECT_VERSION = \d+;/g,
-      `CURRENT_PROJECT_VERSION = ${buildNumber};`,
-    )
-  }
-
-  if (version) {
-    const matches = result.match(/MARKETING_VERSION = [^;]+;/g)
-    if (!matches || matches.length < 2) {
-      throw new Error(
-        'Could not find MARKETING_VERSION entries in iOS project file.',
-      )
-    }
-
-    result = result.replace(
-      /MARKETING_VERSION = [^;]+;/g,
-      `MARKETING_VERSION = ${version};`,
-    )
-  }
-
-  return result
+  await writeFile(packageJsonPath, nextPackageJson)
+  await writeFile(packageLockPath, nextPackageLock)
 }
 
 async function assertReleaseApiHealth(apiUrl, { dryRun, skip }) {
