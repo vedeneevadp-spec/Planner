@@ -23,6 +23,8 @@ import {
   selfCareOfflineCommandResponseSchema,
   selfCarePlanResponseSchema,
   selfCareRangeQuerySchema,
+  selfCareReleaseOverdueInputSchema,
+  selfCareReleaseOverdueResponseSchema,
   selfCareRitualCompletionInputSchema,
   selfCareRitualStepDraftInputSchema,
   selfCareRitualStepDraftListResponseSchema,
@@ -410,6 +412,17 @@ export function registerSelfCareRoutes(
       return selfCareOccurrenceSchema.parse(occurrence)
     },
   )
+
+  app.post('/api/v1/self-care/occurrences/release-overdue', async (request) => {
+    const input = parseOrThrow(
+      selfCareReleaseOverdueInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const occurrences = await service.releaseOverdueOccurrences(context, input)
+    return selfCareReleaseOverdueResponseSchema.parse({ occurrences })
+  })
 
   app.post(
     '/api/v1/self-care/occurrences/:occurrenceId/move',

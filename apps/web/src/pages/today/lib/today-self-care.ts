@@ -3,7 +3,6 @@ import type {
   SelfCareTodayItem,
 } from '@planner/contracts'
 
-import { formatShortDate } from '@/shared/lib/date'
 import { getTimeInTimeZone } from '@/shared/time/time.service'
 
 const HIDDEN_OCCURRENCE_STATUSES: ReadonlySet<
@@ -148,35 +147,6 @@ export function groupOverdueSelfCareEntries(
   }
 
   return [...groups.values()]
-}
-
-const missedCountPluralRules = new Intl.PluralRules('ru-RU')
-const MISSED_COUNT_FORMS: Record<Intl.LDMLPluralRule, string> = {
-  few: 'пропуска',
-  many: 'пропусков',
-  one: 'пропуск',
-  other: 'пропуска',
-  two: 'пропуска',
-  zero: 'пропусков',
-}
-
-export function formatOverdueSelfCareMeta({
-  lastMissedDate,
-  missedCount,
-}: TodayOverdueSelfCareGroup): string {
-  const lastMissedLabel = lastMissedDate
-    ? formatShortDate(lastMissedDate)
-    : null
-
-  if (missedCount <= 1) {
-    return lastMissedLabel ? `Пропущено ${lastMissedLabel}` : 'Пропущено'
-  }
-
-  const countLabel = `${missedCount} ${MISSED_COUNT_FORMS[missedCountPluralRules.select(missedCount)]}`
-
-  return lastMissedLabel
-    ? `${countLabel} · последний ${lastMissedLabel}`
-    : countLabel
 }
 
 export function getSelfCareTaskKey(entry: SelfCareTodayItem): string {

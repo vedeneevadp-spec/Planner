@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildTodaySelfCareModel,
-  formatOverdueSelfCareMeta,
   formatSelfCareTaskMeta,
   getSelfCareTaskKey,
   getSelfCareTaskTime,
@@ -339,24 +338,4 @@ describe('today self-care model', () => {
     expect(model.overdueGroups).toHaveLength(1)
     expect(model.overdueGroups[0]?.missedCount).toBe(3)
   })
-
-  it.each([
-    [1, '2026-11-16', 'Пропущено 16 нояб.'],
-    [1, null, 'Пропущено'],
-    [2, '2026-11-16', '2 пропуска · последний 16 нояб.'],
-    [5, '2026-11-16', '5 пропусков · последний 16 нояб.'],
-    [21, '2026-11-16', '21 пропуск · последний 16 нояб.'],
-    [3, null, '3 пропуска'],
-  ])(
-    'formats overdue meta for %i missed occurrences',
-    (missedCount, lastMissedDate, expected) => {
-      expect(
-        formatOverdueSelfCareMeta({
-          entry: createSelfCareItem(),
-          lastMissedDate,
-          missedCount,
-        }),
-      ).toBe(expected)
-    },
-  )
 })

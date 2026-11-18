@@ -1159,6 +1159,8 @@ export function rebaseSelfCareCommand(
   switch (command.type) {
     case 'create_item':
     case 'create_item_from_template':
+    // Acts on whatever is still overdue when it runs; nothing to rebase.
+    case 'release_overdue_occurrences':
       return command
     case 'update_item': {
       const scheduleChange = command.scheduleChange
@@ -1408,6 +1410,16 @@ export function selectItemResult(
   }
 
   return result.item
+}
+
+export function selectOccurrencesResult(
+  result: SelfCareOfflineCommandResult,
+): SelfCareOccurrence[] {
+  if (result.kind !== 'occurrences') {
+    throw new Error('Self-care command returned an unexpected result.')
+  }
+
+  return result.occurrences
 }
 
 export function selectOccurrenceResult(

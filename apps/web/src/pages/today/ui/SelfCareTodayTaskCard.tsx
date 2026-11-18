@@ -11,18 +11,14 @@ import { formatSelfCareTaskMeta } from '../lib/today-self-care'
 import { TodayRoutineLinkCard } from './TodayRoutineCard'
 
 interface SelfCareTodayTaskCardProps {
-  ariaLabel?: string
   entry: SelfCareTodayItem
-  meta?: string
   plannerTimeZone: string
   uploadedIcons: UploadedIconAsset[]
   variant: 'card' | 'compact'
 }
 
 export function SelfCareTodayTaskCard({
-  ariaLabel,
   entry,
-  meta,
   plannerTimeZone,
   uploadedIcons,
   variant,
@@ -31,7 +27,7 @@ export function SelfCareTodayTaskCard({
 
   return (
     <TodayRoutineLinkCard
-      ariaLabel={ariaLabel ?? `Открыть заботу: ${entry.item.title}`}
+      ariaLabel={`Открыть заботу: ${entry.item.title}`}
       icon={
         canRenderIconValue(icon, uploadedIcons) ? (
           <IconMark value={icon} uploadedIcons={uploadedIcons} />
@@ -40,7 +36,7 @@ export function SelfCareTodayTaskCard({
           <HeartIcon size={18} />
         )
       }
-      meta={meta ?? formatSelfCareTaskMeta(entry, plannerTimeZone)}
+      meta={formatSelfCareTaskMeta(entry, plannerTimeZone)}
       title={entry.item.title}
       to="/self-care"
       variant={variant}

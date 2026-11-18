@@ -27,6 +27,7 @@ import type {
   GetSelfCarePlanCommand,
   GetSelfCareRitualStepDraftsCommand,
   MoveSelfCareOccurrenceCommand,
+  ReleaseOverdueSelfCareOccurrencesCommand,
   RestoreSelfCareItemCommand,
   ScheduleSelfCareItemCommand,
   SelfCareListFilters,
@@ -1253,6 +1254,52 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
   skipOccurrence(command: SkipSelfCareOccurrenceCommand) {
     return this.recordOccurrenceStatus(command, 'skipped', command.input.reason)
+  }
+
+  releaseOverdueOccurrences(command: ReleaseOverdueSelfCareOccurrencesCommand) {
+    const { actorUserId, workspaceId } = command.context
+
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        // Lock the aggregate roots first, like every compound self-care write,
+        // so a concurrent single-occurrence write cannot deadlock with us.
+        const itemRows = await trx
+          .selectFrom('app.self_care_items')
+          .select('id')
+          .where('workspace_id', '=', workspaceId)
+          .where('user_id', '=', actorUserId)
+          .where('deleted_at', 'is', null)
+          .$if(command.input.itemIds !== undefined, (query) =>
+            query.where('id', 'in', command.input.itemIds!),
+          )
+          .orderBy('id')
+          .forUpdate()
+          .execute()
+
+        if (itemRows.length === 0) {
+          return []
+        }
+
+        const rows = await trx
+          .updateTable('app.self_care_occurrences')
+          .set({ status: 'missed', updated_by: actorUserId })
+          .where('user_id', '=', actorUserId)
+          .where('status', '=', 'scheduled')
+          .where('scheduled_for', '<', command.input.beforeDate)
+          .where(
+            'item_id',
+            'in',
+            itemRows.map((row) => row.id),
+          )
+          .returningAll()
+          .execute()
+
+        return rows.map(mapOccurrenceRow)
+      },
+      actorUserId,
+    )
   }
 
   moveOccurrence(command: MoveSelfCareOccurrenceCommand) {

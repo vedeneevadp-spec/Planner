@@ -1017,6 +1017,22 @@ export const selfCareOccurrenceSkipInputSchema = z.object({
   reason: z.string().trim().max(600).optional().default(''),
 })
 
+/**
+ * Lets past scheduled occurrences go: they become `missed` instead of
+ * piling up as overdue. Only occurrences strictly before `beforeDate` that are
+ * still `scheduled` are touched, so the command is safe to replay.
+ */
+export const selfCareReleaseOverdueInputSchema = z.object({
+  beforeDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/u, 'Expected a YYYY-MM-DD date.'),
+  itemIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+})
+
+export const selfCareReleaseOverdueResponseSchema = z.object({
+  occurrences: z.array(selfCareOccurrenceSchema),
+})
+
 export const selfCareDailyStateInputSchema = z.object({
   energy: optionalRatingSchema.nullable().optional().default(null),
   mood: optionalRatingSchema.nullable().optional().default(null),
@@ -1177,6 +1193,11 @@ export const selfCareOfflineCommandSchema = z
       type: z.literal('skip_occurrence'),
     }),
     z.object({
+      actedAt: selfCareCommandActionAtSchema,
+      input: selfCareReleaseOverdueInputSchema,
+      type: z.literal('release_overdue_occurrences'),
+    }),
+    z.object({
       completionId: uuidV7Schema,
       expectedVersion: selfCareCommandExpectedVersionSchema,
       input: selfCareCommandCompletionInputSchema,
@@ -1273,6 +1294,10 @@ export const selfCareOfflineCommandResultSchema = z.discriminatedUnion('kind', [
     kind: z.literal('occurrence_rescheduled'),
     occurrence: selfCareOccurrenceSchema,
     replacement: selfCareOccurrenceSchema,
+  }),
+  z.object({
+    kind: z.literal('occurrences'),
+    occurrences: z.array(selfCareOccurrenceSchema),
   }),
   z.object({
     completion: selfCareCompletionSchema,
@@ -1412,6 +1437,12 @@ export type SelfCareOccurrenceMoveInput = z.infer<
 >
 export type SelfCareOccurrenceSkipInput = z.infer<
   typeof selfCareOccurrenceSkipInputSchema
+>
+export type SelfCareReleaseOverdueInput = z.infer<
+  typeof selfCareReleaseOverdueInputSchema
+>
+export type SelfCareReleaseOverdueResponse = z.infer<
+  typeof selfCareReleaseOverdueResponseSchema
 >
 export type SelfCareOccurrenceStatus = z.infer<
   typeof selfCareOccurrenceStatusSchema

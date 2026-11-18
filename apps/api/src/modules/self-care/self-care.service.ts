@@ -196,6 +196,16 @@ export class SelfCareService {
     return this.repository.skipOccurrence({ context, input, occurrenceId })
   }
 
+  releaseOverdueOccurrences(
+    context: SelfCareWriteContext,
+    input: Parameters<
+      SelfCareRepository['releaseOverdueOccurrences']
+    >[0]['input'],
+  ) {
+    assertCanWriteSelfCare(context)
+    return this.repository.releaseOverdueOccurrences({ context, input })
+  }
+
   moveOccurrence(
     context: SelfCareWriteContext,
     occurrenceId: string,

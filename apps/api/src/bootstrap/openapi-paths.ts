@@ -1815,6 +1815,18 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['selfCare'],
       }),
     },
+    '/api/v1/self-care/occurrences/release-overdue': {
+      post: createJsonOperation({
+        operationId: 'releaseOverdueSelfCareOccurrences',
+        parameters: [...workspaceWriteParameters()],
+        requestSchema: 'SelfCareReleaseOverdueInput',
+        responseSchema: 'SelfCareReleaseOverdueResponse',
+        security: authenticatedSecurity(),
+        summary:
+          'Mark past still-scheduled self-care occurrences as missed so they stop showing as overdue',
+        tags: ['selfCare'],
+      }),
+    },
     '/api/v1/self-care/occurrences/{occurrenceId}/skip': {
       post: createJsonOperation({
         operationId: 'skipSelfCareOccurrence',

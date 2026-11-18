@@ -3,7 +3,11 @@ import { useSearchParams } from 'react-router'
 
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
-import { useSelfCareDashboard } from '@/features/self-care'
+import {
+  getSelfCareErrorMessage,
+  useReleaseOverdueSelfCare,
+  useSelfCareDashboard,
+} from '@/features/self-care'
 import {
   usePlannerSession,
   usePlannerTimeZone,
@@ -15,7 +19,6 @@ import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import type { EnergyMode } from '../lib/resource-plan'
 import {
   buildTodaySelfCareModel,
-  formatOverdueSelfCareMeta,
   getSelfCareTaskKey,
 } from '../lib/today-self-care'
 import { buildTodayTaskModel } from '../lib/today-task-model'
@@ -24,6 +27,7 @@ import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
 import { ResourcePlanWithReschedule } from './ResourcePlanWithReschedule'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
+import { TodayMissedCareRow } from './TodayMissedCareRow'
 import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineStatus } from './TodayRoutineStatus'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
@@ -43,6 +47,7 @@ export function PersonalTodayPage({
   const sessionQuery = usePlannerSession()
   const [searchParams] = useSearchParams()
   const updateUserPreferencesMutation = useUpdateUserPreferences()
+  const releaseOverdueSelfCare = useReleaseOverdueSelfCare()
   const {
     tasks,
     createNextTaskStage,
@@ -114,21 +119,27 @@ export function PersonalTodayPage({
       variant={taskCardVariant}
     />
   ))
-  const selfCareOverdueTaskCards = selfCareModel.overdueGroups.map((group) => {
-    const meta = formatOverdueSelfCareMeta(group)
-
-    return (
-      <SelfCareTodayTaskCard
-        key={`overdue-${group.entry.item.id}`}
-        ariaLabel={`Открыть заботу: ${group.entry.item.title}, ${meta}`}
-        entry={group.entry}
-        meta={meta}
-        plannerTimeZone={plannerTimeZone}
-        uploadedIcons={uploadedIcons}
-        variant={taskCardVariant}
+  const missedCareRow =
+    selfCareModel.overdueGroups.length > 0 ? (
+      <TodayMissedCareRow
+        key="missed-care"
+        errorMessage={
+          releaseOverdueSelfCare.error
+            ? getSelfCareErrorMessage(releaseOverdueSelfCare.error)
+            : null
+        }
+        groups={selfCareModel.overdueGroups}
+        isReleasing={releaseOverdueSelfCare.isPending}
+        onRelease={() => {
+          releaseOverdueSelfCare.mutate({
+            beforeDate: todayKey,
+            itemIds: selfCareModel.overdueGroups
+              .map((group) => group.entry.item.id)
+              .slice(0, 200),
+          })
+        }}
       />
-    )
-  })
+    ) : null
   const selfCareTomorrowTaskCards = selfCareModel.tomorrowEntries.map(
     (entry) => (
       <SelfCareTodayTaskCard
@@ -218,8 +229,9 @@ export function PersonalTodayPage({
         }
         extras={{
           overdue: {
-            itemCount: selfCareOverdueTaskCards.length,
-            items: selfCareOverdueTaskCards,
+            // The missed-care row is one entry, however many habits it holds.
+            itemCount: missedCareRow ? 1 : 0,
+            items: missedCareRow,
           },
           routine: {
             itemCount:

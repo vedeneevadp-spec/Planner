@@ -136,6 +136,7 @@ const mocks = vi.hoisted(() => {
       taskLastSuccessfulSyncAt: null as string | null,
     },
     refresh: vi.fn(),
+    releaseOverdueSelfCare: vi.fn(),
     removeTask: vi.fn(),
     selfCareDashboards,
     selfCareDashboardRequest: vi.fn(),
@@ -252,6 +253,13 @@ vi.mock('@/features/shopping-list', () => ({
 }))
 
 vi.mock('@/features/self-care', () => ({
+  getSelfCareErrorMessage: (error: unknown) =>
+    error instanceof Error ? error.message : 'Ошибка',
+  useReleaseOverdueSelfCare: () => ({
+    error: null,
+    isPending: false,
+    mutate: mocks.releaseOverdueSelfCare,
+  }),
   useSelfCareDashboard: (date: string) => {
     mocks.selfCareDashboardRequest(date)
 
@@ -709,6 +717,7 @@ describe('TodayPage', () => {
     mocks.cleaningRefetch.mockReset()
     mocks.cleaningRefetch.mockResolvedValue(undefined)
     mocks.copyTaskToPersonal.mockReset()
+    mocks.releaseOverdueSelfCare.mockReset()
     mocks.createNextTaskStage.mockReset()
     mocks.detachTaskFromChain.mockReset()
     mocks.moveTaskToPersonal.mockReset()
@@ -2378,6 +2387,66 @@ describe('TodayPage', () => {
         name: 'Открыть заботу: Отжимания',
       }),
     ).toBeVisible()
+  })
+
+  it('folds missed care into one row and releases it before today', () => {
+    const todayKey = getDateKey(new Date())
+    const missed = (itemId: string, title: string, scheduledFor: string) =>
+      createSelfCareTodayItem({
+        item: { id: itemId, title },
+        occurrence: {
+          completedAt: null,
+          createdAt: '2026-05-19T08:00:00.000Z',
+          dueAt: null,
+          generatedAt: null,
+          id: `${itemId}-${scheduledFor}`,
+          itemId,
+          movedTo: null,
+          reminderOffsetsMinutes: [],
+          reminderTimeZone: null,
+          scheduledFor,
+          scheduleRuleId: null,
+          status: 'scheduled',
+          updatedAt: '2026-05-19T08:00:00.000Z',
+          userId: 'user-1',
+          version: 1,
+        },
+      })
+    setSelfCareDashboard({
+      ...createSelfCareDashboard([], { date: todayKey }),
+      overdueItems: [
+        missed('yoga', 'Йога', getDateKey(addDays(new Date(), -2))),
+        missed('yoga', 'Йога', getDateKey(addDays(new Date(), -1))),
+        missed('water', 'Вода', getDateKey(addDays(new Date(), -1))),
+      ],
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(screen.queryByText(/пропуск/)).not.toBeInTheDocument()
+    const summary = screen.getByRole('button', {
+      name: /Пропущенная забота · 2/,
+    })
+    expect(summary).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(summary)
+    expect(
+      screen.getByRole('link', { name: 'Открыть заботу: Йога' }),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: 'Открыть заботу: Вода' }),
+    ).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отпустить' }))
+    expect(mocks.releaseOverdueSelfCare).not.toHaveBeenCalled()
+    fireEvent.click(
+      within(
+        screen.getByRole('group', { name: 'Отпустить пропущенную заботу' }),
+      ).getByRole('button', { name: 'Отпустить' }),
+    )
+    expect(mocks.releaseOverdueSelfCare).toHaveBeenCalledWith({
+      beforeDate: todayKey,
+      itemIds: ['yoga', 'water'],
+    })
   })
 
   it('keeps self-care dashboard items hidden when main tasks integration is disabled', () => {

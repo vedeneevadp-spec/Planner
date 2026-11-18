@@ -157,6 +157,13 @@ export async function dispatchSelfCareOfflineCommand(
       })
       return { kind: 'occurrence', occurrence }
     }
+    case 'release_overdue_occurrences': {
+      const occurrences = await repository.releaseOverdueOccurrences({
+        context,
+        input: command.input,
+      })
+      return { kind: 'occurrences', occurrences }
+    }
     case 'complete_occurrence': {
       const completion = await repository.completeOccurrence({
         completionId: command.completionId,

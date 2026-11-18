@@ -126,6 +126,7 @@ export const openApiInputContracts = {
     contracts.selfCareMinimumItemsUpdateInputSchema,
   SelfCareOccurrenceMoveInput: contracts.selfCareOccurrenceMoveInputSchema,
   SelfCareOccurrenceSkipInput: contracts.selfCareOccurrenceSkipInputSchema,
+  SelfCareReleaseOverdueInput: contracts.selfCareReleaseOverdueInputSchema,
   SelfCareOfflineCommand: contracts.selfCareOfflineCommandSchema,
   SelfCareOfflineCommandRequest: contracts.selfCareOfflineCommandRequestSchema,
   SelfCareProcedureDetailsInput: contracts.selfCareProcedureDetailsInputSchema,
@@ -240,6 +241,8 @@ export const openApiOutputContracts = {
   SelfCareMedicalDetails: contracts.selfCareMedicalDetailsSchema,
   SelfCareMinimumItem: contracts.selfCareMinimumItemSchema,
   SelfCareOccurrence: contracts.selfCareOccurrenceSchema,
+  SelfCareReleaseOverdueResponse:
+    contracts.selfCareReleaseOverdueResponseSchema,
   SelfCareOccurrenceListResponse: z.array(contracts.selfCareOccurrenceSchema),
   SelfCareOfflineCommandResponse:
     contracts.selfCareOfflineCommandResponseSchema,

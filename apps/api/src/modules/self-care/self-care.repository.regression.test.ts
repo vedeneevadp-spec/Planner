@@ -10,6 +10,7 @@ import {
   assertCoursePauseReconcilesGeneratedSlots,
   assertFutureScheduleReconciles,
   assertRecurringCarePausePreservesHistory,
+  assertReleaseOverdueMarksOnlyPastScheduled,
   assertRitualHistorySurvivesEditing,
 } from './self-care.repository.regression-contract.js'
 
@@ -46,6 +47,10 @@ for (const [name, verify] of [
   [
     'future rules preserve completed, skipped, and manually moved occurrences',
     assertFutureScheduleReconciles,
+  ],
+  [
+    'releasing overdue marks only past scheduled occurrences as missed',
+    assertReleaseOverdueMarksOnlyPastScheduled,
   ],
 ] as const) {
   void test(`MemorySelfCareRepository ${name}`, () =>

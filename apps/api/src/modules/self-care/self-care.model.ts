@@ -20,6 +20,7 @@ import type {
   SelfCareOfflineCommandRequest,
   SelfCareOfflineCommandResponse,
   SelfCarePlanResponse,
+  SelfCareReleaseOverdueInput,
   SelfCareRitualCompletionInput,
   SelfCareRitualStepDraft,
   SelfCareRitualStepDraftInput,
@@ -187,6 +188,11 @@ export interface SkipSelfCareOccurrenceCommand {
   expectedVersion?: number | undefined
   input: SelfCareOccurrenceSkipInput
   occurrenceId: string
+}
+
+export interface ReleaseOverdueSelfCareOccurrencesCommand {
+  context: SelfCareWriteContext
+  input: SelfCareReleaseOverdueInput
 }
 
 export interface CancelSelfCareOccurrenceCommand {

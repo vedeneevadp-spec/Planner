@@ -17,6 +17,7 @@ import type {
   GetSelfCarePlanCommand,
   GetSelfCareRitualStepDraftsCommand,
   MoveSelfCareOccurrenceCommand,
+  ReleaseOverdueSelfCareOccurrencesCommand,
   RestoreSelfCareItemCommand,
   ScheduleSelfCareItemCommand,
   SelfCareAnalyticsResult,
@@ -123,6 +124,9 @@ export interface SelfCareRepository {
   scheduleItem: (
     command: ScheduleSelfCareItemCommand,
   ) => Promise<StoredSelfCareOccurrenceRecord>
+  releaseOverdueOccurrences: (
+    command: ReleaseOverdueSelfCareOccurrencesCommand,
+  ) => Promise<StoredSelfCareOccurrenceRecord[]>
   skipOccurrence: (
     command: SkipSelfCareOccurrenceCommand,
   ) => Promise<StoredSelfCareOccurrenceRecord>

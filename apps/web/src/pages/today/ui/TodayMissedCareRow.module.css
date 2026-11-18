@@ -1,0 +1,167 @@
+.row {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  padding: 0.5rem 0.6rem;
+  color: var(--text-soft);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.summary {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 9px;
+  padding: 0.2rem 0.3rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.summary:hover {
+  background: var(--field-bg-muted);
+}
+
+.summary:focus-visible,
+.releaseButton:focus-visible,
+.cancelButton:focus-visible,
+.chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--field-bg);
+}
+
+.text {
+  display: grid;
+  min-width: 0;
+}
+
+.title {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.subtitle {
+  font-size: 0.76rem;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-left: auto;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: translateY(-0.1rem) rotate(45deg);
+}
+
+.chevronExpanded {
+  transform: translateY(0.1rem) rotate(225deg);
+}
+
+.releaseButton,
+.cancelButton {
+  flex: 0 0 auto;
+  min-height: 2.15rem;
+  border: 1px solid var(--accent-border-strong);
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  background: transparent;
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.releaseButton:hover {
+  background: var(--accent-muted);
+}
+
+.releaseButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.cancelButton {
+  border-color: var(--line);
+  color: var(--text-soft);
+}
+
+.confirm {
+  display: grid;
+  gap: 0.45rem;
+  border-radius: 9px;
+  padding: 0.55rem 0.65rem;
+  background: var(--field-bg-muted);
+}
+
+.confirmText,
+.error {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.confirmText {
+  color: var(--text);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0 0.3rem 0.2rem;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  background: var(--field-bg);
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.chip:hover {
+  background: var(--field-bg-strong);
+  color: var(--text);
+}
