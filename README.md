@@ -72,64 +72,67 @@ version-specific директорию и поднимет fresh dev-базу. Д
 
 Полный список находится в `package.json`.
 
-| Команда                                                 | Назначение                                               |
-| ------------------------------------------------------- | -------------------------------------------------------- |
-| `npm run dev:local`                                     | Postgres + migrations + seed + API + web для разработки  |
-| `npm run dev` / `npm run start`                         | dev-сервер web-приложения                                |
-| `npm run preview`                                       | preview production-сборки web                            |
-| `npm run dev:api`                                       | API в watch-режиме                                       |
-| `npm run dev:api:postgres`                              | API с локальным Docker Postgres                          |
-| `npm run start:api`                                     | единичный запуск API                                     |
-| `npm run smoke:api:prod`                                | production-mode smoke API против локального Postgres     |
-| `npm run smoke:mcp`                                     | smoke ChatGPT MCP/OAuth connector flow                   |
-| `npm run db:up` / `npm run db:down`                     | поднять/остановить локальный Postgres                    |
-| `npm run db:backup`                                     | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR`  |
-| `npm run backup:create`                                 | создать DB + asset backup set и отправить его в Restic   |
-| `npm run backup:verify`                                 | проверить manifest, checksums и структуру dump           |
-| `npm run backup:prune`                                  | применить local/offsite retention                        |
-| `npm run backup:restore-drill`                          | восстановить backup в изолированной одноразовой базе     |
-| `npm run backup:restore-db:check`                       | проверить production role для пользовательского restore  |
-| `npm run db:migrations:check`                           | проверить порядок и имена SQL-миграций                   |
-| `npm run db:migrate` / `npm run db:seed`                | применить миграции и dev seed локально                   |
-| `npm run db:security:check`                             | проверить RLS/security-инварианты PostgreSQL             |
-| `npm run db:security:repair`                            | снять drift grants с внутренних app-таблиц               |
-| `npm run db:setup`                                      | `db:up` + migrations + seed                              |
-| `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний задач и заботы |
-| `npm run toolchain:check`                               | проверить pinned Node/npm перед quality gates            |
-| `npm run actionlint`                                    | проверить GitHub Actions workflow через actionlint       |
-| `npm run lint` / `npm run lint:fix`                     | ESLint                                                   |
-| `npm run deadcode`                                      | диагностический Knip-отчет без падения процесса          |
-| `npm run deadcode:strict`                               | строгий Knip-прогон, включен в CI                        |
-| `npm run format:check` / `npm run format`               | Prettier                                                 |
-| `npm run typecheck`                                     | typecheck web, contracts и API                           |
-| `npm run test:web:run` / `npm run test:api`             | web/API тесты                                            |
-| `npm run test:api:postgres`                             | Postgres/RLS integration-тесты API                       |
-| `npm run test:e2e`                                      | Playwright smoke web + API auth/tasks                    |
-| `npm run test:e2e:a11y`                                 | Playwright + axe smoke для blocking a11y regressions     |
-| `npm run test:run`                                      | web + API тесты                                          |
-| `npm run coverage`                                      | web + API + Postgres hotspot coverage                    |
-| `npm run openapi:check`                                 | контрактная проверка `/api/openapi.json`                 |
-| `npm run audit:prod`                                    | audit runtime-зависимостей без dev tooling               |
-| `npm run audit:dev-tooling`                             | контроль известных dev-only audit исключений             |
-| `npm run build`                                         | production-сборка web                                    |
-| `npm run build:analyze`                                 | production-сборка web + `tmp/web-bundle-stats.html`      |
-| `npm run mobile:sync`                                   | production build web + sync в `ios/` и `android/`        |
-| `npm run mobile:release -- --api-url=...`               | подготовить и при флагах собрать native release          |
-| `npm run mobile:release:rustore -- --api-url=...`       | собрать signed APK для RuStore                           |
-| `npm run mobile:release:rustore:arm64 -- --api-url=...` | собрать signed arm64-only APK для реального телефона     |
-| `npm run mobile:release:rustore:aab -- --api-url=...`   | собрать signed AAB для RuStore                           |
-| `npm run mobile:assets`                                 | пересобрать нативные icons/splash из `assets/logo.png`   |
-| `npm run mobile:open:ios` / `mobile:open:android`       | открыть нативный проект в Xcode / Android Studio         |
-| `npm run mobile:doctor`                                 | проверить состояние Capacitor toolchain                  |
-| `npm run mobile:ci-check`                               | проверить app id, версии и PWA/mobile config             |
-| `npm run mobile:android:test`                           | запустить Android unit-тесты через Gradle                |
-| `npm run mobile:android:assemble`                       | собрать Android debug APK smoke через Gradle             |
-| `npm run mobile:android:ci`                             | sync web в Android + unit-тесты + debug assemble         |
-| `npm run build:budget`                                  | проверить initial web bundle budget после `build`        |
-| `npm run check`                                         | lint + typecheck + tests                                 |
-| `npm run ci`                                            | audit + check + Knip + coverage + OpenAPI + build        |
-| `npm run release:check`                                 | `ci` + Android sync/tests/debug assemble/budget          |
-| `npm run deploy:prod`                                   | production deploy на текущий VPS                         |
+| Команда                                                 | Назначение                                                  |
+| ------------------------------------------------------- | ----------------------------------------------------------- |
+| `npm run dev:local`                                     | Postgres + migrations + seed + API + web для разработки     |
+| `npm run dev` / `npm run start`                         | dev-сервер web-приложения                                   |
+| `npm run preview`                                       | preview production-сборки web                               |
+| `npm run dev:api`                                       | API в watch-режиме                                          |
+| `npm run dev:api:postgres`                              | API с локальным Docker Postgres                             |
+| `npm run start:api`                                     | единичный запуск API                                        |
+| `npm run smoke:api:prod`                                | production-mode smoke API против локального Postgres        |
+| `npm run smoke:mcp`                                     | smoke ChatGPT MCP/OAuth connector flow                      |
+| `npm run db:up` / `npm run db:down`                     | поднять/остановить локальный Postgres                       |
+| `npm run db:backup`                                     | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR`     |
+| `npm run backup:create`                                 | создать DB + asset backup set и отправить его в Restic      |
+| `npm run backup:verify`                                 | проверить manifest, checksums и структуру dump              |
+| `npm run backup:prune`                                  | применить local/offsite retention                           |
+| `npm run backup:restore-drill`                          | восстановить backup в изолированной одноразовой базе        |
+| `npm run backup:restore-db:check`                       | проверить production role для пользовательского restore     |
+| `npm run db:migrations:check`                           | проверить порядок и имена SQL-миграций                      |
+| `npm run db:migrate` / `npm run db:seed`                | применить миграции и dev seed локально                      |
+| `npm run db:security:check`                             | проверить RLS/security-инварианты PostgreSQL                |
+| `npm run db:security:repair`                            | снять drift grants с внутренних app-таблиц                  |
+| `npm run db:setup`                                      | `db:up` + migrations + seed                                 |
+| `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний задач и заботы    |
+| `npm run toolchain:check`                               | проверить pinned Node/npm перед quality gates               |
+| `npm run actionlint`                                    | проверить GitHub Actions workflow через actionlint          |
+| `npm run lint` / `npm run lint:fix`                     | ESLint                                                      |
+| `npm run deadcode`                                      | диагностический Knip-отчет без падения процесса             |
+| `npm run deadcode:strict`                               | строгий Knip-прогон, включен в CI                           |
+| `npm run format:check` / `npm run format`               | Prettier                                                    |
+| `npm run typecheck`                                     | typecheck web, contracts и API                              |
+| `npm run test:web:run` / `npm run test:api`             | web/API тесты                                               |
+| `npm run test:api:postgres`                             | Postgres/RLS integration-тесты API                          |
+| `npm run test:e2e`                                      | Playwright smoke web + API auth/tasks                       |
+| `npm run test:e2e:a11y`                                 | Playwright + axe smoke для blocking a11y regressions        |
+| `npm run test:run`                                      | web + API тесты                                             |
+| `npm run coverage`                                      | web + API + Postgres hotspot coverage                       |
+| `npm run openapi:check`                                 | контрактная проверка `/api/openapi.json`                    |
+| `npm run audit:prod`                                    | audit runtime-зависимостей без dev tooling                  |
+| `npm run audit:dev-tooling`                             | контроль известных dev-only audit исключений                |
+| `npm run build`                                         | production-сборка web                                       |
+| `npm run build:analyze`                                 | production-сборка web + `tmp/web-bundle-stats.html`         |
+| `npm run mobile:sync`                                   | production build web + sync в `ios/` и `android/`           |
+| `npm run mobile:release -- --api-url=...`               | подготовить и при флагах собрать native release             |
+| `npm run mobile:release:rustore -- --api-url=...`       | собрать signed APK для RuStore                              |
+| `npm run mobile:release:rustore:arm64 -- --api-url=...` | собрать signed arm64-only APK для реального телефона        |
+| `npm run mobile:release:rustore:aab -- --api-url=...`   | собрать signed AAB для RuStore                              |
+| `npm run mobile:assets`                                 | пересобрать нативные icons/splash из `assets/logo.png`      |
+| `npm run mobile:open:ios` / `mobile:open:android`       | открыть нативный проект в Xcode / Android Studio            |
+| `npm run mobile:doctor`                                 | проверить состояние Capacitor toolchain                     |
+| `npm run mobile:ci-check`                               | проверить app id, версии и PWA/mobile config                |
+| `npm run mobile:android:test`                           | запустить Android unit-тесты через Gradle                   |
+| `npm run mobile:android:assemble`                       | собрать Android debug APK smoke через Gradle                |
+| `npm run mobile:android:ci`                             | sync web в Android + unit-тесты + debug assemble            |
+| `npm run build:budget`                                  | проверить initial web bundle budget после `build`           |
+| `npm run check`                                         | lint + typecheck + tests                                    |
+| `npm run ci`                                            | audit + check + Knip + coverage + OpenAPI + build           |
+| `npm run release:check`                                 | `ci` + Android sync/tests/debug assemble/budget             |
+| `npm run deploy:prod`                                   | production deploy на текущий VPS                            |
+| `npm run notify:telegram -- --to=personal --text=...`   | отправить сводку или APK в Telegram (`--dry-run`)           |
+| `npm run version:check`                                 | сверить версию в package.json, Android, iOS и release notes |
+| `npm run version:set -- --version=X.Y.Z --build=N`      | сменить версию приложения во всех местах сразу              |
 
 `npm run test:e2e` по умолчанию поднимает отдельные API и web-серверы на
 `E2E_API_PORT`/`E2E_WEB_PORT` и падает, если порт уже занят. Переиспользование
@@ -506,6 +509,8 @@ Workspace`: роли, права, жизненный цикл и правила 
   разработки до production web/PWA/store release
 - [docs/codex-release-instruction.md](docs/codex-release-instruction.md) -
   готовая инструкция для Codex: commit, push, deploy, APK и Telegram-отчет
+- [.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md) - тот же
+  релиз для Claude Code, запускается командой `/release`
 - [docs/adr/0001-platform-foundation.md](docs/adr/0001-platform-foundation.md)
   - базовое архитектурное решение по платформе
 - [DEPLOY_RU.md](DEPLOY_RU.md) - production deployment на текущий VPS

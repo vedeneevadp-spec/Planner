@@ -2,6 +2,7 @@ import path from 'node:path'
 
 import type { FastifyInstance } from 'fastify'
 
+import { resolveAppVersion } from './bootstrap/app-version.js'
 import { buildApiApp } from './bootstrap/build-app.js'
 import { createApiConfig } from './bootstrap/config.js'
 import {
@@ -219,7 +220,7 @@ export function createApiKernel(
           config.appEnv === 'production' ? null : database.db,
           backupRestoreExecutor,
         ),
-        env.npm_package_version ?? '1.0.0',
+        resolveAppVersion(env),
       )
     : undefined
   const iconAssetStorage = new LocalIconAssetStorage(config.iconAssetDirectory)
