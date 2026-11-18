@@ -84,23 +84,40 @@ PR; локально — перед релизом или по просьбе.
 - **Два хранилища API.** Поведение memory- и postgres-репозиториев одинаково.
   Где есть `*.repository.contract.ts`, он прогоняется на обеих реализациях:
   новые сценарии добавляй туда.
+- **Версия приложения.** Единственный источник — `version` в корневом
+  `package.json`. Менять только `npm run version:set -- --version=X.Y.Z
+--build=N`, не правя вручную `build.gradle` и `project.pbxproj`.
+  `npm run version:check` (входит в CI) сверяет `package.json`, lock, Android,
+  iOS и последний раздел `## vX.Y.Z` в release notes.
 
 ## Без явной просьбы не делать
 
 - `npm run deploy:prod`, `mobile:update:publish`, подписанные
   `mobile:release*`, `ssh` на production, команды `db:*` против production.
+- `gh pr merge` и `git push`.
 - Читать или выводить содержимое `.env*` (кроме `*.example`), keystore и
   `android/keystore.properties`.
-- Отправлять сообщения в Telegram или куда-либо ещё.
+- Отправлять сообщения в Telegram (`npm run notify:telegram` без `--dry-run`)
+  или куда-либо ещё.
 - Создавать git worktree внутри репозитория (в `tmp/`) — только в каталоге вне
   проекта.
 
 ## Релизы
 
-Порядок релиза и выбор проверок по типу изменений —
+Полный релиз запускается командой `/release`
+([.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md)): версия,
+release notes, проверки, PR, merge, деплой, APK и отчёт в Telegram. Порядок
+релиза и выбор проверок по типу изменений —
 [docs/release-workflow.md](docs/release-workflow.md). Пользовательские заметки
 к релизу — [docs/release-notes.md](docs/release-notes.md), раздел `Unreleased`.
 Первичная настройка сервера — [DEPLOY_RU.md](DEPLOY_RU.md).
+
+- `npm run deploy:prod` выкатывает только commit, уже влитый в `origin/main`;
+  вместо локального `npm run ci` он берёт результат GitHub CI для этого commit
+  и после успеха ставит тег `deploy/YYYYMMDD-HHMMSS`. Флаги `--allow-non-main`
+  и `--skip-checks` — только по явной просьбе.
+- Отчёты в Telegram — `npm run notify:telegram -- --to=personal|group ...`;
+  токены скрипт читает сам, их не нужно читать или выводить.
 
 ## Работа по макетам Figma
 
