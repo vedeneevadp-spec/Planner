@@ -35,6 +35,7 @@
       "Bash(npm run mobile:release*)",
       "Bash(npm run prod:env*)",
       "Bash(npm run notify:telegram*)",
+      "Bash(npm run mobile:publish*)",
       "Bash(ssh *)",
       "Bash(git push*)",
       "Bash(gh pr merge*)"
@@ -45,7 +46,8 @@
       "Read(./apps/api/.env)",
       "Read(./apps/api/.env.local)",
       "Read(./android/keystore.properties)",
-      "Read(./android/keystore/**)"
+      "Read(./android/keystore/**)",
+      "Read(~/.config/chaotika/**)"
     ]
   }
 }
