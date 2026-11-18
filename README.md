@@ -130,6 +130,7 @@ version-specific директорию и поднимет fresh dev-базу. Д
 | `npm run ci`                                            | audit + check + Knip + coverage + OpenAPI + build        |
 | `npm run release:check`                                 | `ci` + Android sync/tests/debug assemble/budget          |
 | `npm run deploy:prod`                                   | production deploy на текущий VPS                         |
+| `npm run notify:telegram -- --to=personal --text=...`   | отправить сводку или APK в Telegram (`--dry-run`)        |
 
 `npm run test:e2e` по умолчанию поднимает отдельные API и web-серверы на
 `E2E_API_PORT`/`E2E_WEB_PORT` и падает, если порт уже занят. Переиспользование
@@ -506,6 +507,8 @@ Workspace`: роли, права, жизненный цикл и правила 
   разработки до production web/PWA/store release
 - [docs/codex-release-instruction.md](docs/codex-release-instruction.md) -
   готовая инструкция для Codex: commit, push, deploy, APK и Telegram-отчет
+- [.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md) - тот же
+  релиз для Claude Code, запускается командой `/release`
 - [docs/adr/0001-platform-foundation.md](docs/adr/0001-platform-foundation.md)
   - базовое архитектурное решение по платформе
 - [DEPLOY_RU.md](DEPLOY_RU.md) - production deployment на текущий VPS

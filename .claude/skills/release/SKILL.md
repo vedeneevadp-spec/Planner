@@ -1,0 +1,104 @@
+---
+name: release
+description: Выпустить текущие изменения Chaotika — release notes, проверки, PR и merge в main, деплой production, сборка APK и отчёт в Telegram. Запускается только вручную через /release.
+argument-hint: '[web | apk | store] [group]'
+disable-model-invocation: true
+---
+
+# Релиз Chaotika
+
+Аргументы: `$ARGUMENTS`
+
+- `web` — только production (web, PWA, API), без APK.
+- `apk` (по умолчанию) — production и signed arm64 APK для RuStore и обновления
+  внутри приложения.
+- `store` — как `apk`, плюс повышение версии; спросить номер версии и сборки.
+- `group` — дополнительно отправить пользовательский обзор и APK в группу
+  Telegram. Без этого слова в группу ничего не отправлять.
+
+Подробности каждого шага — в [docs/release-workflow.md](../../../docs/release-workflow.md).
+Всё общение и тексты — по-русски.
+
+## Точки подтверждения
+
+Остановись и спроси пользователя перед каждым из этих действий, даже если
+остальное идёт автоматически:
+
+1. merge PR в `main`;
+2. `npm run deploy:prod`;
+3. отправка в группу Telegram (только при аргументе `group`), показав
+   готовый текст.
+
+Отправку себе в личный чат отдельно не подтверждать: она часть `/release`.
+
+## Шаги
+
+1. **Состав.** `git status`, `git log origin/main..HEAD`, краткий просмотр
+   diff. Если есть незакоммиченные изменения, не относящиеся к релизу, спроси,
+   что с ними делать.
+2. **Тип релиза.** backend-only, web/PWA UI, SQL/backend contract,
+   auth/session/mobile restore, widget/offline, native permissions/assets,
+   store/APK. От типа зависят проверки в шаге 5.
+3. **Release notes.** В [docs/release-notes.md](../../../docs/release-notes.md)
+   перенеси пункты из `Unreleased` в раздел `vX.Y.Z - YYYY-MM-DD` с каналами
+   (`Web`, `PWA`, `API`, `Android` …). Пиши о пользовательском эффекте, без
+   команд, хэшей и внутренних деталей. Версию бери из
+   `android/app/build.gradle` (`versionName`) или из шага 4.
+4. **Версия (только `store`).** Спроси версию и номер сборки и примени их:
+   `npm run mobile:release -- --api-url=https://chaotika.ru --version=X.Y.Z --build=N`
+   (обновит Android и iOS). Для `apk` без повышения версии отметь в отчёте,
+   что это технический APK, а не store release.
+5. **Проверки.** Всегда `npm run lint`, `npm run typecheck`,
+   `npm run test:web:run`, `npm run test:api`. Дополнительно:
+   - SQL/RLS/postgres-репозитории — `npm run test:api:postgres`;
+   - auth/session/mobile restore/widget/offline — `npm run test:mobile-auth`;
+   - auth, роутинг, основной сценарий — `npm run test:e2e`;
+   - store — `npm run mobile:doctor`.
+
+   Полный `npm run ci` локально не нужен: его выполнит GitHub CI в PR.
+6. **Коммит и PR.** Если ты в `main`, создай ветку `release/<версия-или-тема>`.
+   Закоммить (`type(scope): описание по-русски`), запушь, открой PR в `main`
+   через `gh pr create`. Дождись CI: `gh pr checks --watch --fail-fast`. Если CI
+   упал — разберись и исправь, не обходи.
+7. **Merge.** После подтверждения: `gh pr merge --squash --delete-branch`,
+   затем `git switch main && git pull --ff-only`.
+8. **Deploy.** После подтверждения: `npm run deploy:prod`. Скрипт сам
+   проверит, что commit в `origin/main`, возьмёт результат GitHub CI для него
+   (дождётся, если CI ещё идёт), выкатит, проверит здоровье и поставит тег
+   `deploy/YYYYMMDD-HHMMSS`. Запиши тег из вывода. При ошибке — остановись и
+   покажи вывод; флаги `--skip-checks` и `--allow-non-main` без явной просьбы не
+   использовать.
+9. **APK (не для `web`).**
+   `npm run mobile:release:rustore:arm64 -- --api-url=https://chaotika.ru`.
+   Результат: `android/app/build/outputs/apk/release/app-release.apk`. Если
+   подпись не настроена (`android/keystore.properties`), остановись и скажи
+   об этом; содержимое keystore не читать.
+10. **Telegram, личный чат.** Подготовь техническую сводку в файл во
+    временном каталоге: что изменилось, тег деплоя и commit, результаты
+    проверок, статус деплоя, имя и размер APK, был ли version bump. Затем:
+
+    ```bash
+    npm run notify:telegram -- --to=personal --text-file=<сводка> --file=android/app/build/outputs/apk/release/app-release.apk --caption="Chaotika <версия>"
+    ```
+
+    Для `web` — без `--file` и `--caption`. Сначала можно прогнать с
+    `--dry-run`.
+
+11. **Telegram, группа (только `group`).** Отдельный текст «Обзор обновления»
+    для пользователей: что стало лучше и что изменилось в интерфейсе. Без
+    блока «Что можно попробовать», без хэшей, команд, путей, статуса деплоя.
+    Покажи текст, получи подтверждение, затем:
+
+    ```bash
+    npm run notify:telegram -- --to=group --text-file=<обзор> --file=android/app/build/outputs/apk/release/app-release.apk --caption="<короткая подпись для пользователей>"
+    ```
+
+12. Если скрипт сообщает, что не хватает `TELEGRAM_*`, остановись и назови
+    недостающие переменные. Значения секретов не выводить и не читать
+    `.env*.local` напрямую.
+
+## Отчёт
+
+Коротко: что вошло в релиз, PR и merge-commit, тег деплоя, какие проверки
+прошли, путь к APK и версия, был ли version bump или store release, что и куда
+отправлено в Telegram.
