@@ -219,10 +219,9 @@ export function extractGooglePlayNotes(releaseNotes, version) {
   const notesEnd = section.findIndex(
     (line, index) => index > notesStart && /^#{1,3} /.test(line),
   )
-  const text = section
-    .slice(notesStart + 1, notesEnd === -1 ? undefined : notesEnd)
-    .join('\n')
-    .trim()
+  const text = unwrapMarkdownLines(
+    section.slice(notesStart + 1, notesEnd === -1 ? undefined : notesEnd),
+  )
 
   if (text === '') {
     throw new Error(
@@ -466,6 +465,39 @@ async function readServiceAccountKey() {
   }
 
   return key
+}
+
+// Markdown is hard-wrapped at ~80 columns, while Play shows every newline.
+// Join wrapped lines of a paragraph or list item with spaces; keep paragraphs
+// apart with a blank line and list items on their own lines.
+function unwrapMarkdownLines(lines) {
+  const blocks = []
+  let current = null
+
+  for (const raw of lines) {
+    const line = raw.trim()
+
+    if (line === '') {
+      current = null
+      continue
+    }
+
+    if (/^[-*] /.test(line) || current === null) {
+      current = { listItem: /^[-*] /.test(line), text: line }
+      blocks.push(current)
+    } else {
+      current.text += ` ${line}`
+    }
+  }
+
+  return blocks
+    .map((block, index) => {
+      const previous = blocks[index - 1]
+      const separator =
+        index === 0 ? '' : block.listItem && previous?.listItem ? '\n' : '\n\n'
+      return `${separator}${block.text}`
+    })
+    .join('')
 }
 
 function safeJson(text) {

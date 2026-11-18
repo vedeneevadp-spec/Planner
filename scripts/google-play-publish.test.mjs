@@ -128,6 +128,36 @@ test('defaults to alpha and completed and never allows production', () => {
   assert.throws(() => parsePublishArgs(['--oops']), /Unknown option/)
 })
 
+test('unwraps hard-wrapped markdown so Play does not break sentences', () => {
+  const wrapped = [
+    '## v2.0.0 - 2026-12-01',
+    '',
+    '### Google Play',
+    '',
+    'Первая строка абзаца',
+    'и её продолжение.',
+    '',
+    '- Пункт списка',
+    '  с переносом.',
+    '- Второй пункт.',
+    '',
+    'Итоговый абзац.',
+    '',
+  ].join('\n')
+
+  assert.equal(
+    extractGooglePlayNotes(wrapped, '2.0.0'),
+    [
+      'Первая строка абзаца и её продолжение.',
+      '',
+      '- Пункт списка с переносом.',
+      '- Второй пункт.',
+      '',
+      'Итоговый абзац.',
+    ].join('\n'),
+  )
+})
+
 test('takes "What\'s new" only from the version\'s Google Play subsection', () => {
   assert.equal(
     extractGooglePlayNotes(releaseNotes, '1.1.44'),
