@@ -21,20 +21,28 @@ import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { setTimeout as delay } from 'node:timers/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import {
+  assertDeployCommitOnMainline,
+  createDeployTagMessage,
+  createDeployTagName,
+  decideGitHubCiGate,
   createReleaseLayout,
+  parseAndroidVersion,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
 
 const DEFAULTS = {
+  ciWorkflow: 'ci.yml',
   domain: 'chaotika.ru',
   healthPath: '/api/ready',
   iconLocalDirectory: 'apps/api/tmp/icon-assets',
   iconRemoteDirectory: '/var/lib/planner/icon-assets',
+  mainBranch: 'main',
   releaseRetention: 5,
   remoteHost: 'root@147.45.158.186',
   remoteRoot: '/opt/planner',
@@ -56,6 +64,8 @@ const config = {
     'DEPLOY_ICON_REMOTE_DIR',
     DEFAULTS.iconRemoteDirectory,
   ),
+  ciWorkflow: readEnv('DEPLOY_CI_WORKFLOW', DEFAULTS.ciWorkflow),
+  mainBranch: readEnv('DEPLOY_MAIN_BRANCH', DEFAULTS.mainBranch),
   remoteHost: readEnv('DEPLOY_HOST', DEFAULTS.remoteHost),
   remoteRoot: readEnv('DEPLOY_REMOTE_ROOT', DEFAULTS.remoteRoot),
   releaseRetention: parseReleaseRetention(
@@ -70,6 +80,11 @@ const skipDbBackup =
   args.has('--skip-db-backup') || process.env.DEPLOY_SKIP_DB_BACKUP === '1'
 const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
+const allowNonMainline =
+  args.has('--allow-non-main') || process.env.DEPLOY_ALLOW_NON_MAIN === '1'
+const skipTag = args.has('--skip-tag') || process.env.DEPLOY_SKIP_TAG === '1'
+const localChecks =
+  args.has('--local-checks') || process.env.DEPLOY_LOCAL_CHECKS === '1'
 import { REMOTE_DEPLOY_LOCK_MARKER } from './deploy-prod-remote.mjs'
 const REMOTE_DEPLOY_LOCK_TIMEOUT_MS = 15_000
 const SOURCE_UPLOAD_CHUNK_BYTES = 256 * 1024
@@ -120,12 +135,9 @@ async function main() {
 
   try {
     if (skipChecks) {
-      console.log('[deploy] Skipping local checks.')
+      console.log('[deploy] Skipping checks.')
     } else {
-      await run('npm', ['run', 'ci'], {
-        env: createLocalCheckEnv(),
-        signal: remoteLock.signal,
-      })
+      await verifyReleaseChecks(source.head, remoteLock.signal)
     }
 
     if (dryRun) {
@@ -148,6 +160,162 @@ async function main() {
   } finally {
     await remoteLock.release()
   }
+
+  await tagDeployedRelease(source)
+}
+
+async function verifyReleaseChecks(commit, signal) {
+  if (localChecks) {
+    await runLocalChecks('--local-checks was passed', signal)
+    return
+  }
+
+  let decision = await readGitHubCiGate(commit)
+
+  if (decision.action === 'fallback') {
+    // Right after a merge GitHub may not have queued the push run yet.
+    console.log(
+      `[deploy] No GitHub CI run for ${commit.slice(0, 12)} yet; checking again in 20 seconds...`,
+    )
+    await delay(20_000, undefined, { signal })
+    decision = await readGitHubCiGate(commit)
+  }
+
+  if (decision.action === 'unavailable') {
+    await runLocalChecks(decision.reason, signal)
+    return
+  }
+
+  if (decision.action === 'wait') {
+    console.log(
+      `[deploy] GitHub CI is still running for ${commit.slice(0, 12)}: ${decision.run.url}`,
+    )
+    console.log('[deploy] Waiting for it to finish (Ctrl+C to abort)...')
+
+    try {
+      await run(
+        'gh',
+        [
+          'run',
+          'watch',
+          String(decision.run.databaseId),
+          '--exit-status',
+          '--compact',
+          '--interval',
+          '30',
+        ],
+        { signal },
+      )
+    } catch {
+      // The final verdict comes from re-reading the run below.
+    }
+
+    decision = await readGitHubCiGate(commit)
+  }
+
+  if (decision.action === 'pass') {
+    console.log(
+      `[deploy] GitHub CI passed for ${commit.slice(0, 12)}: ${decision.run.url}`,
+    )
+    console.log('[deploy] Skipping local npm run ci.')
+    return
+  }
+
+  if (decision.action === 'fallback' || decision.action === 'unavailable') {
+    await runLocalChecks(decision.reason, signal)
+    return
+  }
+
+  throw new Error(
+    [
+      `[deploy] Refusing to deploy: GitHub CI ${decision.run.conclusion ?? decision.run.status} for ${commit.slice(0, 12)}.`,
+      `[deploy] ${decision.run.url}`,
+      '[deploy] Fix it or re-run the workflow. To check locally instead, pass --local-checks.',
+    ].join('\n'),
+  )
+}
+
+async function readGitHubCiGate(commit) {
+  let runs
+
+  try {
+    runs = JSON.parse(
+      await collect('gh', [
+        'run',
+        'list',
+        '--commit',
+        commit,
+        '--workflow',
+        config.ciWorkflow,
+        '--limit',
+        '20',
+        '--json',
+        'databaseId,status,conclusion,headSha,event,url,createdAt',
+      ]),
+    )
+  } catch (error) {
+    const detail = (error instanceof Error ? error.message : String(error))
+      .split('\n')
+      .find((line) => line.trim() !== '' && !line.includes(' run list '))
+
+    return {
+      action: 'unavailable',
+      reason: `cannot read GitHub CI status via gh${detail ? ` (${detail.trim()})` : ''}`,
+    }
+  }
+
+  return decideGitHubCiGate(runs, commit)
+}
+
+async function runLocalChecks(reason, signal) {
+  console.log(`[deploy] Running local npm run ci: ${reason}.`)
+  await run('npm', ['run', 'ci'], {
+    env: createLocalCheckEnv(),
+    signal,
+  })
+}
+
+async function tagDeployedRelease(source) {
+  if (skipTag) {
+    console.log('[deploy] Skipping deploy tag.')
+    return
+  }
+
+  const tagName = createDeployTagName(new Date())
+
+  // Production is already live here: a tagging problem must not fail the deploy.
+  try {
+    const version = parseAndroidVersion(
+      await collect('git', ['show', `${source.head}:android/app/build.gradle`]),
+    )
+    const message = createDeployTagMessage({
+      branch: source.branch,
+      commit: source.head,
+      domain: config.domain,
+      onMainline: source.onMainline,
+      version,
+    })
+
+    await run('git', [
+      'tag',
+      '--annotate',
+      tagName,
+      '--message',
+      message,
+      source.head,
+    ])
+    await run('git', ['push', source.remote, `refs/tags/${tagName}`])
+    console.log(`[deploy] Tagged production release: ${tagName}`)
+  } catch (error) {
+    console.warn(
+      [
+        `[deploy] WARNING: production is live, but tagging ${tagName} failed.`,
+        error instanceof Error ? error.message : String(error),
+        `[deploy] If the tag is missing: git tag -a ${tagName} -m "Production deploy" ${source.head}`,
+        `[deploy] Then push it: git push ${source.remote} refs/tags/${tagName}`,
+      ].join('\n'),
+    )
+  }
 }
 
 function printHeader() {
@@ -169,7 +337,20 @@ Usage:
   npm run deploy:prod
 
 Source guard:
-  The deploy runs only from a clean tracked branch whose HEAD matches upstream.
+  The deploy runs only from a clean tracked branch whose HEAD matches upstream
+  and is already contained in origin/main (merged). Use --allow-non-main only
+  for emergencies.
+
+Checks:
+  The deploy trusts the GitHub CI run (workflow ci.yml) for the exact commit:
+  success skips local npm run ci, a running workflow is awaited, a failed one
+  stops the deploy. Without gh or without a CI run it falls back to local
+  npm run ci. --local-checks always runs npm run ci locally.
+
+Release tags:
+  After a healthy deploy, an annotated tag deploy/YYYYMMDD-HHMMSS (UTC) is
+  created on the deployed commit and pushed. Find what runs in production with:
+  git tag --list 'deploy/*' --sort=-creatordate | head -1
 
 Concurrency:
   A non-blocking remote flock covers preparation, source transfer, build, migrations,
@@ -177,10 +358,14 @@ Concurrency:
   immediately instead of waiting for the active deploy.
 
 Options:
-  --skip-checks  Do not run npm run ci before deploy.
+  --skip-checks  Do not verify GitHub CI and do not run npm run ci.
+  --local-checks Run npm run ci locally instead of trusting GitHub CI.
   --skip-db-backup
                  Do not run pg_dump before production migrations.
   --skip-icons   Do not copy local uploaded icon assets.
+  --allow-non-main
+                 Deploy a pushed commit that is not merged into main (emergency only).
+  --skip-tag     Do not create and push the deploy/* tag.
   --dry-run      Run checks and package source, but do not upload/build/restart remote services.
 
 Environment overrides:
@@ -189,6 +374,8 @@ Environment overrides:
   DEPLOY_REMOTE_ROOT=/opt/planner
   DEPLOY_ICON_REMOTE_DIR=/var/lib/planner/icon-assets
   DEPLOY_RELEASE_RETENTION=5
+  DEPLOY_MAIN_BRANCH=main
+  DEPLOY_CI_WORKFLOW=ci.yml
 `)
 }
 
@@ -273,16 +460,47 @@ async function assertDeploySourceReady() {
     )
   }
 
+  const mainline = `${remote}/${config.mainBranch}`
+  const { onMainline, warnings } = assertDeployCommitOnMainline({
+    allowNonMainline,
+    branch,
+    headIsOnMainline: await isAncestor(head, `refs/remotes/${mainline}`),
+    mainline,
+  })
+
+  for (const warning of warnings) {
+    console.warn(warning)
+  }
+
   console.log(
     [
       '[deploy] Source guard passed.',
       `  branch:   ${branch}`,
       `  upstream: ${upstream}`,
+      `  mainline: ${mainline}${onMainline ? '' : ' (NOT contained)'}`,
       `  commit:   ${head.slice(0, 12)}`,
     ].join('\n'),
   )
 
-  return { branch, head, upstream }
+  return { branch, head, onMainline, remote, upstream }
+}
+
+async function isAncestor(commit, ref) {
+  try {
+    await collect('git', ['merge-base', '--is-ancestor', commit, ref])
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    // Exit code 1 means "not an ancestor"; anything else (missing ref) is a real error.
+    if (/failed with exit code 1\n/.test(message)) {
+      return false
+    }
+
+    throw new Error(
+      `[deploy] Cannot verify that ${commit.slice(0, 12)} is merged into ${ref}.\n${message}`,
+    )
+  }
 }
 
 async function collectUpstream(branch) {

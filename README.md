@@ -482,9 +482,19 @@ npm run deploy:prod
 - рабочее дерево должно быть чистым
 - текущая ветка должна иметь upstream
 - текущий commit должен быть запушен и совпадать с upstream
+- текущий commit должен уже входить в `origin/main`, то есть PR влит
 
 Если проверка не проходит, сначала выполните `git commit`, `git push` или
-`git pull --ff-only`, затем повторите `npm run deploy:prod`.
+`git pull --ff-only`, либо влейте PR и деплойте из `main`, затем повторите
+`npm run deploy:prod`. Аварийный обход для не влитого коммита —
+`--allow-non-main`.
+
+После успешного deploy скрипт ставит на выкаченный commit тег
+`deploy/YYYYMMDD-HHMMSS` (UTC) и пушит его. Что сейчас в production:
+
+```bash
+git fetch --tags && git tag --list 'deploy/*' --sort=-creatordate | head -1
+```
 
 ## Документация
 

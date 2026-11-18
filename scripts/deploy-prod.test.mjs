@@ -6,7 +6,12 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  assertDeployCommitOnMainline,
+  createDeployTagMessage,
+  createDeployTagName,
   createReleaseLayout,
+  decideGitHubCiGate,
+  parseAndroidVersion,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
 import {
@@ -42,6 +47,193 @@ test('creates an immutable release layout with shared state', () => {
   assert.throws(() => createReleaseLayout('/opt/planner', 'abc'), /commit/)
   assert.equal(parseReleaseRetention('5'), 5)
   assert.throws(() => parseReleaseRetention('1'), /integer from 2 to 20/)
+})
+
+test('refuses to deploy commits that are not merged into main', () => {
+  assert.deepEqual(
+    assertDeployCommitOnMainline({
+      allowNonMainline: false,
+      branch: 'main',
+      headIsOnMainline: true,
+      mainline: 'origin/main',
+    }),
+    { onMainline: true, warnings: [] },
+  )
+
+  assert.throws(
+    () =>
+      assertDeployCommitOnMainline({
+        allowNonMainline: false,
+        branch: 'feat/x',
+        headIsOnMainline: false,
+        mainline: 'origin/main',
+      }),
+    /Refusing to deploy feat\/x: HEAD is not contained in origin\/main[\s\S]*--allow-non-main/,
+  )
+
+  const emergency = assertDeployCommitOnMainline({
+    allowNonMainline: true,
+    branch: 'hotfix/x',
+    headIsOnMainline: false,
+    mainline: 'origin/main',
+  })
+
+  assert.equal(emergency.onMainline, false)
+  assert.match(emergency.warnings.join('\n'), /not contained in origin\/main/)
+})
+
+test('checks the mainline before local checks and tags only after a healthy deploy', async () => {
+  const deploySource = await readFile(
+    resolve(repositoryRoot, 'scripts/deploy-prod.mjs'),
+    'utf8',
+  )
+
+  assertOrder(
+    deploySource,
+    'const source = await assertDeploySourceReady()',
+    'if (skipChecks)',
+  )
+  assertOrder(
+    deploySource,
+    "await run('git', ['fetch', '--quiet', '--prune', remote])",
+    'headIsOnMainline: await isAncestor(head',
+  )
+  assertOrder(
+    deploySource,
+    'await runRemoteRelease(layout, remoteLock.signal)',
+    'await tagDeployedRelease(source)',
+  )
+  assertOrder(
+    deploySource,
+    "if (dryRun) {\n      console.log('[deploy] Dry run complete.",
+    'await tagDeployedRelease(source)',
+  )
+  assert.match(
+    extractBetween(
+      deploySource,
+      'async function tagDeployedRelease',
+      'async function assertDeploySourceReady',
+    ),
+    /try \{[\s\S]*'--annotate'[\s\S]*'push'[\s\S]*\} catch/,
+  )
+})
+
+test('trusts the latest GitHub CI run for the exact deploy commit', () => {
+  const run = (overrides) => ({
+    conclusion: 'success',
+    createdAt: '2026-11-18T07:00:00Z',
+    databaseId: 1,
+    headSha: commit,
+    status: 'completed',
+    url: 'https://github.com/example/runs/1',
+    ...overrides,
+  })
+
+  assert.equal(decideGitHubCiGate([run({})], commit).action, 'pass')
+  assert.deepEqual(decideGitHubCiGate([], commit), {
+    action: 'fallback',
+    reason: 'no GitHub CI run for this commit',
+  })
+  assert.equal(
+    decideGitHubCiGate([run({ headSha: 'b'.repeat(40) })], commit).action,
+    'fallback',
+  )
+  assert.equal(
+    decideGitHubCiGate(
+      [run({ conclusion: null, status: 'in_progress' })],
+      commit,
+    ).action,
+    'wait',
+  )
+
+  const rerunFailed = decideGitHubCiGate(
+    [
+      run({ databaseId: 1, createdAt: '2026-11-18T07:00:00Z' }),
+      run({
+        conclusion: 'failure',
+        createdAt: '2026-11-18T08:00:00Z',
+        databaseId: 2,
+      }),
+    ],
+    commit,
+  )
+
+  assert.equal(rerunFailed.action, 'fail')
+  assert.equal(rerunFailed.run.databaseId, 2)
+  assert.equal(
+    decideGitHubCiGate([run({ conclusion: 'cancelled' })], commit).action,
+    'fail',
+  )
+})
+
+test('uses GitHub CI instead of a local npm run ci unless asked otherwise', async () => {
+  const deploySource = await readFile(
+    resolve(repositoryRoot, 'scripts/deploy-prod.mjs'),
+    'utf8',
+  )
+  const gate = extractBetween(
+    deploySource,
+    'async function verifyReleaseChecks',
+    'async function readGitHubCiGate',
+  )
+
+  assertOrder(
+    deploySource,
+    'if (skipChecks)',
+    'await verifyReleaseChecks(source.head, remoteLock.signal)',
+  )
+  assertOrder(gate, 'if (localChecks)', 'await readGitHubCiGate(commit)')
+  assertOrder(gate, "decision.action === 'wait'", "'--exit-status'")
+  assertOrder(gate, "decision.action === 'pass'", 'Skipping local npm run ci')
+  assert.match(gate, /Refusing to deploy: GitHub CI/)
+  assert.match(deploySource, /'--commit',\s*commit,\s*'--workflow'/)
+})
+
+test('names deploy tags by UTC time and records the app version', () => {
+  assert.equal(
+    createDeployTagName(new Date('2026-11-18T07:05:09.123Z')),
+    'deploy/20261118-070509',
+  )
+  assert.throws(() => createDeployTagName(new Date('nope')), /deploy time/)
+
+  const version = parseAndroidVersion(
+    'android {\n    defaultConfig {\n        versionCode 51\n        versionName "1.1.43"\n    }\n}\n',
+  )
+
+  assert.deepEqual(version, { versionCode: '51', versionName: '1.1.43' })
+  assert.deepEqual(parseAndroidVersion(''), {
+    versionCode: null,
+    versionName: null,
+  })
+
+  const message = createDeployTagMessage({
+    branch: 'hotfix/x',
+    commit,
+    domain: 'chaotika.ru',
+    onMainline: false,
+    version,
+  })
+
+  assert.match(message, /^Production deploy to chaotika\.ru/)
+  assert.match(message, /version: 1\.1\.43 \(build 51\)/)
+  assert.match(message, new RegExp(`commit: ${commit}`))
+  assert.match(message, /branch: hotfix\/x \(NOT merged into main\)/)
+})
+
+test('documents the mainline guard and deploy tags in command help', () => {
+  const result = spawnSync(
+    process.execPath,
+    [resolve(repositoryRoot, 'scripts/deploy-prod.mjs'), '--help'],
+    { encoding: 'utf8' },
+  )
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /contained in origin\/main/)
+  assert.match(result.stdout, /--allow-non-main/)
+  assert.match(result.stdout, /deploy\/YYYYMMDD-HHMMSS/)
+  assert.match(result.stdout, /--skip-tag/)
+  assert.match(result.stdout, /--local-checks/)
+  assert.match(result.stdout, /trusts the GitHub CI run/)
 })
 
 test('uses a fail-fast remote lock for the full deployment lifetime', () => {

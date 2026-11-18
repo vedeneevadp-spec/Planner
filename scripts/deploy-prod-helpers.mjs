@@ -49,3 +49,102 @@ function normalizeRemoteRoot(remoteRoot) {
 
   return value
 }
+
+export function assertDeployCommitOnMainline({
+  allowNonMainline,
+  branch,
+  headIsOnMainline,
+  mainline,
+}) {
+  if (headIsOnMainline) {
+    return { onMainline: true, warnings: [] }
+  }
+
+  if (!allowNonMainline) {
+    throw new Error(
+      [
+        `[deploy] Refusing to deploy ${branch}: HEAD is not contained in ${mainline}.`,
+        '[deploy] Production must run code that is already merged.',
+        `[deploy] Merge the pull request, then run: git switch main && git pull --ff-only && npm run deploy:prod`,
+        '[deploy] Emergency only: pass --allow-non-main (or DEPLOY_ALLOW_NON_MAIN=1).',
+      ].join('\n'),
+    )
+  }
+
+  return {
+    onMainline: false,
+    warnings: [
+      `[deploy] WARNING: deploying ${branch}, which is not contained in ${mainline}.`,
+      `[deploy] WARNING: merge it into ${mainline} soon, or production will drift from main.`,
+    ],
+  }
+}
+
+export function createDeployTagName(deployedAt) {
+  if (!(deployedAt instanceof Date) || Number.isNaN(deployedAt.getTime())) {
+    throw new Error(`Unexpected deploy time: ${deployedAt}`)
+  }
+
+  const iso = deployedAt.toISOString()
+
+  return `deploy/${iso.slice(0, 10).replaceAll('-', '')}-${iso
+    .slice(11, 19)
+    .replaceAll(':', '')}`
+}
+
+export function parseAndroidVersion(gradleSource) {
+  const versionName = /^\s*versionName\s+"([^"]+)"/m.exec(gradleSource)?.[1]
+  const versionCode = /^\s*versionCode\s+(\d+)/m.exec(gradleSource)?.[1]
+
+  return {
+    versionCode: versionCode ?? null,
+    versionName: versionName ?? null,
+  }
+}
+
+export function createDeployTagMessage({
+  branch,
+  commit,
+  domain,
+  onMainline,
+  version,
+}) {
+  const versionLine =
+    version.versionName === null
+      ? 'version: unknown'
+      : `version: ${version.versionName}${
+          version.versionCode === null ? '' : ` (build ${version.versionCode})`
+        }`
+
+  return [
+    `Production deploy to ${domain}`,
+    '',
+    versionLine,
+    `commit: ${commit}`,
+    `branch: ${branch}${onMainline ? '' : ' (NOT merged into main)'}`,
+    '',
+  ].join('\n')
+}
+
+export function decideGitHubCiGate(runs, commit) {
+  const matching = (Array.isArray(runs) ? runs : [])
+    .filter((run) => run?.headSha === commit)
+    .sort((left, right) =>
+      String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')),
+    )
+  const latest = matching[0]
+
+  if (!latest) {
+    return { action: 'fallback', reason: 'no GitHub CI run for this commit' }
+  }
+
+  if (latest.status !== 'completed') {
+    return { action: 'wait', run: latest }
+  }
+
+  if (latest.conclusion === 'success') {
+    return { action: 'pass', run: latest }
+  }
+
+  return { action: 'fail', run: latest }
+}

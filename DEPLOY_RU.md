@@ -249,7 +249,10 @@ npm run deploy:prod
 2. Берет неблокирующий `flock` на
    `/opt/planner/.deploy.lock` и удерживает его до healthcheck и очистки старых
    releases. Параллельный deploy сразу завершается с понятной ошибкой.
-3. Запускает npm run ci, пока remote lock уже удерживается.
+3. Проверяет GitHub CI (`ci.yml`) для этого commit через `gh`: успешный run
+   заменяет локальный `npm run ci`, незавершённый — ожидается, упавший
+   останавливает deploy. Если `gh` недоступен или run нет, запускает
+   `npm run ci` локально. Всё это — пока remote lock уже удерживается.
 4. Создает `releases`, `shared/backups` и `shared/state`; при первом переходе
    сохраняет legacy `/opt/planner` как target symlink `current`.
 5. Упаковывает только committed Git tree через `git archive`, передает единый
@@ -294,6 +297,15 @@ Rollback возвращает application release и runtime-конфигура�
 ```bash
 git commit
 git push
+git pull --ff-only
+```
+
+Deploy разрешён только для commit, который уже входит в `origin/main`. Если
+guard сообщает `HEAD is not contained in origin/main`, влейте PR и деплойте из
+`main`:
+
+```bash
+git switch main
 git pull --ff-only
 ```
 
@@ -380,10 +392,16 @@ https://chaotika.ru
 npm run deploy:prod
 ```
 
-Без локальных проверок:
+Без проверок (ни GitHub CI, ни локального `npm run ci`):
 
 ```bash
 npm run deploy:prod -- --skip-checks
+```
+
+Прогнать `npm run ci` локально вместо проверки GitHub CI:
+
+```bash
+npm run deploy:prod -- --local-checks
 ```
 
 Без копирования локальных иконок:
@@ -402,6 +420,19 @@ Dry run:
 
 ```bash
 npm run deploy:prod -- --dry-run
+```
+
+Аварийно выкатить запушенный, но ещё не влитый в `main` commit (после этого
+как можно скорее влейте его, иначе production разойдётся с `main`):
+
+```bash
+npm run deploy:prod -- --allow-non-main
+```
+
+Без тега `deploy/*` после успешного deploy:
+
+```bash
+npm run deploy:prod -- --skip-tag
 ```
 
 Переопределения через env:
