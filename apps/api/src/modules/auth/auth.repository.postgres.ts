@@ -112,7 +112,7 @@ export class PostgresAuthRepository implements AuthRepository {
 
       return mapAuthUserRow(row.rows[0]!)
     } catch (error) {
-      if (isUniqueConstraintError(error)) {
+      if (isEmailUniqueConstraintError(error)) {
         throw new HttpError(
           409,
           'auth_email_taken',
@@ -277,16 +277,32 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function isUniqueConstraintError(error: unknown): boolean {
-  return getErrorCode(error) === '23505'
+// Only an email collision means "already registered"; other unique
+// violations (for example users_single_owner_idx) are server faults.
+const EMAIL_UNIQUE_CONSTRAINTS = new Set([
+  'auth_credentials_email_key',
+  'users_email_key',
+])
+
+function isEmailUniqueConstraintError(error: unknown): boolean {
+  if (getErrorField(error, 'code') !== '23505') {
+    return false
+  }
+
+  const constraint = getErrorField(error, 'constraint')
+
+  return constraint !== undefined && EMAIL_UNIQUE_CONSTRAINTS.has(constraint)
 }
 
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
+function getErrorField(
+  error: unknown,
+  field: 'code' | 'constraint',
+): string | undefined {
+  if (typeof error !== 'object' || error === null) {
     return undefined
   }
 
-  const code = error.code
+  const value: unknown = Reflect.get(error, field)
 
-  return typeof code === 'string' ? code : undefined
+  return typeof value === 'string' ? value : undefined
 }
