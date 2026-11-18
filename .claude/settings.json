@@ -14,6 +14,11 @@
       "Bash(npm run db:migrations:check)",
       "Bash(npm run openapi:check)",
       "Bash(npm run toolchain:check)",
+      "Bash(npm run version:check)",
+      "Bash(npm run test:version)",
+      "Bash(npm run test:notify)",
+      "Bash(npm run test:deploy)",
+      "Bash(npm run test:mobile-release)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -29,8 +34,11 @@
       "Bash(npm run mobile:update:publish*)",
       "Bash(npm run mobile:release*)",
       "Bash(npm run prod:env*)",
+      "Bash(npm run notify:telegram*)",
+      "Bash(npm run mobile:publish*)",
       "Bash(ssh *)",
-      "Bash(git push*)"
+      "Bash(git push*)",
+      "Bash(gh pr merge*)"
     ],
     "deny": [
       "Read(./.env.local)",
@@ -38,7 +46,8 @@
       "Read(./apps/api/.env)",
       "Read(./apps/api/.env.local)",
       "Read(./android/keystore.properties)",
-      "Read(./android/keystore/**)"
+      "Read(./android/keystore/**)",
+      "Read(~/.config/chaotika/**)"
     ]
   }
 }

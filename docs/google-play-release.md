@@ -45,6 +45,44 @@ API, включает обычную авторизацию и проверяе�
 node --input-type=module -e "import {assertGooglePlayArtifact} from './scripts/google-play-artifact.mjs'; await assertGooglePlayArtifact('android/app/build/outputs/bundle/release/app-release.aab')"
 ```
 
+## Автоматическая загрузка в Alpha
+
+AAB загружается в закрытый тест через Google Play Developer API от имени
+сервисного аккаунта `play-publisher@chaotika-58761.iam.gserviceaccount.com`
+(проект Google Cloud `chaotika-58761`, включён Google Play Android Developer
+API). В Play Console у аккаунта только права на приложение: «Просмотр
+информации о приложении (только чтение)» и «Выпуск версий для тестирования
+приложения». Выпускать рабочую версию он не может, а скрипт принимает только
+треки `internal` и `alpha`.
+
+JSON-ключ хранится вне репозитория, в `~/.config/chaotika/google-play-publisher.json`
+(права `600`), с резервной копией рядом с upload keystore. Путь к нему задаёт
+`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` в окружении или в git-игнорируемом
+`.env.google-play.local`. Ключ скомпрометирован или потерян — удалите его в
+Google Cloud («Сервисные аккаунты» → «Ключи») и создайте новый.
+
+Порядок выпуска:
+
+```bash
+npm run version:set -- --version=X.Y.Z --build=N
+npm run mobile:release:google-play -- --api-url=https://chaotika.ru
+npm run mobile:publish:google-play:dry-run
+npm run mobile:publish:google-play
+```
+
+- Версия берётся из `package.json` и должна пройти `npm run version:check`;
+  `versionCode` загруженного AAB сверяется с ней.
+- «Что нового» (`ru-RU`) берётся из подраздела `### Google Play` раздела
+  `## vX.Y.Z` в `docs/release-notes.md`, не длиннее 500 символов.
+- По умолчанию выпуск получает статус `completed` и сразу отправляется на
+  проверку; управляемая публикация выключена, поэтому после одобрения он
+  становится доступен тестировщикам. `--status=draft` сохраняет черновик, а
+  `--track=internal` выбирает внутренний тест.
+- `--dry-run` авторизуется в API, читает трек и проверяет пустое изменение:
+  ничего не загружает и не публикует. Используйте его для проверки доступа.
+- При ошибке HTTP 403 проверьте права аккаунта в Play Console (вступают в силу
+  до суток) и что API включён в проекте `chaotika-58761`.
+
 ## Выпуск 1.1.40 (48)
 
 14 ноября 2026 года подписанный AAB 1.1.40 (48) загружен в закрытый канал

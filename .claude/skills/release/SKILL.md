@@ -12,7 +12,8 @@ disable-model-invocation: true
 - `web` — только production (web, PWA, API), без APK.
 - `apk` (по умолчанию) — production и signed arm64 APK для RuStore и обновления
   внутри приложения.
-- `store` — как `apk`, но версию и номер сборки спросить у пользователя.
+- `store` — как `apk`, плюс AAB в закрытый тест Google Play (Alpha); версию и
+  номер сборки спросить у пользователя.
 - `X.Y.Z` — версия релиза; без неё — следующая patch-версия.
 - `group` — дополнительно отправить пользовательский обзор и APK в группу
   Telegram. Без этого слова в группу ничего не отправлять.
@@ -27,7 +28,9 @@ disable-model-invocation: true
 
 1. merge PR в `main`;
 2. `npm run deploy:prod`;
-3. отправка в группу Telegram (только при аргументе `group`), показав
+3. загрузка в Google Play (только `store`), показав версию и текст «Что
+   нового»;
+4. отправка в группу Telegram (только при аргументе `group`), показав
    готовый текст.
 
 Отправку себе в личный чат отдельно не подтверждать: она часть `/release`.
@@ -51,9 +54,11 @@ disable-model-invocation: true
 4. **Release notes.** В [docs/release-notes.md](../../../docs/release-notes.md)
    перенеси пункты из `Unreleased` в раздел `## vX.Y.Z - YYYY-MM-DD` с этой же
    версией и каналами (`Web`, `PWA`, `API`, `Android` …). Пиши о
-   пользовательском эффекте, без команд, хэшей и внутренних деталей. Затем
-   `npm run version:check` должен пройти: он сверяет версию в `package.json`,
-   нативных проектах и в последнем разделе release notes (то же проверяет CI).
+   пользовательском эффекте, без команд, хэшей и внутренних деталей. Для
+   `store` добавь в раздел подраздел `### Google Play` — короткий текст «Что
+   нового» до 500 символов. Затем `npm run version:check` должен пройти: он
+   сверяет версию в `package.json`, нативных проектах и в последнем разделе
+   release notes (то же проверяет CI).
 5. **Проверки.** Всегда `npm run lint`, `npm run typecheck`,
    `npm run test:web:run`, `npm run test:api`. Дополнительно:
    - SQL/RLS/postgres-репозитории — `npm run test:api:postgres`;
@@ -79,6 +84,13 @@ disable-model-invocation: true
    Результат: `android/app/build/outputs/apk/release/app-release.apk`. Если
    подпись не настроена (`android/keystore.properties`), остановись и скажи
    об этом; содержимое keystore не читать.
+
+   **Google Play (только `store`).** Собери AAB:
+   `npm run mobile:release:google-play -- --api-url=https://chaotika.ru`, затем
+   `npm run mobile:publish:google-play:dry-run` (доступ, версия, текст «Что
+   нового»). После подтверждения — `npm run mobile:publish:google-play`: AAB
+   уходит в Alpha со статусом `completed` и сразу на проверку Google. Ключ
+   сервисного аккаунта скрипт находит сам; не читай и не выводи его.
 10. **Telegram, личный чат.** Подготовь техническую сводку в файл во
     временном каталоге: что изменилось, тег деплоя и commit, результаты
     проверок, статус деплоя, версия и build, имя и размер APK. Затем:

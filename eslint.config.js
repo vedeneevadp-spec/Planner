@@ -174,6 +174,8 @@ export default tseslint.config(
       'playwright-report',
       'test-results',
       'tmp/**',
+      // Claude Code session worktrees are full checkouts of the repository.
+      '.claude/worktrees/**',
       'node_modules',
       'android/**',
       'capacitor.config.ts',
