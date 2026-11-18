@@ -48,7 +48,13 @@
 9. После успешного деплоя собери APK командой:
    `npm run mobile:release:rustore:arm64 -- --api-url=https://chaotika.ru`
 10. Найди APK по пути:
-   `android/app/build/outputs/apk/release/app-release.apk`
+   `android/app/build/outputs/apk/release/app-release.apk` и опубликуй его как
+   обновление внутри приложения: сохрани короткий текст `### Google Play` из
+   раздела версии в файл заметок, проверь
+   `npm run mobile:update:prepare -- --notes-file=<заметки>` и, если я
+   подтвердила выпуск APK, выполни `npm run mobile:update:publish` с тем же
+   файлом. Убедись, что `https://chaotika.ru/android-updates/latest.json`
+   отдаёт новую версию.
 11. Отправь результаты в Telegram скриптом `npm run notify:telegram`
    (`--to=personal|group`, `--text-file=...`, `--file=<APK>`,
    `--caption=...`; `--dry-run` для проверки без отправки). Токен и chat id
