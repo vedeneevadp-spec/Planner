@@ -1,19 +1,37 @@
-import type { TodayFillerSummaryItem } from '../lib/today-filler'
+import type {
+  TodayFillerIllustration,
+  TodayFillerSummaryItem,
+} from '../lib/today-filler'
 import styles from './TodayFillerCard.module.css'
 
-const ILLUSTRATIONS = {
+const ILLUSTRATIONS: Record<
+  TodayFillerIllustration,
+  { dark: string; light: string }
+> = {
+  growth: {
+    dark: '/self-care/today/filler-growth-dark.webp',
+    light: '/self-care/today/filler-growth-light.webp',
+  },
   notebook: {
     dark: '/self-care/add-care/create-card-bg-dark.webp',
     light: '/self-care/add-care/create-card-bg-light.webp',
+  },
+  rest: {
+    dark: '/self-care/today/filler-rest-dark.webp',
+    light: '/self-care/today/filler-rest-light.webp',
+  },
+  rhythm: {
+    dark: '/self-care/today/filler-rhythm-dark.webp',
+    light: '/self-care/today/filler-rhythm-light.webp',
   },
   tea: {
     dark: '/self-care/today-clear-dark.webp',
     light: '/self-care/today-clear-light.webp',
   },
-} as const
+}
 
 interface TodayFillerCardProps {
-  illustration: keyof typeof ILLUSTRATIONS
+  illustration: TodayFillerIllustration
   phrase: string
   summary: TodayFillerSummaryItem[]
 }

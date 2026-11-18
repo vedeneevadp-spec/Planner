@@ -4,7 +4,9 @@ import type { Task } from '@/entities/task'
 
 import {
   buildTodayFillerSummary,
+  getTodayFillerIllustration,
   getTodayFillerPhrase,
+  TODAY_FILLER_ILLUSTRATIONS,
   TODAY_FILLER_PHRASES,
 } from './today-filler'
 
@@ -41,6 +43,30 @@ describe('getTodayFillerPhrase', () => {
     expect(TODAY_FILLER_PHRASES).toContain(
       getTodayFillerPhrase('2026-11-17', 1),
     )
+  })
+})
+
+describe('getTodayFillerIllustration', () => {
+  const days = Array.from(
+    { length: 30 },
+    (_, index) => `2026-11-${String(index + 1).padStart(2, '0')}`,
+  )
+
+  it('keeps one illustration per day and rotates through all of them', () => {
+    expect(getTodayFillerIllustration('2026-11-17')).toBe(
+      getTodayFillerIllustration('2026-11-17'),
+    )
+    expect(new Set(days.map((day) => getTodayFillerIllustration(day)))).toEqual(
+      new Set(TODAY_FILLER_ILLUSTRATIONS),
+    )
+  })
+
+  it('never shows the same illustration in both cards on a page', () => {
+    for (const day of days) {
+      expect(getTodayFillerIllustration(day, 1)).not.toBe(
+        getTodayFillerIllustration(day, 0),
+      )
+    }
   })
 })
 

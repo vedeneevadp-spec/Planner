@@ -10,6 +10,7 @@ import pageStyles from '@/shared/ui/Page'
 
 import {
   buildTodayFillerSummary,
+  getTodayFillerIllustration,
   getTodayFillerPhrase,
 } from '../lib/today-filler'
 import {
@@ -329,7 +330,7 @@ export function TodayTaskSections({
         ],
         taskView,
         <TodayFillerCard
-          illustration="tea"
+          illustration={getTodayFillerIllustration(todayKey)}
           phrase={getTodayFillerPhrase(todayKey)}
           summary={fillerSummary}
         />,
@@ -359,7 +360,7 @@ export function TodayTaskSections({
         ],
         taskView,
         <TodayFillerCard
-          illustration="notebook"
+          illustration={getTodayFillerIllustration(todayKey, 1)}
           phrase={getTodayFillerPhrase(todayKey, 1)}
           summary={[]}
         />,

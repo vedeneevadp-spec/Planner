@@ -30,19 +30,52 @@ export type TodayFillerSummaryItem =
   | { kind: 'sphere'; count: number; name: string }
 
 /**
+ * Illustrations for the filler card. Each has a light and a dark variant with
+ * the object in the bottom-right corner, leaving the left side for the text.
+ */
+export const TODAY_FILLER_ILLUSTRATIONS = [
+  'tea',
+  'notebook',
+  'rest',
+  'growth',
+  'rhythm',
+] as const
+
+export type TodayFillerIllustration =
+  (typeof TODAY_FILLER_ILLUSTRATIONS)[number]
+
+/**
  * Picks a phrase for the day so it stays put across reloads and changes at
  * midnight. `slot` lets two cards on the page show different phrases.
  */
 export function getTodayFillerPhrase(todayKey: string, slot = 0): string {
+  const index = (hashDayKey(todayKey) + slot) % TODAY_FILLER_PHRASES.length
+
+  return TODAY_FILLER_PHRASES[index] ?? TODAY_FILLER_PHRASES[0]
+}
+
+/**
+ * Picks an illustration for the day the same way as the phrase: stable across
+ * reloads, new at midnight, and different for the second card on the page.
+ */
+export function getTodayFillerIllustration(
+  todayKey: string,
+  slot = 0,
+): TodayFillerIllustration {
+  const index =
+    (hashDayKey(todayKey) + slot) % TODAY_FILLER_ILLUSTRATIONS.length
+
+  return TODAY_FILLER_ILLUSTRATIONS[index] ?? TODAY_FILLER_ILLUSTRATIONS[0]
+}
+
+function hashDayKey(todayKey: string): number {
   let hash = 0
 
   for (const char of todayKey) {
     hash = (hash * 31 + char.charCodeAt(0)) % 1_000_003
   }
 
-  const index = (hash + slot) % TODAY_FILLER_PHRASES.length
-
-  return TODAY_FILLER_PHRASES[index] ?? TODAY_FILLER_PHRASES[0]
+  return hash
 }
 
 export function buildTodayFillerSummary({
