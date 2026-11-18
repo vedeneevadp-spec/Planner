@@ -1,33 +1,121 @@
 # AGENTS.md
 
-## Project workflow
+Chaotika (Planner) — планировщик: web + PWA + Capacitor-приложения
+iOS/Android поверх одного React-бандла, Fastify API, PostgreSQL с RLS.
+Production: `https://chaotika.ru`.
 
-- Before editing code, inspect package.json and existing folder structure.
-- Prefer existing components, utilities, styles, tokens, and routing patterns.
-- Do not add new production dependencies without explaining why.
-- Keep changes scoped to the requested screen or feature.
-- Use TypeScript-safe code.
-- Prefer accessible semantic HTML.
-- Preserve existing naming conventions.
+## Язык и стиль
 
-## Figma implementation rules
+- Отвечать, писать сводки, release notes и тексты интерфейса по-русски.
+- Коммиты: `type(scope): описание по-русски`, например
+  `feat(today): карточка с фразой дня`. Типы: feat, fix, chore, docs, test,
+  refactor.
+- Ветки: `feat/<кратко>`, `fix/<кратко>`, `chore/<кратко>`. PR сливаются в
+  `main` через squash-merge.
+- Коммитить, пушить, деплоить и что-либо отправлять — только по явной просьбе.
 
-When implementing a Figma design:
+## Где что лежит
 
-- Start by using Figma MCP to get design context for the exact linked frame or node.
-- Get a screenshot of the exact frame before coding.
-- If Figma output is too large or truncated, inspect metadata and fetch only the needed nodes.
-- Reuse existing components from the project before creating new ones.
-- Match spacing, hierarchy, typography, colors, states, and responsive behavior.
-- Do not invent a parallel design system.
-- If the design uses icons/assets from Figma, reuse them or export them properly instead of adding random icon packages.
+- `apps/web` — React-клиент, feature-oriented структура (app → pages → widgets →
+  features → entities → shared). Правила слоёв:
+  [docs/architecture.md](docs/architecture.md).
+- `apps/api` — Fastify API, модули в `apps/api/src/modules/<домен>`. У
+  репозиториев две реализации: `*.repository.memory.ts` и
+  `*.repository.postgres.ts`. Меняя одну, меняй и вторую.
+- `packages/contracts` — общие zod-контракты web ↔ API.
+- `db/migrations` — SQL-миграции, применяются по порядку имени файла.
+- `android/`, `ios/` — нативные оболочки Capacitor и плагины.
+- `scripts/` — деплой, релизы, бэкапы, проверки (`*.mjs`).
+- `docs/` — runbook'и и ADR. `docs/archive/` — описания удалённых функций, не
+  инструкции.
 
-## Validation
+## Окружение
 
-After changes:
+- Node и npm закреплены (`.nvmrc`, `packageManager`). В обычной оболочке
+  `node` может оказаться другой версии: `.npmrc` переключает версию только
+  внутри `npm run`. Поэтому запускай всё через `npm run <script>` или
+  `npm exec`, а не через голые `node`, `npx`, `tsx`.
+- Локальный запуск web + API + Postgres: `npm run dev:local` (нужен Docker,
+  порты 5173 и 3001; авторизация отключена, есть сид-пользователь). Для превью
+  используй конфигурацию `planner-local` из `.claude/launch.json`.
+- Только web против уже запущенного API: `npm run dev`.
 
-- Run the project’s lint command if available.
-- Run the project’s typecheck command if available.
-- Run tests if they are relevant and available.
-- Start or use the dev server to visually inspect the implemented route.
-- Summarize changed files and any tradeoffs.
+## Проверки
+
+Быстрые — запускать после любых изменений кода:
+
+| Команда                | Время | Что проверяет                                       |
+| ---------------------- | ----- | --------------------------------------------------- |
+| `npm run typecheck`    | ~15 с | web, contracts, api                                 |
+| `npm run lint`         | ~40 с | eslint + `time:guard` (запрет прямой работы с Date) |
+| `npm run test:web:run` | ~20 с | vitest для web; можно передать путь к файлу         |
+| `npm run test:api`     | ~6 с  | node:test для API на memory-хранилище               |
+
+По типу изменения дополнительно:
+
+- SQL, RLS, postgres-репозитории → `npm run db:migrations:check` и
+  `npm run test:api:postgres` (нужен `npm run db:up`).
+- Контракты или маршруты API → `npm run openapi:check`.
+- Auth, сессии, восстановление на мобильных, offline-очередь, виджет →
+  `npm run test:mobile-auth`.
+- Роутинг и основной сценарий планировщика → `npm run test:e2e`.
+- Удалённые экспорты и файлы → `npm run deadcode:strict`.
+- Форматирование при коммите делает `lint-staged`; вручную —
+  `npm run format:check`.
+
+`npm run ci` — полный гейт (около 10 минут). Его запускает GitHub CI на каждый
+PR; локально — перед релизом или по просьбе.
+
+## Инварианты — не нарушать
+
+- **Время.** В логике планировщика не использовать `Date` напрямую: только
+  `TimeService` из `apps/web/src/shared/time` и `packages/contracts/src/time`.
+  Даты без времени — строки `YYYY-MM-DD`, не UTC-полночь. Подробнее:
+  [docs/time-system.md](docs/time-system.md). Нарушения ловит
+  `npm run time:guard`.
+- **Миграции.** Уже существующие файлы в `db/migrations` не редактировать —
+  только новая миграция. Миграции должны быть обратно совместимы с предыдущим
+  релизом: автооткат деплоя возвращает код, но не схему.
+- **Авторизация на мобильных.** Нельзя разлогинивать пользователя без явного
+  выхода или подтверждённой серверной ревокации сессии устройства:
+  [ADR 0002](docs/adr/0002-auth-session-stability.md).
+- **Офлайн.** Изменения из offline-очередей (`offline-*-store.ts`) не должны
+  теряться и не должны перезаписывать более новые данные.
+- **Два хранилища API.** Поведение memory- и postgres-репозиториев одинаково.
+  Где есть `*.repository.contract.ts`, он прогоняется на обеих реализациях:
+  новые сценарии добавляй туда.
+
+## Без явной просьбы не делать
+
+- `npm run deploy:prod`, `mobile:update:publish`, подписанные
+  `mobile:release*`, `ssh` на production, команды `db:*` против production.
+- Читать или выводить содержимое `.env*` (кроме `*.example`), keystore и
+  `android/keystore.properties`.
+- Отправлять сообщения в Telegram или куда-либо ещё.
+- Создавать git worktree внутри репозитория (в `tmp/`) — только в каталоге вне
+  проекта.
+
+## Релизы
+
+Порядок релиза и выбор проверок по типу изменений —
+[docs/release-workflow.md](docs/release-workflow.md). Пользовательские заметки
+к релизу — [docs/release-notes.md](docs/release-notes.md), раздел `Unreleased`.
+Первичная настройка сервера — [DEPLOY_RU.md](DEPLOY_RU.md).
+
+## Работа по макетам Figma
+
+- Если Figma MCP подключён: получить контекст и скриншот нужного фрейма до
+  написания кода; при большом ответе запрашивать только нужные узлы.
+- Сначала переиспользовать существующие компоненты, токены и стили проекта; не
+  заводить параллельную дизайн-систему.
+- Повторять отступы, иерархию, типографику, цвета, состояния и адаптивность.
+- Иконки и картинки брать из макета или существующих ассетов, не подключать
+  новые icon-пакеты.
+
+## Общие правила
+
+- Изменения ограничивать запрошенным экраном или функцией.
+- Новые production-зависимости — только с объяснением, зачем они нужны.
+- Семантичный доступный HTML; TypeScript без обходов типов.
+- После UI-изменений открыть маршрут в dev-сервере и проверить глазами.
+- В конце перечислить изменённые файлы, запущенные проверки и компромиссы.

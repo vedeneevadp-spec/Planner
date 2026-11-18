@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck*)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:fix)",
+      "Bash(npm run time:guard)",
+      "Bash(npm run format:check)",
+      "Bash(npm run test:web:run*)",
+      "Bash(npm run test:api)",
+      "Bash(npm run test:api *)",
+      "Bash(npm run deadcode*)",
+      "Bash(npm run db:migrations:check)",
+      "Bash(npm run openapi:check)",
+      "Bash(npm run toolchain:check)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch --show-current)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)"
+    ],
+    "ask": [
+      "Bash(npm run deploy:prod*)",
+      "Bash(npm run mobile:update:publish*)",
+      "Bash(npm run mobile:release*)",
+      "Bash(npm run prod:env*)",
+      "Bash(ssh *)",
+      "Bash(git push*)"
+    ],
+    "deny": [
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(./apps/api/.env)",
+      "Read(./apps/api/.env.local)",
+      "Read(./android/keystore.properties)",
+      "Read(./android/keystore/**)"
+    ]
+  }
+}

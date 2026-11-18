@@ -254,27 +254,24 @@ Android:
 - увеличить `versionCode`
 - обновить `versionName`
 
-Текущие значения по умолчанию:
-
-```text
-versionCode 1
-versionName "1.0"
-```
-
 iOS:
 
 - проект: `ios/App/App.xcodeproj`
 - увеличить `CURRENT_PROJECT_VERSION`
 - обновить `MARKETING_VERSION`
 
-Текущие значения по умолчанию:
+Android и iOS используют одинаковые номера: `versionName` = `MARKETING_VERSION`,
+`versionCode` = `CURRENT_PROJECT_VERSION`. Текущие значения смотрите в файлах, а
+не в этом документе:
 
-```text
-CURRENT_PROJECT_VERSION = 1
-MARKETING_VERSION = 1.0
+```bash
+grep -nE 'versionCode|versionName' android/app/build.gradle
+grep -nE 'MARKETING_VERSION|CURRENT_PROJECT_VERSION' ios/App/App.xcodeproj/project.pbxproj | sort -u
 ```
 
-Версии нужно менять перед каждой публикацией нового build в store.
+Версии нужно менять перед каждой публикацией нового build в store. Вручную их
+обычно не правят: `npm run mobile:release -- --version=X.Y.Z --build=N`
+обновляет оба проекта (см. раздел 7).
 
 ## 6. Выкатить web и PWA в production
 
