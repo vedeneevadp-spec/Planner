@@ -125,3 +125,26 @@ export function createDeployTagMessage({
     '',
   ].join('\n')
 }
+
+export function decideGitHubCiGate(runs, commit) {
+  const matching = (Array.isArray(runs) ? runs : [])
+    .filter((run) => run?.headSha === commit)
+    .sort((left, right) =>
+      String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? '')),
+    )
+  const latest = matching[0]
+
+  if (!latest) {
+    return { action: 'fallback', reason: 'no GitHub CI run for this commit' }
+  }
+
+  if (latest.status !== 'completed') {
+    return { action: 'wait', run: latest }
+  }
+
+  if (latest.conclusion === 'success') {
+    return { action: 'pass', run: latest }
+  }
+
+  return { action: 'fail', run: latest }
+}

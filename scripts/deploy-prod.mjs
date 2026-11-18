@@ -21,6 +21,7 @@ import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { setTimeout as delay } from 'node:timers/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -29,12 +30,14 @@ import {
   assertDeployCommitOnMainline,
   createDeployTagMessage,
   createDeployTagName,
+  decideGitHubCiGate,
   createReleaseLayout,
   parseAndroidVersion,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
 
 const DEFAULTS = {
+  ciWorkflow: 'ci.yml',
   domain: 'chaotika.ru',
   healthPath: '/api/ready',
   iconLocalDirectory: 'apps/api/tmp/icon-assets',
@@ -61,6 +64,7 @@ const config = {
     'DEPLOY_ICON_REMOTE_DIR',
     DEFAULTS.iconRemoteDirectory,
   ),
+  ciWorkflow: readEnv('DEPLOY_CI_WORKFLOW', DEFAULTS.ciWorkflow),
   mainBranch: readEnv('DEPLOY_MAIN_BRANCH', DEFAULTS.mainBranch),
   remoteHost: readEnv('DEPLOY_HOST', DEFAULTS.remoteHost),
   remoteRoot: readEnv('DEPLOY_REMOTE_ROOT', DEFAULTS.remoteRoot),
@@ -79,6 +83,8 @@ const skipIcons =
 const allowNonMainline =
   args.has('--allow-non-main') || process.env.DEPLOY_ALLOW_NON_MAIN === '1'
 const skipTag = args.has('--skip-tag') || process.env.DEPLOY_SKIP_TAG === '1'
+const localChecks =
+  args.has('--local-checks') || process.env.DEPLOY_LOCAL_CHECKS === '1'
 import { REMOTE_DEPLOY_LOCK_MARKER } from './deploy-prod-remote.mjs'
 const REMOTE_DEPLOY_LOCK_TIMEOUT_MS = 15_000
 const SOURCE_UPLOAD_CHUNK_BYTES = 256 * 1024
@@ -129,12 +135,9 @@ async function main() {
 
   try {
     if (skipChecks) {
-      console.log('[deploy] Skipping local checks.')
+      console.log('[deploy] Skipping checks.')
     } else {
-      await run('npm', ['run', 'ci'], {
-        env: createLocalCheckEnv(),
-        signal: remoteLock.signal,
-      })
+      await verifyReleaseChecks(source.head, remoteLock.signal)
     }
 
     if (dryRun) {
@@ -159,6 +162,117 @@ async function main() {
   }
 
   await tagDeployedRelease(source)
+}
+
+async function verifyReleaseChecks(commit, signal) {
+  if (localChecks) {
+    await runLocalChecks('--local-checks was passed', signal)
+    return
+  }
+
+  let decision = await readGitHubCiGate(commit)
+
+  if (decision.action === 'fallback') {
+    // Right after a merge GitHub may not have queued the push run yet.
+    console.log(
+      `[deploy] No GitHub CI run for ${commit.slice(0, 12)} yet; checking again in 20 seconds...`,
+    )
+    await delay(20_000, undefined, { signal })
+    decision = await readGitHubCiGate(commit)
+  }
+
+  if (decision.action === 'unavailable') {
+    await runLocalChecks(decision.reason, signal)
+    return
+  }
+
+  if (decision.action === 'wait') {
+    console.log(
+      `[deploy] GitHub CI is still running for ${commit.slice(0, 12)}: ${decision.run.url}`,
+    )
+    console.log('[deploy] Waiting for it to finish (Ctrl+C to abort)...')
+
+    try {
+      await run(
+        'gh',
+        [
+          'run',
+          'watch',
+          String(decision.run.databaseId),
+          '--exit-status',
+          '--compact',
+          '--interval',
+          '30',
+        ],
+        { signal },
+      )
+    } catch {
+      // The final verdict comes from re-reading the run below.
+    }
+
+    decision = await readGitHubCiGate(commit)
+  }
+
+  if (decision.action === 'pass') {
+    console.log(
+      `[deploy] GitHub CI passed for ${commit.slice(0, 12)}: ${decision.run.url}`,
+    )
+    console.log('[deploy] Skipping local npm run ci.')
+    return
+  }
+
+  if (decision.action === 'fallback' || decision.action === 'unavailable') {
+    await runLocalChecks(decision.reason, signal)
+    return
+  }
+
+  throw new Error(
+    [
+      `[deploy] Refusing to deploy: GitHub CI ${decision.run.conclusion ?? decision.run.status} for ${commit.slice(0, 12)}.`,
+      `[deploy] ${decision.run.url}`,
+      '[deploy] Fix it or re-run the workflow. To check locally instead, pass --local-checks.',
+    ].join('\n'),
+  )
+}
+
+async function readGitHubCiGate(commit) {
+  let runs
+
+  try {
+    runs = JSON.parse(
+      await collect('gh', [
+        'run',
+        'list',
+        '--commit',
+        commit,
+        '--workflow',
+        config.ciWorkflow,
+        '--limit',
+        '20',
+        '--json',
+        'databaseId,status,conclusion,headSha,event,url,createdAt',
+      ]),
+    )
+  } catch (error) {
+    const detail = (error instanceof Error ? error.message : String(error))
+      .split('\n')
+      .find((line) => line.trim() !== '' && !line.includes(' run list '))
+
+    return {
+      action: 'unavailable',
+      reason: `cannot read GitHub CI status via gh${detail ? ` (${detail.trim()})` : ''}`,
+    }
+  }
+
+  return decideGitHubCiGate(runs, commit)
+}
+
+async function runLocalChecks(reason, signal) {
+  console.log(`[deploy] Running local npm run ci: ${reason}.`)
+  await run('npm', ['run', 'ci'], {
+    env: createLocalCheckEnv(),
+    signal,
+  })
 }
 
 async function tagDeployedRelease(source) {
@@ -227,6 +341,12 @@ Source guard:
   and is already contained in origin/main (merged). Use --allow-non-main only
   for emergencies.
 
+Checks:
+  The deploy trusts the GitHub CI run (workflow ci.yml) for the exact commit:
+  success skips local npm run ci, a running workflow is awaited, a failed one
+  stops the deploy. Without gh or without a CI run it falls back to local
+  npm run ci. --local-checks always runs npm run ci locally.
+
 Release tags:
   After a healthy deploy, an annotated tag deploy/YYYYMMDD-HHMMSS (UTC) is
   created on the deployed commit and pushed. Find what runs in production with:
@@ -238,7 +358,8 @@ Concurrency:
   immediately instead of waiting for the active deploy.
 
 Options:
-  --skip-checks  Do not run npm run ci before deploy.
+  --skip-checks  Do not verify GitHub CI and do not run npm run ci.
+  --local-checks Run npm run ci locally instead of trusting GitHub CI.
   --skip-db-backup
                  Do not run pg_dump before production migrations.
   --skip-icons   Do not copy local uploaded icon assets.
@@ -254,6 +375,7 @@ Environment overrides:
   DEPLOY_ICON_REMOTE_DIR=/var/lib/planner/icon-assets
   DEPLOY_RELEASE_RETENTION=5
   DEPLOY_MAIN_BRANCH=main
+  DEPLOY_CI_WORKFLOW=ci.yml
 `)
 }
 

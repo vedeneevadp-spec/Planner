@@ -10,6 +10,7 @@ import {
   createDeployTagMessage,
   createDeployTagName,
   createReleaseLayout,
+  decideGitHubCiGate,
   parseAndroidVersion,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
@@ -117,6 +118,77 @@ test('checks the mainline before local checks and tags only after a healthy depl
   )
 })
 
+test('trusts the latest GitHub CI run for the exact deploy commit', () => {
+  const run = (overrides) => ({
+    conclusion: 'success',
+    createdAt: '2026-11-18T07:00:00Z',
+    databaseId: 1,
+    headSha: commit,
+    status: 'completed',
+    url: 'https://github.com/example/runs/1',
+    ...overrides,
+  })
+
+  assert.equal(decideGitHubCiGate([run({})], commit).action, 'pass')
+  assert.deepEqual(decideGitHubCiGate([], commit), {
+    action: 'fallback',
+    reason: 'no GitHub CI run for this commit',
+  })
+  assert.equal(
+    decideGitHubCiGate([run({ headSha: 'b'.repeat(40) })], commit).action,
+    'fallback',
+  )
+  assert.equal(
+    decideGitHubCiGate(
+      [run({ conclusion: null, status: 'in_progress' })],
+      commit,
+    ).action,
+    'wait',
+  )
+
+  const rerunFailed = decideGitHubCiGate(
+    [
+      run({ databaseId: 1, createdAt: '2026-11-18T07:00:00Z' }),
+      run({
+        conclusion: 'failure',
+        createdAt: '2026-11-18T08:00:00Z',
+        databaseId: 2,
+      }),
+    ],
+    commit,
+  )
+
+  assert.equal(rerunFailed.action, 'fail')
+  assert.equal(rerunFailed.run.databaseId, 2)
+  assert.equal(
+    decideGitHubCiGate([run({ conclusion: 'cancelled' })], commit).action,
+    'fail',
+  )
+})
+
+test('uses GitHub CI instead of a local npm run ci unless asked otherwise', async () => {
+  const deploySource = await readFile(
+    resolve(repositoryRoot, 'scripts/deploy-prod.mjs'),
+    'utf8',
+  )
+  const gate = extractBetween(
+    deploySource,
+    'async function verifyReleaseChecks',
+    'async function readGitHubCiGate',
+  )
+
+  assertOrder(
+    deploySource,
+    'if (skipChecks)',
+    'await verifyReleaseChecks(source.head, remoteLock.signal)',
+  )
+  assertOrder(gate, 'if (localChecks)', 'await readGitHubCiGate(commit)')
+  assertOrder(gate, "decision.action === 'wait'", "'--exit-status'")
+  assertOrder(gate, "decision.action === 'pass'", 'Skipping local npm run ci')
+  assert.match(gate, /Refusing to deploy: GitHub CI/)
+  assert.match(deploySource, /'--commit',\s*commit,\s*'--workflow'/)
+})
+
 test('names deploy tags by UTC time and records the app version', () => {
   assert.equal(
     createDeployTagName(new Date('2026-11-18T07:05:09.123Z')),
@@ -160,6 +232,8 @@ test('documents the mainline guard and deploy tags in command help', () => {
   assert.match(result.stdout, /--allow-non-main/)
   assert.match(result.stdout, /deploy\/YYYYMMDD-HHMMSS/)
   assert.match(result.stdout, /--skip-tag/)
+  assert.match(result.stdout, /--local-checks/)
+  assert.match(result.stdout, /trusts the GitHub CI run/)
 })
 
 test('uses a fail-fast remote lock for the full deployment lifetime', () => {

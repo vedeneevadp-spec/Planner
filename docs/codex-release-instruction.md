@@ -38,8 +38,8 @@
    `git switch main && git pull --ff-only`.
 8. Задеплой production через `npm run deploy:prod` из `main`. Deploy-скрипт
    требует чистую запушенную ветку, отказывается выкатывать commit, которого
-   нет в `origin/main`, и сам запускает `npm run ci`, если не указан
-   `--skip-checks`. После успешного деплоя он ставит и пушит тег
+   нет в `origin/main`, и проверяет GitHub CI этого commit: зелёный CI
+   заменяет локальный `npm run ci`, упавший останавливает deploy. После успешного деплоя он ставит и пушит тег
    `deploy/YYYYMMDD-HHMMSS`; укажи этот тег в отчёте.
 9. После успешного деплоя собери APK командой:
    `npm run mobile:release:rustore:arm64 -- --api-url=https://chaotika.ru`
