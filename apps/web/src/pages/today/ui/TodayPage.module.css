@@ -28,6 +28,12 @@
   align-items: start;
 }
 
+.groupColumn {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .taskSectionListGroup {
   display: grid;
   gap: 0.78rem;

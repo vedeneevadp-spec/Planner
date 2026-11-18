@@ -1,14 +1,22 @@
 import type { ReactElement, ReactNode } from 'react'
+import { useMemo } from 'react'
 
 import type { Task } from '@/entities/task'
 import { TaskSection, type TaskSectionProps } from '@/entities/task/ui'
+import { usePlannerTimeZone } from '@/features/session'
 import type { TodayTaskView } from '@/shared/lib/today-task-view'
+import { getTimeInTimeZone } from '@/shared/time/time.service'
 import pageStyles from '@/shared/ui/Page'
 
+import {
+  buildTodayFillerSummary,
+  getTodayFillerPhrase,
+} from '../lib/today-filler'
 import {
   getTodaySectionDefaultCollapseState,
   type TodayTaskModel,
 } from '../lib/today-task-model'
+import { TodayFillerCard } from './TodayFillerCard'
 import styles from './TodayPage.module.css'
 
 type TaskSectionTone = NonNullable<TaskSectionProps['tone']>
@@ -113,6 +121,7 @@ const EMPTY_COPY = {
 function renderTaskSectionGroup(
   sections: Array<ReactElement | null>,
   taskView: TodayTaskView,
+  filler?: ReactNode,
 ): ReactElement | null {
   const visibleSections = sections.filter(
     (section): section is ReactElement => section !== null,
@@ -126,13 +135,20 @@ function renderTaskSectionGroup(
     return visibleSections[0] ?? null
   }
 
+  if (taskView === 'list') {
+    return <div className={styles.taskSectionListGroup}>{visibleSections}</div>
+  }
+
+  // Each section sits on top of its column; the filler under it takes the
+  // height the neighbouring column leaves free, and collapses otherwise.
   return (
-    <div
-      className={
-        taskView === 'list' ? styles.taskSectionListGroup : pageStyles.gridTwo
-      }
-    >
-      {visibleSections}
+    <div className={pageStyles.gridTwo}>
+      {visibleSections.map((section) => (
+        <div key={section.key} className={styles.groupColumn}>
+          {section}
+          {filler}
+        </div>
+      ))}
     </div>
   )
 }
@@ -259,6 +275,16 @@ export function TodayTaskSections({
     tomorrowExtraItemCount: extras.tomorrow?.itemCount ?? 0,
     tomorrowTasks: model.tomorrowTasks,
   })
+  const plannerTimeZone = usePlannerTimeZone()
+  const fillerSummary = useMemo(
+    () =>
+      buildTodayFillerSummary({
+        model,
+        nowTime: getTimeInTimeZone(new Date(), plannerTimeZone),
+        spheres,
+      }),
+    [model, plannerTimeZone, spheres],
+  )
   const common = {
     actions,
     openTaskId,
@@ -302,6 +328,11 @@ export function TodayTaskSections({
           }),
         ],
         taskView,
+        <TodayFillerCard
+          illustration="tea"
+          phrase={getTodayFillerPhrase(todayKey)}
+          summary={fillerSummary}
+        />,
       )}
 
       {renderTaskSectionGroup(
@@ -327,6 +358,11 @@ export function TodayTaskSections({
           }),
         ],
         taskView,
+        <TodayFillerCard
+          illustration="notebook"
+          phrase={getTodayFillerPhrase(todayKey, 1)}
+          summary={[]}
+        />,
       )}
 
       {renderTaskSectionGroup(
