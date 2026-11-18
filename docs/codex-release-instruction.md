@@ -18,11 +18,12 @@
    `Unreleased` в версионный раздел или добавь/уточни `Unreleased`, если
    версия еще не фиксируется. Текст должен быть пользовательским, без названий
    команд, commit hash и внутренних деталей.
-4. Если релиз включает публичный APK/store build, до commit обнови native
-   версии: Android `versionCode`/`versionName` в `android/app/build.gradle` и
-   iOS `CURRENT_PROJECT_VERSION`/`MARKETING_VERSION` в
-   `ios/App/App.xcodeproj`. Если собираешь APK без version bump, явно отметь в
-   отчете, что это технический APK, а не полноценный store release.
+4. Повысь версию одной командой (обычно patch +1 и build +1):
+   `npm run version:set -- --version=X.Y.Z --build=N`. Она обновляет
+   `package.json` (единственный источник версии), `package-lock.json`,
+   Android и iOS. Номера в `build.gradle` и `project.pbxproj` вручную не
+   правь. Раздел release notes из шага 3 должен называться `## vX.Y.Z`;
+   `npm run version:check` сверяет всё это (и CI тоже).
 5. Запусти проверки:
    - минимум `npm run lint`, `npm run typecheck` и релевантные тесты;
    - для обычного release candidate предпочитай `npm run ci`;

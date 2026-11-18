@@ -1,7 +1,7 @@
 ---
 name: release
 description: Выпустить текущие изменения Chaotika — release notes, проверки, PR и merge в main, деплой production, сборка APK и отчёт в Telegram. Запускается только вручную через /release.
-argument-hint: '[web | apk | store] [group]'
+argument-hint: '[web | apk | store] [group] [X.Y.Z]'
 disable-model-invocation: true
 ---
 
@@ -12,7 +12,8 @@ disable-model-invocation: true
 - `web` — только production (web, PWA, API), без APK.
 - `apk` (по умолчанию) — production и signed arm64 APK для RuStore и обновления
   внутри приложения.
-- `store` — как `apk`, плюс повышение версии; спросить номер версии и сборки.
+- `store` — как `apk`, но версию и номер сборки спросить у пользователя.
+- `X.Y.Z` — версия релиза; без неё — следующая patch-версия.
 - `group` — дополнительно отправить пользовательский обзор и APK в группу
   Telegram. Без этого слова в группу ничего не отправлять.
 
@@ -39,15 +40,20 @@ disable-model-invocation: true
 2. **Тип релиза.** backend-only, web/PWA UI, SQL/backend contract,
    auth/session/mobile restore, widget/offline, native permissions/assets,
    store/APK. От типа зависят проверки в шаге 5.
-3. **Release notes.** В [docs/release-notes.md](../../../docs/release-notes.md)
-   перенеси пункты из `Unreleased` в раздел `vX.Y.Z - YYYY-MM-DD` с каналами
-   (`Web`, `PWA`, `API`, `Android` …). Пиши о пользовательском эффекте, без
-   команд, хэшей и внутренних деталей. Версию бери из
-   `android/app/build.gradle` (`versionName`) или из шага 4.
-4. **Версия (только `store`).** Спроси версию и номер сборки и примени их:
-   `npm run mobile:release -- --api-url=https://chaotika.ru --version=X.Y.Z --build=N`
-   (обновит Android и iOS). Для `apk` без повышения версии отметь в отчёте,
-   что это технический APK, а не store release.
+3. **Версия.** Единственный источник — `version` в корневом `package.json`;
+   текущую показывает `npm run version:check`. Каждый релиз получает новую
+   версию: по умолчанию patch +1 и build +1 (например, 1.1.43 / 51 →
+   1.1.44 / 52). Если в аргументах указана версия `X.Y.Z`, возьми её; для
+   `store` спроси версию и номер сборки. Примени одной командой — она обновит
+   `package.json`, `package-lock.json`, Android и iOS:
+   `npm run version:set -- --version=X.Y.Z --build=N`. Вручную номера в
+   `build.gradle` и `project.pbxproj` не править.
+4. **Release notes.** В [docs/release-notes.md](../../../docs/release-notes.md)
+   перенеси пункты из `Unreleased` в раздел `## vX.Y.Z - YYYY-MM-DD` с этой же
+   версией и каналами (`Web`, `PWA`, `API`, `Android` …). Пиши о
+   пользовательском эффекте, без команд, хэшей и внутренних деталей. Затем
+   `npm run version:check` должен пройти: он сверяет версию в `package.json`,
+   нативных проектах и в последнем разделе release notes (то же проверяет CI).
 5. **Проверки.** Всегда `npm run lint`, `npm run typecheck`,
    `npm run test:web:run`, `npm run test:api`. Дополнительно:
    - SQL/RLS/postgres-репозитории — `npm run test:api:postgres`;
@@ -75,7 +81,7 @@ disable-model-invocation: true
    об этом; содержимое keystore не читать.
 10. **Telegram, личный чат.** Подготовь техническую сводку в файл во
     временном каталоге: что изменилось, тег деплоя и commit, результаты
-    проверок, статус деплоя, имя и размер APK, был ли version bump. Затем:
+    проверок, статус деплоя, версия и build, имя и размер APK. Затем:
 
     ```bash
     npm run notify:telegram -- --to=personal --text-file=<сводка> --file=android/app/build/outputs/apk/release/app-release.apk --caption="Chaotika <версия>"
@@ -100,5 +106,5 @@ disable-model-invocation: true
 ## Отчёт
 
 Коротко: что вошло в релиз, PR и merge-commit, тег деплоя, какие проверки
-прошли, путь к APK и версия, был ли version bump или store release, что и куда
+прошли, версия и build, путь к APK, был ли store release, что и куда
 отправлено в Telegram.

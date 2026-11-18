@@ -12,6 +12,9 @@ const apiRoot = path.join(repositoryRoot, 'apps/api')
 const apiPackage = JSON.parse(
   await readFile(path.join(apiRoot, 'package.json'), 'utf8'),
 )
+const appVersion = JSON.parse(
+  await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'),
+).version
 const external = Object.keys(apiPackage.dependencies).filter(
   (name) => name !== '@planner/contracts',
 )
@@ -20,6 +23,8 @@ await rm(path.join(apiRoot, 'dist'), { force: true, recursive: true })
 const result = await build({
   absWorkingDir: repositoryRoot,
   bundle: true,
+  // Backups and diagnostics record this; production runs dist without npm.
+  define: { __PLANNER_APP_VERSION__: JSON.stringify(appVersion) },
   entryPoints: {
     server: 'apps/api/src/server.ts',
     'task-reminders': 'apps/api/src/workers/task-reminders.ts',
