@@ -6,6 +6,7 @@ import {
   getDevToolingAuditExceptionSummary,
   isAllowedEslintToolingVulnerability,
   isAllowedLegacyMinimatchToolingVulnerability,
+  isAllowedPicomatchReDoSToolingVulnerability,
 } from './audit-dev-tooling-policy.mjs'
 import { assertValidNpmAuditResult } from './audit-prod-policy.mjs'
 
@@ -38,6 +39,11 @@ const unexpected = vulnerabilities.filter(
     !isAllowedDevToolingVulnerability(vulnerability) &&
     !isAllowedEslintToolingVulnerability(vulnerability, packageJson) &&
     !isAllowedLegacyMinimatchToolingVulnerability(
+      vulnerability,
+      audit,
+      packageLock,
+    ) &&
+    !isAllowedPicomatchReDoSToolingVulnerability(
       vulnerability,
       audit,
       packageLock,
@@ -75,6 +81,7 @@ console.log(
     'Only the known dev-only @capacitor/assets and ESLint audit chains remain.',
     'Production npm audit has no exceptions.',
     `Legacy minimatch 3.1.5 review expires at ${eslintException.legacyMinimatchExpiresAt}.`,
+    `picomatch 4.0.7 ReDoS review expires at ${eslintException.picomatchReDoSExpiresAt}.`,
   ].join(' '),
 )
 

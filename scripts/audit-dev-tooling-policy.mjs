@@ -8,6 +8,10 @@ const LEGACY_MINIMATCH_NODES = new Set([
   'node_modules/eslint-plugin-jsx-a11y/node_modules/minimatch',
   'node_modules/eslint/node_modules/minimatch',
 ])
+const PICOMATCH_REDOS_EXCEPTION_EXPIRES_AT = '2026-12-18T00:00:00.000Z'
+const PICOMATCH_REDOS_ADVISORY =
+  'https://github.com/advisories/GHSA-fc5q-39xc-vjpf'
+const PICOMATCH_REDOS_NODES = new Set(['node_modules/picomatch'])
 const BRACE_EXPANSION_ADVISORY =
   'https://github.com/advisories/GHSA-mh99-v99m-4gvg'
 const ALLOWED_ESLINT_NODES = new Map([
@@ -83,6 +87,7 @@ export function getDevToolingAuditExceptionSummary() {
   return {
     expiresAt: ESLINT_TOOLING_EXCEPTION_EXPIRES_AT,
     legacyMinimatchExpiresAt: LEGACY_MINIMATCH_EXCEPTION_EXPIRES_AT,
+    picomatchReDoSExpiresAt: PICOMATCH_REDOS_EXCEPTION_EXPIRES_AT,
   }
 }
 
@@ -98,15 +103,56 @@ export function isAllowedLegacyMinimatchToolingVulnerability(
   packageLock,
   now = new Date(),
 ) {
-  if (!(now < new Date(LEGACY_MINIMATCH_EXCEPTION_EXPIRES_AT))) {
+  return isAllowedReviewedToolingChain(vulnerability, audit, packageLock, now, {
+    advisoryUrl: LEGACY_MINIMATCH_ADVISORY,
+    expiresAt: LEGACY_MINIMATCH_EXCEPTION_EXPIRES_AT,
+    leafName: 'minimatch',
+    leafNodes: LEGACY_MINIMATCH_NODES,
+    leafVersion: '3.1.5',
+    severity: 'moderate',
+  })
+}
+
+// GHSA-fc5q-39xc-vjpf: ReDoS in picomatch <= 4.0.7 through single-branch
+// repeated extglobs. Reviewed 2026-11-18: no patched release exists yet
+// (4.0.7 is the latest). Every consumer here is dev tooling (vite, vitest,
+// typescript-eslint, knip, lint-staged, rollup-plugin-visualizer) matching
+// glob patterns from the repository's own config, not user input; the
+// production npm audit stays clean. Bound to the single dev-only picomatch
+// 4.0.7 copy and its audit chains; a new advisory, version, runtime path,
+// severity or the expiry fails closed — then upgrade picomatch or re-review.
+export function isAllowedPicomatchReDoSToolingVulnerability(
+  vulnerability,
+  audit,
+  packageLock,
+  now = new Date(),
+) {
+  return isAllowedReviewedToolingChain(vulnerability, audit, packageLock, now, {
+    advisoryUrl: PICOMATCH_REDOS_ADVISORY,
+    expiresAt: PICOMATCH_REDOS_EXCEPTION_EXPIRES_AT,
+    leafName: 'picomatch',
+    leafNodes: PICOMATCH_REDOS_NODES,
+    leafVersion: '4.0.7',
+    severity: 'high',
+  })
+}
+
+function isAllowedReviewedToolingChain(
+  vulnerability,
+  audit,
+  packageLock,
+  now,
+  review,
+) {
+  if (!(now < new Date(review.expiresAt))) {
     return false
   }
 
   const visited = new Set()
-  let reachesReviewedMinimatch = false
+  let reachesReviewedLeaf = false
 
   function visit(entry) {
-    if (!entry || entry.severity !== 'moderate') return false
+    if (!entry || entry.severity !== review.severity) return false
     if (visited.has(entry.name)) return true
     visited.add(entry.name)
 
@@ -119,19 +165,19 @@ export function isAllowedLegacyMinimatchToolingVulnerability(
     }
 
     const via = entry.via ?? []
-    if (entry.name === 'minimatch') {
+    if (entry.name === review.leafName) {
       const reviewed =
         nodes.every(
           (node) =>
-            LEGACY_MINIMATCH_NODES.has(node) &&
-            packageLock.packages[node].version === '3.1.5',
+            review.leafNodes.has(node) &&
+            packageLock.packages[node].version === review.leafVersion,
         ) &&
         via.length === 1 &&
         typeof via[0] === 'object' &&
-        via[0]?.name === 'minimatch' &&
-        via[0]?.url === LEGACY_MINIMATCH_ADVISORY &&
-        via[0]?.severity === 'moderate'
-      reachesReviewedMinimatch ||= reviewed
+        via[0]?.name === review.leafName &&
+        via[0]?.url === review.advisoryUrl &&
+        via[0]?.severity === review.severity
+      reachesReviewedLeaf ||= reviewed
       return reviewed
     }
 
@@ -144,5 +190,5 @@ export function isAllowedLegacyMinimatchToolingVulnerability(
     )
   }
 
-  return visit(vulnerability) && reachesReviewedMinimatch
+  return visit(vulnerability) && reachesReviewedLeaf
 }

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import {
   isAllowedEslintToolingVulnerability,
   isAllowedLegacyMinimatchToolingVulnerability,
+  isAllowedPicomatchReDoSToolingVulnerability,
 } from './audit-dev-tooling-policy.mjs'
 
 const exceptionDate = new Date('2026-07-28T00:00:00.000Z')
@@ -353,5 +354,136 @@ void describe('legacy minimatch advisory scope', () => {
   void it('expires automatically and rejects an invalid review date', () => {
     assert.equal(accepts(fixture(), 'eslint', new Date('2026-12-02')), false)
     assert.equal(accepts(fixture(), 'eslint', new Date('invalid')), false)
+  })
+})
+
+void describe('picomatch ReDoS advisory scope', () => {
+  const reviewedAt = new Date('2026-11-18T00:00:00.000Z')
+  const picomatchPath = 'node_modules/picomatch'
+
+  function fixture() {
+    return {
+      audit: {
+        vulnerabilities: {
+          picomatch: {
+            name: 'picomatch',
+            severity: 'high',
+            nodes: [picomatchPath],
+            via: [
+              {
+                name: 'picomatch',
+                severity: 'high',
+                url: 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf',
+              },
+            ],
+          },
+          fdir: {
+            name: 'fdir',
+            severity: 'high',
+            nodes: ['node_modules/fdir'],
+            via: ['picomatch'],
+          },
+          tinyglobby: {
+            name: 'tinyglobby',
+            severity: 'high',
+            nodes: ['node_modules/tinyglobby'],
+            via: ['fdir', 'picomatch'],
+          },
+          vite: {
+            name: 'vite',
+            severity: 'high',
+            nodes: ['node_modules/vite'],
+            via: ['picomatch', 'tinyglobby'],
+          },
+        },
+      },
+      lock: {
+        packages: {
+          [picomatchPath]: { version: '4.0.7', dev: true },
+          'node_modules/fdir': { version: '6.5.0', dev: true },
+          'node_modules/tinyglobby': { version: '0.2.17', dev: true },
+          'node_modules/vite': { version: '8.1.6', dev: true },
+        },
+      },
+    }
+  }
+
+  function accepts({ audit, lock }, name = 'vite', at = reviewedAt) {
+    return isAllowedPicomatchReDoSToolingVulnerability(
+      audit.vulnerabilities[name],
+      audit,
+      lock,
+      at,
+    )
+  }
+
+  void it('accepts the reviewed dev-only advisory and every parent chain', () => {
+    const data = fixture()
+    for (const name of Object.keys(data.audit.vulnerabilities)) {
+      assert.equal(accepts(data, name), true)
+    }
+  })
+
+  void it('rejects runtime nodes anywhere in the chain', () => {
+    for (const path of [picomatchPath, 'node_modules/tinyglobby']) {
+      const data = fixture()
+      delete data.lock.packages[path].dev
+      assert.equal(accepts(data), false)
+    }
+  })
+
+  void it('rejects other picomatch versions and copies', () => {
+    const data = fixture()
+    data.lock.packages[picomatchPath].version = '4.0.6'
+    assert.equal(accepts(data), false)
+
+    const nested = fixture()
+    const nestedPath = 'node_modules/vite/node_modules/picomatch'
+    nested.audit.vulnerabilities.picomatch.nodes.push(nestedPath)
+    nested.lock.packages[nestedPath] = { version: '4.0.7', dev: true }
+    assert.equal(accepts(nested), false)
+  })
+
+  void it('rejects a different or additional advisory', () => {
+    const data = fixture()
+    data.audit.vulnerabilities.picomatch.via[0].url =
+      'https://github.com/advisories/GHSA-unreviewed'
+    assert.equal(accepts(data), false)
+
+    const extra = fixture()
+    extra.audit.vulnerabilities.vite.via.push({
+      name: 'vite',
+      severity: 'high',
+      url: 'https://github.com/advisories/GHSA-unreviewed',
+    })
+    assert.equal(accepts(extra), false)
+  })
+
+  void it('rejects a changed severity at any level', () => {
+    for (const name of Object.keys(fixture().audit.vulnerabilities)) {
+      for (const severity of ['moderate', 'critical']) {
+        const data = fixture()
+        data.audit.vulnerabilities[name].severity = severity
+        assert.equal(accepts(data), false)
+      }
+    }
+  })
+
+  void it('does not cover the legacy minimatch review or vice versa', () => {
+    const data = fixture()
+    assert.equal(
+      isAllowedLegacyMinimatchToolingVulnerability(
+        data.audit.vulnerabilities.vite,
+        data.audit,
+        data.lock,
+        reviewedAt,
+      ),
+      false,
+    )
+  })
+
+  void it('expires automatically and rejects an invalid review date', () => {
+    assert.equal(accepts(fixture(), 'vite', new Date('2026-12-18')), false)
+    assert.equal(accepts(fixture(), 'vite', new Date('invalid')), false)
   })
 })
