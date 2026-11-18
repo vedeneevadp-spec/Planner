@@ -14,8 +14,15 @@ export interface BuildTodaySelfCareModelInput {
   tomorrowDashboard: SelfCareDashboardResponse | undefined
 }
 
+export interface TodayOverdueSelfCareGroup {
+  /** Most recent missed occurrence of the item. */
+  entry: SelfCareTodayItem
+  lastMissedDate: string | null
+  missedCount: number
+}
+
 export interface TodaySelfCareModel {
-  overdueEntries: SelfCareTodayItem[]
+  overdueGroups: TodayOverdueSelfCareGroup[]
   routineEntries: SelfCareTodayItem[]
   showSelfCareMainTasks: boolean
   tomorrowEntries: SelfCareTodayItem[]
@@ -87,9 +94,11 @@ export function buildTodaySelfCareModel({
     false
 
   return {
-    overdueEntries:
+    overdueGroups:
       showSelfCareMainTasks && todayDashboard
-        ? todayDashboard.overdueItems.filter(isVisibleSelfCareMainTask)
+        ? groupOverdueSelfCareEntries(
+            todayDashboard.overdueItems.filter(isVisibleSelfCareMainTask),
+          )
         : [],
     routineEntries:
       showSelfCareMainTasks && todayDashboard
@@ -101,6 +110,43 @@ export function buildTodaySelfCareModel({
         ? getSelfCareMainTaskEntries(tomorrowDashboard)
         : [],
   }
+}
+
+/**
+ * Collapses missed occurrences of the same self-care item into one row, so a
+ * daily habit missed for weeks shows up once instead of once per day.
+ * Groups keep the order in which their items first appear.
+ */
+export function groupOverdueSelfCareEntries(
+  entries: SelfCareTodayItem[],
+): TodayOverdueSelfCareGroup[] {
+  const groups = new Map<string, TodayOverdueSelfCareGroup>()
+
+  for (const entry of entries) {
+    const scheduledFor = entry.occurrence?.scheduledFor ?? null
+    const group = groups.get(entry.item.id)
+
+    if (!group) {
+      groups.set(entry.item.id, {
+        entry,
+        lastMissedDate: scheduledFor,
+        missedCount: 1,
+      })
+      continue
+    }
+
+    group.missedCount += 1
+
+    if (
+      scheduledFor &&
+      (!group.lastMissedDate || scheduledFor > group.lastMissedDate)
+    ) {
+      group.entry = entry
+      group.lastMissedDate = scheduledFor
+    }
+  }
+
+  return [...groups.values()]
 }
 
 export function getSelfCareTaskKey(entry: SelfCareTodayItem): string {

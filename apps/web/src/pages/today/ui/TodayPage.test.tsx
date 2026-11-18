@@ -136,6 +136,7 @@ const mocks = vi.hoisted(() => {
       taskLastSuccessfulSyncAt: null as string | null,
     },
     refresh: vi.fn(),
+    releaseOverdueSelfCare: vi.fn(),
     removeTask: vi.fn(),
     selfCareDashboards,
     selfCareDashboardRequest: vi.fn(),
@@ -252,6 +253,13 @@ vi.mock('@/features/shopping-list', () => ({
 }))
 
 vi.mock('@/features/self-care', () => ({
+  getSelfCareErrorMessage: (error: unknown) =>
+    error instanceof Error ? error.message : 'Ошибка',
+  useReleaseOverdueSelfCare: () => ({
+    error: null,
+    isPending: false,
+    mutate: mocks.releaseOverdueSelfCare,
+  }),
   useSelfCareDashboard: (date: string) => {
     mocks.selfCareDashboardRequest(date)
 
@@ -709,6 +717,7 @@ describe('TodayPage', () => {
     mocks.cleaningRefetch.mockReset()
     mocks.cleaningRefetch.mockResolvedValue(undefined)
     mocks.copyTaskToPersonal.mockReset()
+    mocks.releaseOverdueSelfCare.mockReset()
     mocks.createNextTaskStage.mockReset()
     mocks.detachTaskFromChain.mockReset()
     mocks.moveTaskToPersonal.mockReset()
@@ -1570,6 +1579,29 @@ describe('TodayPage', () => {
     ).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('shows overdue tasks before undated ones', () => {
+    renderTodayPage({
+      tasks: [
+        createTask({ id: 'flexible', title: 'Задача без даты' }),
+        createTask({
+          id: 'overdue',
+          plannedDate: getDateKey(addDays(new Date(), -1)),
+          title: 'Просроченная задача',
+        }),
+      ],
+    })
+
+    const overdueToggle = screen.getByRole('button', {
+      name: 'Требуют внимания',
+    })
+    const flexibleToggle = screen.getByRole('button', { name: 'Актуальное' })
+
+    expect(
+      overdueToggle.compareDocumentPosition(flexibleToggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
   it('keeps other tasks expanded when no earlier task section is visible', () => {
     renderTodayPage({
       tasks: [createTask({ plannedDate: getDateKey(addDays(new Date(), 3)) })],
@@ -1790,14 +1822,14 @@ describe('TodayPage', () => {
   it('shows resource planning only in a personal workspace', () => {
     const personal = renderTodayPage({ tasks: [] })
 
-    expect(screen.getByText('Антиперегруз')).toBeVisible()
+    expect(screen.getByText('Ресурс дня')).toBeVisible()
     expect(mocks.selfCareDashboardRequest).toHaveBeenCalledTimes(2)
 
     personal.unmount()
     mocks.selfCareDashboardRequest.mockClear()
     renderTodayPage({ kind: 'shared', tasks: [] })
 
-    expect(screen.queryByText('Антиперегруз')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ресурс дня')).not.toBeInTheDocument()
     expect(mocks.selfCareDashboardRequest).not.toHaveBeenCalled()
   })
 
@@ -1821,13 +1853,11 @@ describe('TodayPage', () => {
           createTask({ plannedDate: getDateKey(new Date()), resource: -2 }),
         ],
       })
-      const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+      const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
       expect(panel.getByText('неполная оценка')).toBeVisible()
       expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
-      fireEvent.click(
-        panel.getByRole('button', { name: 'Открыть антиперегруз' }),
-      )
+      fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
       expect(panel.getByText('Оценённая часть')).toBeVisible()
       expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
       expect(
@@ -1866,13 +1896,13 @@ describe('TodayPage', () => {
         }),
       ),
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
@@ -1893,13 +1923,13 @@ describe('TodayPage', () => {
         }),
       ),
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
@@ -1930,14 +1960,12 @@ describe('TodayPage', () => {
       renderTodayPage({
         tasks: [createTask({ plannedDate: getTodayDate('UTC'), resource: -2 })],
       })
-      const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+      const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
       expect(panel.getByText('неполная оценка')).toBeVisible()
       expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
       expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
-      fireEvent.click(
-        panel.getByRole('button', { name: 'Открыть антиперегруз' }),
-      )
+      fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
       expect(panel.getByText('Оценённая часть')).toBeVisible()
       expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
     },
@@ -1978,12 +2006,12 @@ describe('TodayPage', () => {
         }),
       ],
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(screen.getByText('Оценённая задача из кеша')).toBeVisible()
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('неполная оценка')).toBeVisible()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Оценённая часть')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
     expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
@@ -1999,7 +2027,7 @@ describe('TodayPage', () => {
         createTask({ plannedDate: getDateKey(new Date()), resource: -2 }),
       ],
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
     expect(panel.getByText('неполная оценка')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
     await waitFor(() => {
@@ -2014,7 +2042,7 @@ describe('TodayPage', () => {
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
     expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
@@ -2028,13 +2056,13 @@ describe('TodayPage', () => {
     renderTodayPage({
       tasks: [createTask({ plannedDate: getDateKey(new Date()), resource: 0 })],
     })
-    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    const panel = within(screen.getByRole('region', { name: 'Ресурс дня' }))
 
     expect(screen.getByText('Не обновились: Забота на сегодня.')).toBeVisible()
     expect(panel.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
-    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть ресурс дня' }))
     expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
     expect(panel.getByText('Нагрузка задач')).toBeVisible()
   })
@@ -2042,9 +2070,7 @@ describe('TodayPage', () => {
   it('persists only a newly selected energy mode', () => {
     renderTodayPage({ tasks: [] })
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     fireEvent.click(screen.getByRole('button', { name: /Норм/ }))
 
     expect(mocks.updateUserPreferences).not.toHaveBeenCalled()
@@ -2078,9 +2104,7 @@ describe('TodayPage', () => {
       ],
     })
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть ресурс дня' }))
     fireEvent.click(
       screen.getAllByRole('button', { name: 'Подобрать день' })[0]!,
     )
@@ -2363,6 +2387,66 @@ describe('TodayPage', () => {
         name: 'Открыть заботу: Отжимания',
       }),
     ).toBeVisible()
+  })
+
+  it('folds missed care into one row and releases it before today', () => {
+    const todayKey = getDateKey(new Date())
+    const missed = (itemId: string, title: string, scheduledFor: string) =>
+      createSelfCareTodayItem({
+        item: { id: itemId, title },
+        occurrence: {
+          completedAt: null,
+          createdAt: '2026-05-19T08:00:00.000Z',
+          dueAt: null,
+          generatedAt: null,
+          id: `${itemId}-${scheduledFor}`,
+          itemId,
+          movedTo: null,
+          reminderOffsetsMinutes: [],
+          reminderTimeZone: null,
+          scheduledFor,
+          scheduleRuleId: null,
+          status: 'scheduled',
+          updatedAt: '2026-05-19T08:00:00.000Z',
+          userId: 'user-1',
+          version: 1,
+        },
+      })
+    setSelfCareDashboard({
+      ...createSelfCareDashboard([], { date: todayKey }),
+      overdueItems: [
+        missed('yoga', 'Йога', getDateKey(addDays(new Date(), -2))),
+        missed('yoga', 'Йога', getDateKey(addDays(new Date(), -1))),
+        missed('water', 'Вода', getDateKey(addDays(new Date(), -1))),
+      ],
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(screen.queryByText(/пропуск/)).not.toBeInTheDocument()
+    const summary = screen.getByRole('button', {
+      name: /Пропущенная забота · 2/,
+    })
+    expect(summary).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(summary)
+    expect(
+      screen.getByRole('link', { name: 'Открыть заботу: Йога' }),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('link', { name: 'Открыть заботу: Вода' }),
+    ).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отпустить' }))
+    expect(mocks.releaseOverdueSelfCare).not.toHaveBeenCalled()
+    fireEvent.click(
+      within(
+        screen.getByRole('group', { name: 'Отпустить пропущенную заботу' }),
+      ).getByRole('button', { name: 'Отпустить' }),
+    )
+    expect(mocks.releaseOverdueSelfCare).toHaveBeenCalledWith({
+      beforeDate: todayKey,
+      itemIds: ['yoga', 'water'],
+    })
   })
 
   it('keeps self-care dashboard items hidden when main tasks integration is disabled', () => {

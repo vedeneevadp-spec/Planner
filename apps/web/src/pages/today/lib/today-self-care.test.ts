@@ -9,6 +9,7 @@ import {
   formatSelfCareTaskMeta,
   getSelfCareTaskKey,
   getSelfCareTaskTime,
+  groupOverdueSelfCareEntries,
   isVisibleSelfCareMainTask,
 } from './today-self-care'
 
@@ -166,7 +167,7 @@ describe('today self-care model', () => {
       'today',
       'flexible',
     ])
-    expect(model.overdueEntries.map((entry) => entry.item.id)).toEqual([
+    expect(model.overdueGroups.map((group) => group.entry.item.id)).toEqual([
       'overdue',
     ])
     expect(model.tomorrowEntries.map((entry) => entry.item.id)).toEqual([
@@ -195,7 +196,7 @@ describe('today self-care model', () => {
 
     expect(disabledModel.showSelfCareMainTasks).toBe(false)
     expect(disabledModel.routineEntries).toEqual([])
-    expect(disabledModel.overdueEntries).toEqual([])
+    expect(disabledModel.overdueGroups).toEqual([])
     expect(disabledModel.tomorrowEntries).toEqual([])
   })
 
@@ -283,5 +284,58 @@ describe('today self-care model', () => {
     expect(formatSelfCareTaskMeta(createSelfCareItem(), 'Europe/Samara')).toBe(
       'Забота',
     )
+  })
+
+  it('collapses missed occurrences of one item into a single overdue group', () => {
+    const createMissed = (itemId: string, scheduledFor: string) =>
+      createSelfCareItem({
+        item: { id: itemId, title: itemId },
+        occurrence: createOccurrence('scheduled', {
+          id: `${itemId}-${scheduledFor}`,
+          itemId,
+          scheduledFor,
+        }),
+      })
+    const latestYoga = createMissed('yoga', '2026-05-19')
+
+    const groups = groupOverdueSelfCareEntries([
+      createMissed('yoga', '2026-05-17'),
+      createMissed('water', '2026-05-18'),
+      latestYoga,
+      createMissed('yoga', '2026-05-18'),
+    ])
+
+    expect(
+      groups.map((group) => [
+        group.entry.item.id,
+        group.missedCount,
+        group.lastMissedDate,
+      ]),
+    ).toEqual([
+      ['yoga', 3, '2026-05-19'],
+      ['water', 1, '2026-05-18'],
+    ])
+    expect(groups[0]?.entry).toBe(latestYoga)
+  })
+
+  it('groups overdue entries in the today model', () => {
+    const model = buildTodaySelfCareModel({
+      todayDashboard: createDashboard([], {
+        overdueItems: ['2026-05-17', '2026-05-18', '2026-05-19'].map(
+          (scheduledFor) =>
+            createSelfCareItem({
+              item: { id: 'yoga' },
+              occurrence: createOccurrence('scheduled', {
+                id: `yoga-${scheduledFor}`,
+                scheduledFor,
+              }),
+            }),
+        ),
+      }),
+      tomorrowDashboard: undefined,
+    })
+
+    expect(model.overdueGroups).toHaveLength(1)
+    expect(model.overdueGroups[0]?.missedCount).toBe(3)
   })
 })

@@ -127,6 +127,12 @@ export function getSelfCareCommandEntityKeys(
     case 'update_completion':
       add('completion', command.completionId)
       break
+    case 'release_overdue_occurrences':
+      keys.push('overdue:release')
+      for (const itemId of command.input.itemIds ?? []) {
+        add('item', itemId)
+      }
+      break
     case 'update_settings':
       keys.push('settings:self')
       break
@@ -164,6 +170,12 @@ export function getSelfCareResultEntityKeys(
       add('item', result.occurrence.itemId)
       add('occurrence', result.occurrence.id)
       add('occurrence', result.replacement.id)
+      break
+    case 'occurrences':
+      for (const occurrence of result.occurrences) {
+        add('item', occurrence.itemId)
+        add('occurrence', occurrence.id)
+      }
       break
     case 'completion':
       add('item', result.completion.itemId)
@@ -473,6 +485,8 @@ function readResultOccurrences(
       return [overlay.result.occurrence]
     case 'occurrence_rescheduled':
       return [overlay.result.occurrence, overlay.result.replacement]
+    case 'occurrences':
+      return overlay.result.occurrences
     default:
       return []
   }

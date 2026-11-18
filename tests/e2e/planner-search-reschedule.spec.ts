@@ -103,7 +103,7 @@ test('previews load, reschedules and undoes, then searches historical records on
     page.getByRole('complementary', { name: 'Несинхронизированные изменения' }),
   ).toHaveCount(0)
   await page.reload()
-  await page.getByRole('button', { name: 'Открыть антиперегруз' }).click()
+  await page.getByRole('button', { name: 'Открыть ресурс дня' }).click()
   await page.getByRole('button', { name: 'Подобрать день' }).first().click()
   const picker = page.getByRole('dialog', { name: 'Куда перенести?' })
   await expect(picker.getByText('Подходит', { exact: true })).toBeVisible()

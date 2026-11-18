@@ -329,6 +329,58 @@ void test('MemorySelfCareRepository keeps stale daily occurrences overdue', asyn
   )
 })
 
+void test('MemorySelfCareRepository releases overdue care through an offline command', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      scheduleRule: { repeatKind: 'daily', startDate: '2026-06-06' },
+      title: 'Вода',
+      type: 'habit',
+    }),
+  })
+  await repository.generateOccurrences({
+    context,
+    from: '2026-06-06',
+    to: '2026-06-09',
+  })
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      actedAt: '2026-06-09T08:00:00.000Z',
+      input: { beforeDate: '2026-06-09' },
+      type: 'release_overdue_occurrences',
+    },
+    operationId: generateUuidV7(),
+  })
+
+  const result = await repository.executeOfflineCommand({ context, request })
+  const replay = await repository.executeOfflineCommand({ context, request })
+  const dashboard = await repository.getDashboard({
+    context,
+    date: '2026-06-09',
+  })
+
+  assert.equal(result.result.kind, 'occurrences')
+  assert.equal(replay.replayed, true)
+  assert.deepEqual(replay.result, result.result)
+  assert.deepEqual(
+    result.result.kind === 'occurrences'
+      ? result.result.occurrences.map((entry) => [
+          entry.scheduledFor,
+          entry.status,
+        ])
+      : [],
+    [
+      ['2026-06-06', 'missed'],
+      ['2026-06-07', 'missed'],
+      ['2026-06-08', 'missed'],
+    ],
+  )
+  assert.deepEqual(dashboard.overdueItems, [])
+})
+
 void test('MemorySelfCareRepository does not mark today or future occurrences missed from a future dashboard read', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()

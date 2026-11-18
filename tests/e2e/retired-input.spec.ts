@@ -191,7 +191,7 @@ for (const viewport of viewports) {
             }),
           ).toBeVisible()
           await expect(
-            page.getByRole('region', { name: 'Антиперегруз' }),
+            page.getByRole('region', { name: 'Ресурс дня' }),
           ).toBeVisible()
         }
         await expect(page.getByTestId('page-state-skeleton')).toHaveCount(0)

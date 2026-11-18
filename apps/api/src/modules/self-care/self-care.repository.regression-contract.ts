@@ -581,3 +581,82 @@ export async function assertCoursePauseReconcilesGeneratedSlots(
     `${manual.scheduledFor}T17:00:00.000Z`,
   )
 }
+
+export async function assertReleaseOverdueMarksOnlyPastScheduled(
+  repository: SelfCareRepository,
+  context: SelfCareWriteContext,
+) {
+  const today = getDateKeyInTimeZone(new Date(), 'UTC')
+  const start = addDateDays(today, -5)
+  const createDaily = (title: string) =>
+    repository.createItem({
+      context,
+      input: selfCareItemInputSchema.parse({
+        category: 'movement',
+        title,
+        type: 'habit',
+        scheduleRule: {
+          repeatKind: 'daily',
+          startDate: start,
+          preferredTime: '09:00',
+          timezone: 'UTC',
+        },
+      }),
+    })
+  const yoga = await createDaily('Yoga')
+  const water = await createDaily('Water')
+  const range = { context, from: start, to: addDateDays(today, 2) }
+  const initial = await repository.getOccurrences(range)
+  const pastYoga = initial
+    .filter((entry) => entry.itemId === yoga.id && entry.scheduledFor < today)
+    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor))
+  assert.equal(pastYoga.length, 5)
+  await repository.completeOccurrence({
+    context,
+    occurrenceId: pastYoga[0]!.id,
+    input: selfCareRitualCompletionInputSchema.parse({
+      status: 'done',
+      completedAt: `${pastYoga[0]!.scheduledFor}T09:00:00.000Z`,
+    }),
+  })
+
+  const releasedYoga = await repository.releaseOverdueOccurrences({
+    context,
+    input: { beforeDate: today, itemIds: [yoga.id] },
+  })
+  assert.deepEqual(
+    releasedYoga.map((entry) => [entry.itemId, entry.status]).sort(),
+    pastYoga.slice(1).map(() => [yoga.id, 'missed']),
+  )
+  assert.ok(
+    releasedYoga.every(
+      (entry) =>
+        entry.version >
+        pastYoga.find((before) => before.id === entry.id)!.version,
+    ),
+  )
+
+  const statusOf = async (itemId: string, date: string) =>
+    (await repository.getOccurrences(range)).find(
+      (entry) => entry.itemId === itemId && entry.scheduledFor === date,
+    )?.status
+  assert.equal(await statusOf(yoga.id, pastYoga[0]!.scheduledFor), 'done')
+  assert.equal(await statusOf(yoga.id, today), 'scheduled')
+  assert.equal(await statusOf(water.id, start), 'scheduled')
+
+  assert.deepEqual(
+    await repository.releaseOverdueOccurrences({
+      context,
+      input: { beforeDate: today, itemIds: [yoga.id] },
+    }),
+    [],
+  )
+
+  const releasedRest = await repository.releaseOverdueOccurrences({
+    context,
+    input: { beforeDate: today },
+  })
+  assert.equal(releasedRest.length, 5)
+  assert.ok(releasedRest.every((entry) => entry.itemId === water.id))
+  assert.equal(await statusOf(water.id, today), 'scheduled')
+}

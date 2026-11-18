@@ -58,20 +58,56 @@
   gap: 0.42rem;
 }
 
-.eyebrow {
+.heading {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.title {
   margin: 0;
-  color: var(--accent);
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .selectedMode {
-  flex: 0 0 auto;
   color: var(--text);
-  font-size: 0.76rem;
-  font-weight: 600;
+  font-size: 0.8rem;
+  font-weight: 700;
   white-space: nowrap;
+}
+
+.miniMeter {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 2rem;
+  max-width: 14rem;
+  height: 0.32rem;
+  margin-right: auto;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.miniMeter .calm {
+  background: var(--accent);
+}
+
+.miniMeter .edge {
+  background: var(--warning);
+}
+
+.miniMeter .overload {
+  background: var(--danger);
+}
+
+.unassessed {
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .unloadBox h4 {
@@ -244,12 +280,9 @@
     gap: 0.4rem;
   }
 
-  .eyebrow {
-    font-size: 0.68rem;
-  }
-
+  .title,
   .selectedMode {
-    font-size: 0.72rem;
+    font-size: 0.76rem;
   }
 
   .stateBadge {

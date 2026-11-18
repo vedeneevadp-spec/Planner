@@ -33,6 +33,7 @@ export {
   useCreateSelfCareItem,
   useCreateSelfCareItemFromTemplate,
   useMoveSelfCareOccurrence,
+  useReleaseOverdueSelfCare,
   useScheduleSelfCareItem,
   useSelfCareAnalytics,
   useSelfCareDashboard,

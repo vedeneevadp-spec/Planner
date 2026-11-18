@@ -238,6 +238,38 @@ export function createOptimisticSelfCareResult(
       }
     }
 
+    case 'release_overdue_occurrences': {
+      const itemIds = command.input.itemIds
+        ? new Set(command.input.itemIds)
+        : null
+      const seen = new Set<string>()
+      const occurrences: SelfCareOccurrence[] = []
+
+      for (const entry of source.dashboard?.overdueItems ?? []) {
+        const occurrence = entry.occurrence
+
+        if (
+          !occurrence ||
+          seen.has(occurrence.id) ||
+          occurrence.status !== 'scheduled' ||
+          occurrence.scheduledFor >= command.input.beforeDate ||
+          (itemIds && !itemIds.has(occurrence.itemId))
+        ) {
+          continue
+        }
+
+        seen.add(occurrence.id)
+        occurrences.push({
+          ...occurrence,
+          status: 'missed',
+          updatedAt: source.occurredAt,
+          version: occurrence.version + 1,
+        })
+      }
+
+      return { kind: 'occurrences', occurrences }
+    }
+
     case 'complete_occurrence': {
       const occurrence = requireOccurrence(source, command.occurrenceId)
       const item = requireItem(source, occurrence.itemId)

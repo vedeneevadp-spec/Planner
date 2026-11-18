@@ -4,6 +4,7 @@ import type { Task } from '@/entities/task'
 
 import {
   analyzeDailyLoad,
+  getLoadBadgeLabel,
   getLoadStateLabel,
   getUnloadCandidates,
   groupDailyTasks,
@@ -294,4 +295,30 @@ describe('resource plan', () => {
   ] as const)('formats the %s state', (state, expected) => {
     expect(getLoadStateLabel(state)).toBe(expected)
   })
+
+  it.each([
+    [
+      { state: 'unknown', unassessedTaskCount: 1 },
+      false,
+      '1 задача без оценки',
+    ],
+    [
+      { state: 'unknown', unassessedTaskCount: 3 },
+      false,
+      '3 задачи без оценки',
+    ],
+    [
+      { state: 'unknown', unassessedTaskCount: 12 },
+      false,
+      '12 задач без оценки',
+    ],
+    [{ state: 'unknown', unassessedTaskCount: 0 }, false, 'неполная оценка'],
+    [{ state: 'calm', unassessedTaskCount: 0 }, false, 'спокойно'],
+    [{ state: 'unknown', unassessedTaskCount: 0 }, true, 'нет задач'],
+  ] as const)(
+    'labels the collapsed badge for %o (empty: %s)',
+    (analysis, isEmpty, expected) => {
+      expect(getLoadBadgeLabel(analysis, isEmpty)).toBe(expected)
+    },
+  )
 })

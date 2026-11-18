@@ -38,6 +38,7 @@ import type {
   GetSelfCarePlanCommand,
   GetSelfCareRitualStepDraftsCommand,
   MoveSelfCareOccurrenceCommand,
+  ReleaseOverdueSelfCareOccurrencesCommand,
   RestoreSelfCareItemCommand,
   ScheduleSelfCareItemCommand,
   SelfCareListFilters,
@@ -872,6 +873,37 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const nextOccurrence = updateOccurrenceStatus(occurrence, 'skipped')
     this.occurrences.set(nextOccurrence.id, nextOccurrence)
     return nextOccurrence
+  }
+
+  async releaseOverdueOccurrences(
+    command: ReleaseOverdueSelfCareOccurrencesCommand,
+  ) {
+    const itemIds = command.input.itemIds
+      ? new Set(command.input.itemIds)
+      : null
+    const released: StoredSelfCareOccurrenceRecord[] = []
+
+    for (const occurrence of this.occurrences.values()) {
+      const item = this.items.get(occurrence.itemId)
+
+      if (
+        occurrence.userId !== command.context.actorUserId ||
+        occurrence.status !== 'scheduled' ||
+        occurrence.scheduledFor >= command.input.beforeDate ||
+        !item ||
+        item.deletedAt !== null ||
+        item.workspaceId !== command.context.workspaceId ||
+        (itemIds && !itemIds.has(item.id))
+      ) {
+        continue
+      }
+
+      const next = updateOccurrenceStatus(occurrence, 'missed')
+      this.occurrences.set(next.id, next)
+      released.push(next)
+    }
+
+    return released
   }
 
   async moveOccurrence(command: MoveSelfCareOccurrenceCommand) {

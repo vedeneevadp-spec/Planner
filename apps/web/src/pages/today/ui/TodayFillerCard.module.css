@@ -1,0 +1,124 @@
+/* Grows into whatever height the row leaves under the shorter section and
+   contributes nothing to the row itself (size containment). */
+.slot {
+  flex: 1 1 0;
+  min-height: 0;
+  container-type: size;
+}
+
+.card {
+  display: none;
+  box-sizing: border-box;
+  /* The gap lives inside the slot so a collapsed slot adds no height. */
+  height: min(calc(100% - 0.78rem), 20rem);
+  margin-top: 0.78rem;
+  /* In a tall slot the card rides along while the long column scrolls. */
+  position: sticky;
+  top: 0.5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.55rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem 0.95rem;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+}
+
+/* The illustration keeps its empty left half for text and its mug on the
+   right, so it works as a backdrop rather than a separate picture. */
+.artwork {
+  position: absolute;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: right 70%;
+}
+
+.imageDark {
+  display: none;
+}
+
+:global(:root[data-theme='dark']) .imageLight {
+  display: none;
+}
+
+:global(:root[data-theme='dark']) .imageDark {
+  display: block;
+}
+
+.phrase,
+.summary {
+  position: relative;
+  max-width: min(100%, 18rem);
+}
+
+.phrase {
+  margin: 0;
+  color: var(--text);
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.summary {
+  display: none;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.summaryItem {
+  overflow: hidden;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryItem::before {
+  content: '·';
+  margin-right: 0.4rem;
+  color: var(--accent);
+}
+
+/* Room for a phrase. */
+@container (min-height: 5.5rem) {
+  .card {
+    display: flex;
+  }
+}
+
+/* Room for the backdrop: text moves to the bottom-left, under the steam. */
+@container (min-height: 9rem) {
+  .card {
+    justify-content: flex-end;
+  }
+
+  .artwork {
+    display: block;
+  }
+
+  .phrase,
+  .summary {
+    max-width: min(55%, 18rem);
+  }
+}
+
+/* Room for the summary too. */
+@container (min-height: 11rem) {
+  .summary {
+    display: grid;
+  }
+}

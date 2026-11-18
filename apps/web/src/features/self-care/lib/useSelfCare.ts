@@ -11,6 +11,7 @@ import {
   type SelfCareOccurrenceSkipInput,
   selfCareOfflineCommandSchema,
   type SelfCarePlanResponse,
+  type SelfCareReleaseOverdueInput,
   type SelfCareRitualCompletionInput,
   type SelfCareRitualStepDraftInput,
   type SelfCareRitualStepDraftListResponse,
@@ -97,6 +98,7 @@ import {
   selectCompletionResult,
   selectItemResult,
   selectOccurrenceResult,
+  selectOccurrencesResult,
   selectRitualStepDraftsResult,
   selectSettingsResult,
   SELF_CARE_COMPLETION_CHANGE_SCOPES,
@@ -867,6 +869,27 @@ export function useSkipSelfCareOccurrence() {
     invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
     scopes: SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
     selectResult: selectOccurrenceResult,
+  })
+}
+
+/**
+ * Lets past overdue care go: still-scheduled occurrences before `beforeDate`
+ * become `missed`, optionally only for the given items.
+ */
+export function useReleaseOverdueSelfCare() {
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      input: SelfCareReleaseOverdueInput,
+      _source,
+      occurredAt,
+    ) => ({
+      actedAt: occurredAt,
+      input,
+      type: 'release_overdue_occurrences',
+    }),
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+    selectResult: selectOccurrencesResult,
   })
 }
 

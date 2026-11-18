@@ -176,3 +176,34 @@ export function getLoadStateLabel(state: LoadState): string {
 
   return 'спокойно'
 }
+
+const taskCountPluralRules = new Intl.PluralRules('ru-RU')
+const TASK_COUNT_FORMS: Record<Intl.LDMLPluralRule, string> = {
+  few: 'задачи',
+  many: 'задач',
+  one: 'задача',
+  other: 'задачи',
+  two: 'задачи',
+  zero: 'задач',
+}
+
+/**
+ * Short status for the collapsed panel. When the day is unknown because some
+ * tasks have no resource yet, say how many — that is something to act on.
+ */
+export function getLoadBadgeLabel(
+  analysis: Pick<DailyLoadAnalysis, 'state' | 'unassessedTaskCount'>,
+  isEmpty: boolean,
+): string {
+  if (isEmpty) {
+    return 'нет задач'
+  }
+
+  if (analysis.state === 'unknown' && analysis.unassessedTaskCount > 0) {
+    const count = analysis.unassessedTaskCount
+
+    return `${count} ${TASK_COUNT_FORMS[taskCountPluralRules.select(count)]} без оценки`
+  }
+
+  return getLoadStateLabel(analysis.state)
+}

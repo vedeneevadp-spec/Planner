@@ -78,7 +78,7 @@ test('keeps the personal Today flow intact after the refactor', async ({
 
   await registerUser({ ...user, page })
 
-  await expect(page.getByText('Антиперегруз')).toBeVisible()
+  await expect(page.getByText('Ресурс дня')).toBeVisible()
   await createTodayTask(page, tomorrowTask)
 
   await page.goto('/today?taskView=list')
@@ -135,7 +135,7 @@ test('keeps the personal Today flow intact after the refactor', async ({
 
   await expect(page.getByText(completedTask)).toBeVisible()
 
-  await page.getByRole('button', { name: 'Открыть антиперегруз' }).click()
+  await page.getByRole('button', { name: 'Открыть ресурс дня' }).click()
   const preferencesSaved = page.waitForResponse(
     (response) =>
       response.request().method() === 'PATCH' &&
@@ -145,7 +145,7 @@ test('keeps the personal Today flow intact after the refactor', async ({
   await page.getByRole('button', { name: /Минимум/ }).click()
   await preferencesSaved
   await page.reload()
-  await page.getByRole('button', { name: 'Открыть антиперегруз' }).click()
+  await page.getByRole('button', { name: 'Открыть ресурс дня' }).click()
   await expect(page.getByRole('button', { name: /Минимум/ })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -170,7 +170,7 @@ test('keeps shared Today free of personal resource and self-care blocks', async 
 
   await page.goto('/today')
 
-  await expect(page.getByText('Антиперегруз')).toHaveCount(0)
+  await expect(page.getByText('Ресурс дня')).toHaveCount(0)
   await createTodayTask(page, taskTitle)
   await expect(page.getByText(taskTitle)).toBeVisible()
   await expect(

@@ -102,6 +102,63 @@ describe('optimistic self-care commands', () => {
     ).toMatchObject({ flexibleGoals: [], todayItems: [] })
   })
 
+  it('releases only still-scheduled overdue care before the date for the given items', () => {
+    const source = createSource()
+    const item = createItem()
+    const overdue = (id: string, scheduledFor: string, itemId = ITEM_ID) =>
+      createEntry(
+        { ...item, id: itemId },
+        createOccurrence({ id, itemId, scheduledFor }),
+        createCourseDetails(),
+      )
+    source.dashboard = {
+      ...source.dashboard!,
+      overdueItems: [
+        overdue('old', '2026-08-04'),
+        overdue('yesterday', '2026-08-06'),
+        overdue('other-item', '2026-08-05', 'other'),
+      ],
+    }
+    const command: SelfCareOfflineCommand = {
+      actedAt: OCCURRED_AT,
+      input: { beforeDate: '2026-08-07', itemIds: [ITEM_ID] },
+      type: 'release_overdue_occurrences',
+    }
+
+    const result = createOptimisticSelfCareResult(command, source)
+
+    expect(result.kind).toBe('occurrences')
+    expect(
+      result.kind === 'occurrences'
+        ? result.occurrences.map((entry) => [
+            entry.id,
+            entry.status,
+            entry.version,
+          ])
+        : [],
+    ).toEqual([
+      ['old', 'missed', 5],
+      ['yesterday', 'missed', 5],
+    ])
+
+    const overlay: SelfCareOfflineOverlay = {
+      command,
+      result,
+      operationId: generateUuidV7(),
+      sequence: 1,
+      status: 'pending',
+    }
+    const projected = projectSelfCareRead(
+      'dashboard',
+      ['2026-08-07'],
+      source.dashboard,
+      overlay,
+    ) as NonNullable<SelfCareOptimisticSource['dashboard']>
+    expect(
+      projected.overdueItems.map((entry) => entry.occurrence?.status),
+    ).toEqual(['missed', 'missed', 'scheduled'])
+  })
+
   it('updates a same-date occurrence in place without creating move history', () => {
     const source = createSource()
     const input = createScheduleInput({

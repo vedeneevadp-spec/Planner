@@ -10,13 +10,22 @@ import type { Sphere } from '@/entities/sphere'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate, formatTimeRange } from '@/shared/lib/date'
-import { CheckIcon, IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
+import {
+  canRenderIconValue,
+  CheckIcon,
+  IconMark,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import { getTaskResource } from '../model/resource'
 import { getRoutineTaskFrequencyLabel } from '../model/routine-task'
 import { resolveTaskCardActionPolicy } from '../model/task-card-policy'
-import { getTaskNecessityLabel, getTaskTypeValue } from '../model/task-meta'
+import {
+  DEFAULT_TASK_NECESSITY,
+  getTaskNecessityLabel,
+  getTaskTypeValue,
+} from '../model/task-meta'
 import { getTaskRecurrenceLabel } from '../model/task-recurrence'
 import styles from './TaskCard.module.css'
 import { TaskEditDialog } from './TaskEditDialog'
@@ -360,7 +369,7 @@ export function TaskCard({
           <>
             <div className={styles.cardHeader}>
               <div className={styles.titleRow}>
-                {task.icon ? (
+                {canRenderIconValue(task.icon, uploadedIcons) ? (
                   <IconMark
                     className={styles.taskIcon}
                     value={task.icon}
@@ -641,10 +650,12 @@ export function TaskCard({
                         style={{ backgroundColor: sphere.color }}
                         aria-hidden="true"
                       >
-                        <IconMark
-                          value={sphere.icon}
-                          uploadedIcons={uploadedIcons}
-                        />
+                        {canRenderIconValue(sphere.icon, uploadedIcons) ? (
+                          <IconMark
+                            value={sphere.icon}
+                            uploadedIcons={uploadedIcons}
+                          />
+                        ) : null}
                       </span>
                     ) : null}
                     <span>{projectTitle}</span>
@@ -659,16 +670,20 @@ export function TaskCard({
             ) : null}
 
             <div className={styles.meta}>
-              <span
-                className={cx(
-                  styles.metaChip,
-                  styles.necessityChip,
-                  task.necessity === 'required' && styles.necessityChipRequired,
-                  task.necessity === 'optional' && styles.necessityChipOptional,
-                )}
-              >
-                {getTaskNecessityLabel(task.necessity)}
-              </span>
+              {task.necessity !== DEFAULT_TASK_NECESSITY || isDetailView ? (
+                <span
+                  className={cx(
+                    styles.metaChip,
+                    styles.necessityChip,
+                    task.necessity === 'required' &&
+                      styles.necessityChipRequired,
+                    task.necessity === 'optional' &&
+                      styles.necessityChipOptional,
+                  )}
+                >
+                  {getTaskNecessityLabel(task.necessity)}
+                </span>
+              ) : null}
               {task.importance === 'important' ? (
                 <span className={cx(styles.metaChip, styles.markerChipStrong)}>
                   Важное
