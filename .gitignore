@@ -55,3 +55,6 @@ tools/wakeword-training/output/**
 !tools/wakeword-training/output/.gitkeep
 /store-screenshots/
 /temp/
+
+# Claude Code: личные настройки не коммитим, общие (.claude/settings.json, launch.json) — да
+.claude/settings.local.json
