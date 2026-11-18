@@ -288,7 +288,8 @@ npm run deploy:prod
 
 Что делает скрипт:
 
-1. предупреждает о dirty worktree
+1. отказывается работать с dirty worktree, незапушенным commit и commit,
+   которого нет в `origin/main` (аварийный обход — `--allow-non-main`)
 2. берет неблокирующий remote `flock` до локального `npm run ci` и удерживает
    его во время передачи source archive, build, migrations, activation, healthchecks и
    retention; параллельный deploy сразу завершается, не ожидая освобождения lock
@@ -317,6 +318,13 @@ npm run deploy:prod
 15. проверяет `https://chaotika.ru/api/ready`
 16. сохраняет текущий и предыдущий release и удаляет самые старые каталоги
     сверх `DEPLOY_RELEASE_RETENTION` (по умолчанию 5)
+17. ставит на выкаченный commit аннотированный тег `deploy/YYYYMMDD-HHMMSS`
+    (UTC, в сообщении — версия приложения и ветка) и пушит его; ошибка тега
+    не роняет уже успешный deploy, скрипт печатает команду для ручного тега
+
+Перед deploy PR должен быть влит в `main`: `git switch main && git pull
+--ff-only && npm run deploy:prod`. Что сейчас в production:
+`git fetch --tags && git tag --list 'deploy/*' --sort=-creatordate | head -1`.
 
 Если в production env включены `BACKUP_AUTOMATION_ENABLED=1` и
 `RESTORE_DRILL_AUTOMATION_ENABLED=1`, deploy также проверяет

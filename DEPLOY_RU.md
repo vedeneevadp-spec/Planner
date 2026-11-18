@@ -297,6 +297,15 @@ git push
 git pull --ff-only
 ```
 
+Deploy разрешён только для commit, который уже входит в `origin/main`. Если
+guard сообщает `HEAD is not contained in origin/main`, влейте PR и деплойте из
+`main`:
+
+```bash
+git switch main
+git pull --ff-only
+```
+
 После этого повторите:
 
 ```bash
@@ -402,6 +411,19 @@ Dry run:
 
 ```bash
 npm run deploy:prod -- --dry-run
+```
+
+Аварийно выкатить запушенный, но ещё не влитый в `main` commit (после этого
+как можно скорее влейте его, иначе production разойдётся с `main`):
+
+```bash
+npm run deploy:prod -- --allow-non-main
+```
+
+Без тега `deploy/*` после успешного deploy:
+
+```bash
+npm run deploy:prod -- --skip-tag
 ```
 
 Переопределения через env:

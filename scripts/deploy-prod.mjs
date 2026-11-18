@@ -26,7 +26,11 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import {
+  assertDeployCommitOnMainline,
+  createDeployTagMessage,
+  createDeployTagName,
   createReleaseLayout,
+  parseAndroidVersion,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
 
@@ -35,6 +39,7 @@ const DEFAULTS = {
   healthPath: '/api/ready',
   iconLocalDirectory: 'apps/api/tmp/icon-assets',
   iconRemoteDirectory: '/var/lib/planner/icon-assets',
+  mainBranch: 'main',
   releaseRetention: 5,
   remoteHost: 'root@147.45.158.186',
   remoteRoot: '/opt/planner',
@@ -56,6 +61,7 @@ const config = {
     'DEPLOY_ICON_REMOTE_DIR',
     DEFAULTS.iconRemoteDirectory,
   ),
+  mainBranch: readEnv('DEPLOY_MAIN_BRANCH', DEFAULTS.mainBranch),
   remoteHost: readEnv('DEPLOY_HOST', DEFAULTS.remoteHost),
   remoteRoot: readEnv('DEPLOY_REMOTE_ROOT', DEFAULTS.remoteRoot),
   releaseRetention: parseReleaseRetention(
@@ -70,6 +76,9 @@ const skipDbBackup =
   args.has('--skip-db-backup') || process.env.DEPLOY_SKIP_DB_BACKUP === '1'
 const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
+const allowNonMainline =
+  args.has('--allow-non-main') || process.env.DEPLOY_ALLOW_NON_MAIN === '1'
+const skipTag = args.has('--skip-tag') || process.env.DEPLOY_SKIP_TAG === '1'
 import { REMOTE_DEPLOY_LOCK_MARKER } from './deploy-prod-remote.mjs'
 const REMOTE_DEPLOY_LOCK_TIMEOUT_MS = 15_000
 const SOURCE_UPLOAD_CHUNK_BYTES = 256 * 1024
@@ -148,6 +157,51 @@ async function main() {
   } finally {
     await remoteLock.release()
   }
+
+  await tagDeployedRelease(source)
+}
+
+async function tagDeployedRelease(source) {
+  if (skipTag) {
+    console.log('[deploy] Skipping deploy tag.')
+    return
+  }
+
+  const tagName = createDeployTagName(new Date())
+
+  // Production is already live here: a tagging problem must not fail the deploy.
+  try {
+    const version = parseAndroidVersion(
+      await collect('git', ['show', `${source.head}:android/app/build.gradle`]),
+    )
+    const message = createDeployTagMessage({
+      branch: source.branch,
+      commit: source.head,
+      domain: config.domain,
+      onMainline: source.onMainline,
+      version,
+    })
+
+    await run('git', [
+      'tag',
+      '--annotate',
+      tagName,
+      '--message',
+      message,
+      source.head,
+    ])
+    await run('git', ['push', source.remote, `refs/tags/${tagName}`])
+    console.log(`[deploy] Tagged production release: ${tagName}`)
+  } catch (error) {
+    console.warn(
+      [
+        `[deploy] WARNING: production is live, but tagging ${tagName} failed.`,
+        error instanceof Error ? error.message : String(error),
+        `[deploy] If the tag is missing: git tag -a ${tagName} -m "Production deploy" ${source.head}`,
+        `[deploy] Then push it: git push ${source.remote} refs/tags/${tagName}`,
+      ].join('\n'),
+    )
+  }
 }
 
 function printHeader() {
@@ -169,7 +223,14 @@ Usage:
   npm run deploy:prod
 
 Source guard:
-  The deploy runs only from a clean tracked branch whose HEAD matches upstream.
+  The deploy runs only from a clean tracked branch whose HEAD matches upstream
+  and is already contained in origin/main (merged). Use --allow-non-main only
+  for emergencies.
+
+Release tags:
+  After a healthy deploy, an annotated tag deploy/YYYYMMDD-HHMMSS (UTC) is
+  created on the deployed commit and pushed. Find what runs in production with:
+  git tag --list 'deploy/*' --sort=-creatordate | head -1
 
 Concurrency:
   A non-blocking remote flock covers preparation, source transfer, build, migrations,
@@ -181,6 +242,9 @@ Options:
   --skip-db-backup
                  Do not run pg_dump before production migrations.
   --skip-icons   Do not copy local uploaded icon assets.
+  --allow-non-main
+                 Deploy a pushed commit that is not merged into main (emergency only).
+  --skip-tag     Do not create and push the deploy/* tag.
   --dry-run      Run checks and package source, but do not upload/build/restart remote services.
 
 Environment overrides:
@@ -189,6 +253,7 @@ Environment overrides:
   DEPLOY_REMOTE_ROOT=/opt/planner
   DEPLOY_ICON_REMOTE_DIR=/var/lib/planner/icon-assets
   DEPLOY_RELEASE_RETENTION=5
+  DEPLOY_MAIN_BRANCH=main
 `)
 }
 
@@ -273,16 +338,47 @@ async function assertDeploySourceReady() {
     )
   }
 
+  const mainline = `${remote}/${config.mainBranch}`
+  const { onMainline, warnings } = assertDeployCommitOnMainline({
+    allowNonMainline,
+    branch,
+    headIsOnMainline: await isAncestor(head, `refs/remotes/${mainline}`),
+    mainline,
+  })
+
+  for (const warning of warnings) {
+    console.warn(warning)
+  }
+
   console.log(
     [
       '[deploy] Source guard passed.',
       `  branch:   ${branch}`,
       `  upstream: ${upstream}`,
+      `  mainline: ${mainline}${onMainline ? '' : ' (NOT contained)'}`,
       `  commit:   ${head.slice(0, 12)}`,
     ].join('\n'),
   )
 
-  return { branch, head, upstream }
+  return { branch, head, onMainline, remote, upstream }
+}
+
+async function isAncestor(commit, ref) {
+  try {
+    await collect('git', ['merge-base', '--is-ancestor', commit, ref])
+    return true
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+
+    // Exit code 1 means "not an ancestor"; anything else (missing ref) is a real error.
+    if (/failed with exit code 1\n/.test(message)) {
+      return false
+    }
+
+    throw new Error(
+      `[deploy] Cannot verify that ${commit.slice(0, 12)} is merged into ${ref}.\n${message}`,
+    )
+  }
 }
 
 async function collectUpstream(branch) {
