@@ -657,6 +657,7 @@ export {
   getDateMonthKey,
   getDayRangeUtc,
   getDeviceTimeZone,
+  getDisplayedTaskSchedule,
   getIsoWeekday,
   getIsoWeekStartDate,
   getMonthStartDate,

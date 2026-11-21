@@ -7,12 +7,15 @@ import {
   type CleaningListResponse,
   type CleaningTodayResponse,
   enumerateDateRange,
+  getPlannerTimeZone,
   getTodayDate,
+  isValidTimeZone,
   type SelfCareAnalyticsResponse,
   type SelfCareHistoryResponse,
   type SelfCarePlanResponse,
   type SelfCareTodayItem,
   type Task,
+  type UserPreferences,
   type WorkspaceGroupRole,
   type WorkspaceKind,
   type WorkspaceRole,
@@ -86,8 +89,8 @@ import {
   readTaskCompletionDate,
   resolveOverdueAsOfDate,
   resolveRange,
-  resolveTimezone,
   sumDomainCounts,
+  taskInDisplayTimeZone,
   validateDateRange,
 } from './ai-context.projections.js'
 import type {
@@ -124,11 +127,18 @@ interface SessionSnapshotLike {
   actorUserId: string
   groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
+  userPreferences?:
+    | Pick<
+        UserPreferences,
+        'timeZoneMode' | 'defaultTimeZone' | 'lastSeenTimeZone'
+      >
+    | undefined
   workspace: {
     kind: WorkspaceKind
     name: string
   }
   workspaceId: string
+  workspaceSettings?: { defaultTimeZone: string | null }
   workspaces: Array<{
     id: string
     kind: WorkspaceKind
@@ -142,6 +152,30 @@ interface SessionServiceLike {
     auth: AuthenticatedRequestContext | null
     workspaceId: string | undefined
   }): Promise<SessionSnapshotLike>
+}
+
+function resolveContextTimeZone(
+  requested: string | undefined,
+  session: SessionSnapshotLike,
+): string {
+  if (requested !== undefined) {
+    const timezone = requested.trim()
+    if (!isValidTimeZone(timezone))
+      throw new AiContextValidationError(
+        'timezone must be a valid IANA time zone.',
+      )
+    return timezone
+  }
+  const configured = process.env.HAOTIKA_DEFAULT_TIMEZONE?.trim()
+  const fallback =
+    configured && isValidTimeZone(configured) ? configured : DEFAULT_TIMEZONE
+  const preferences = session.userPreferences
+  return getPlannerTimeZone({
+    timeZoneMode: preferences?.timeZoneMode ?? 'device',
+    deviceTimeZone: preferences?.lastSeenTimeZone ?? fallback,
+    userTimeZone: preferences?.defaultTimeZone ?? fallback,
+    workspaceTimeZone: session.workspaceSettings?.defaultTimeZone ?? fallback,
+  })
 }
 
 interface TaskServiceLike {
@@ -224,7 +258,7 @@ interface SelfCareServiceLike {
 interface AiServiceReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
-  clientTimeZone?: string | undefined
+  clientTimeZone: string
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
@@ -286,14 +320,14 @@ export class AiContextService {
   constructor(private readonly dependencies: AiContextServiceDependencies) {}
 
   async getTodayContext(params: GetTodayContextParams): Promise<TodayContext> {
-    const timezone = resolveTimezone(params.timezone)
-    const date = params.date ?? getTodayDate(timezone)
-    validateDateRange(date, date)
-    const include = resolveTodayContextInclude(params.include)
+    validateDateRange(params.date, params.date)
     const context = await this.resolvePersonalReadContext(
       params.userId,
-      timezone,
+      params.timezone,
     )
+    const timezone = context.clientTimeZone
+    const date = params.date ?? getTodayDate(timezone)
+    const include = resolveTodayContextInclude(params.include)
     const loaded = await this.loadDayContext(
       context,
       params.userId,
@@ -466,14 +500,14 @@ export class AiContextService {
   ): Promise<FullWeekContext>
   getWeekContext(params: GetWeekContextParams): Promise<WeekContext>
   async getWeekContext(params: GetWeekContextParams): Promise<WeekContext> {
-    const timezone = resolveTimezone(params.timezone)
+    const context = await this.resolvePersonalReadContext(
+      params.userId,
+      params.timezone,
+    )
+    const timezone = context.clientTimeZone
     const [from, to] = resolveRange(params.from, params.to, timezone)
     const include = resolveWeekContextInclude(params.include)
     const needsStats = include.includes('stats')
-    const context = await this.resolvePersonalReadContext(
-      params.userId,
-      timezone,
-    )
     const taskLoad =
       needsStats || include.includes('tasks')
         ? await this.listTasks(
@@ -729,12 +763,12 @@ export class AiContextService {
       throw new AiContextValidationError('query is required.')
     }
 
-    const timezone = resolveTimezone(params.timezone)
     validateDateRange(params.from, params.to)
     const context = await this.resolvePersonalReadContext(
       params.userId,
-      timezone,
+      params.timezone,
     )
+    const timezone = context.clientTimeZone
     const limit = Math.min(Math.max(params.limit ?? 10, 1), 30)
     const types = params.types?.length
       ? params.types
@@ -784,7 +818,9 @@ export class AiContextService {
       }
       additionalTaskMatches = page.totalCount - page.items.length
       results.push(
-        ...page.items.map((task) => mapTaskItem(task, searchAsOfDate)),
+        ...page.items.map((task) =>
+          mapTaskItem(taskInDisplayTimeZone(task, timezone), searchAsOfDate),
+        ),
       )
       if (tasksOnly)
         taskPagination = {
@@ -816,7 +852,9 @@ export class AiContextService {
         truncated: page.truncated,
       }
       additionalCalendarMatches = page.totalCount - page.items.length
-      results.push(...page.items.map(mapTaskCalendarEvent))
+      results.push(
+        ...page.items.map((task) => mapTaskCalendarEvent(task, timezone)),
+      )
     }
 
     if (types.includes('shopping')) {
@@ -890,6 +928,7 @@ export class AiContextService {
       query,
       returnedCount: compacted.returnedCount,
       sourceCoverage,
+      timezone,
       totalCount:
         compacted.totalCount +
         additionalTaskMatches +
@@ -900,12 +939,12 @@ export class AiContextService {
   async getOverloadContext(
     params: GetOverloadContextParams,
   ): Promise<OverloadContext> {
-    const timezone = resolveTimezone(params.timezone)
-    const [from, to] = resolveRange(params.from, params.to, timezone)
     const context = await this.resolvePersonalReadContext(
       params.userId,
-      timezone,
+      params.timezone,
     )
+    const timezone = context.clientTimeZone
+    const [from, to] = resolveRange(params.from, params.to, timezone)
     const taskLoad = await this.listTasks(context, params.userId, from, to)
     const tasks = taskLoad.items
     const activeTasks = tasks.filter(isActiveTask)
@@ -1074,12 +1113,12 @@ export class AiContextService {
   async getSelfCareContext(
     params: GetSelfCareContextParams,
   ): Promise<SelfCareContext> {
-    const timezone = resolveTimezone(params.timezone)
-    const [from, to] = resolveRange(params.from, params.to, timezone)
     const context = await this.resolvePersonalReadContext(
       params.userId,
-      timezone,
+      params.timezone,
     )
+    const timezone = context.clientTimeZone
+    const [from, to] = resolveRange(params.from, params.to, timezone)
     const selfCare = await this.getSelfCareRange(
       context,
       from,
@@ -1183,10 +1222,7 @@ export class AiContextService {
     const completedTodayTasks = tasks.filter(
       (task) =>
         isTaskCompleted(task) &&
-        readTaskCompletionDate(
-          task,
-          context.clientTimeZone ?? DEFAULT_TIMEZONE,
-        ) === date,
+        readTaskCompletionDate(task, context.clientTimeZone) === date,
     )
     const overdueTasks = activeTasks.filter((task) => isTaskOverdue(task, date))
     const currentTasks = dedupeTaskItems([
@@ -1232,7 +1268,7 @@ export class AiContextService {
 
   private async resolvePersonalReadContext(
     userId: string,
-    timezone: string,
+    timezone?: string,
   ): Promise<AiServiceReadContext> {
     const bootstrapAuth = createSyntheticAuthContext(userId)
     const baseSession = await this.dependencies.sessionService.resolveSession({
@@ -1271,7 +1307,7 @@ export class AiContextService {
     return {
       actorUserId: userId,
       auth,
-      clientTimeZone: timezone,
+      clientTimeZone: resolveContextTimeZone(timezone, session),
       groupRole: session.groupRole,
       role: session.role,
       workspaceKind: session.workspace.kind,
@@ -1286,7 +1322,7 @@ export class AiContextService {
     from: string,
     to: string,
   ): Promise<{ items: AiCalendarEvent[]; coverage: AiSourceCoverage }> {
-    const timezone = context.clientTimeZone ?? DEFAULT_TIMEZONE
+    const timezone = context.clientTimeZone
     const result = await this.dependencies.taskService.searchTasksCursor(
       context,
       {
@@ -1302,7 +1338,7 @@ export class AiContextService {
       },
     )
     return {
-      items: result.items.map(mapTaskCalendarEvent),
+      items: result.items.map((task) => mapTaskCalendarEvent(task, timezone)),
       coverage: {
         returnedCount: result.returnedCount,
         totalCount: result.totalCount,
@@ -1320,11 +1356,10 @@ export class AiContextService {
   ): Promise<{
     coverage: AiSourceCoverage
     completions: AiSourceCoverage & { nextCursor: string | null }
-    items: Array<Task & { userId?: string; workspaceId?: string }>
+    items: ReturnType<typeof taskInDisplayTimeZone>[]
   }> {
-    const fallbackDate = getTodayDate(
-      context.clientTimeZone ?? DEFAULT_TIMEZONE,
-    )
+    const timezone = context.clientTimeZone
+    const fallbackDate = getTodayDate(timezone)
     const dateFrom = from ?? to ?? fallbackDate
     const dateTo = to ?? from ?? fallbackDate
     const [result, completed] = await Promise.all([
@@ -1339,11 +1374,8 @@ export class AiContextService {
         ? this.dependencies.taskService.searchTasksCursor(context, {
             from: dateFrom,
             to: dateTo,
-            asOfDate: resolveOverdueAsOfDate(
-              dateTo,
-              context.clientTimeZone ?? DEFAULT_TIMEZONE,
-            ),
-            timezone: context.clientTimeZone ?? DEFAULT_TIMEZONE,
+            asOfDate: resolveOverdueAsOfDate(dateTo, timezone),
+            timezone,
             status: 'done',
             search: '',
             userId,
@@ -1360,7 +1392,9 @@ export class AiContextService {
     const items = dedupeTaskItems([
       ...result.items.filter((task) => !isTaskCompleted(task)),
       ...completed.items,
-    ]).filter((task) => belongsToUser(task, userId))
+    ])
+      .filter((task) => belongsToUser(task, userId))
+      .map((task) => taskInDisplayTimeZone(task, timezone))
 
     return {
       coverage: {
@@ -1544,7 +1578,7 @@ export class AiContextService {
     )
     const completed = mapCompletedSelfCareHistory(
       history,
-      context.clientTimeZone ?? DEFAULT_TIMEZONE,
+      context.clientTimeZone,
     )
     const missed = normalizeSelfCareItemsForAi(
       [...todayItems, ...overdueItems]
@@ -1629,7 +1663,7 @@ export class AiContextService {
     )
     const completed = mapCompletedSelfCareHistory(
       history,
-      context.clientTimeZone ?? DEFAULT_TIMEZONE,
+      context.clientTimeZone,
     )
 
     return {

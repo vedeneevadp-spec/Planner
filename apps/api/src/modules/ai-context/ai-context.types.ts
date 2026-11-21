@@ -26,6 +26,9 @@ export interface AiTaskItem {
   completedAt?: string | null
   dueDate?: string | null
   plannedDate?: string | null
+  plannedStartTime?: string
+  plannedEndTime?: string | null
+  plannedEndDate?: string
   importance?: 'important' | 'not_important' | (string & {}) | null
   isFlexible?: boolean
   obligation?: 'desired' | 'optional' | 'required' | (string & {}) | null
@@ -53,6 +56,7 @@ export interface AiCalendarEvent {
   location?: string | null
   source: 'calendar'
   start: string
+  timezone: string
   title: string
 }
 
@@ -377,6 +381,7 @@ export interface PlannerSearchResult {
   query: string
   returnedCount: number
   sourceCoverage: AiContextSourceCoverage
+  timezone: string
   totalCount: number
 }
 

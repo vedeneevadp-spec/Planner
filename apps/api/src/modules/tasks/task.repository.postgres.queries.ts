@@ -732,7 +732,11 @@ function applyTaskCursorFilters<Output>(
 
   if (cursorQuery.contextFilter) {
     const filter = cursorQuery.contextFilter
-    const plannedDate = sql`coalesce(app.tasks.local_date, app.tasks.planned_on)`
+    const plannedDate = sql`coalesce(
+      case when app.tasks.time_kind = 'fixed_zone_datetime'
+        then (app.tasks.starts_at_utc at time zone ${filter.timezone})::date end,
+      app.tasks.local_date, app.tasks.planned_on
+    )`
     const deadline = sql`coalesce(app.tasks.due_on, ${plannedDate})`
     const active = sql`app.tasks.status in ('todo', 'in_progress', 'ready_for_review')`
     const overdue = sql`(${active} and ${deadline} < ${filter.asOfDate}::date)`
