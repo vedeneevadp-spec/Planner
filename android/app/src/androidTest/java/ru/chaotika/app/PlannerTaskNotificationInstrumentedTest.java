@@ -72,13 +72,13 @@ public class PlannerTaskNotificationInstrumentedTest {
         assertTrue(snoozed.wakeAt() >= before + 900_000);
         assertTrue(snoozed.wakeAt() < System.currentTimeMillis() + 901_000);
         assertEquals(0, api.requests.size());
-        assertEquals(0, context.getSystemService(NotificationManager.class).getActiveNotifications().length);
+        awaitActiveNotifications(0);
 
         // Exercise the receiver after restoring persisted snooze data, without a 15 minute wait.
         PlannerTaskNotification due = snoozed.withState(PlannerTaskNotification.SNOOZED, System.currentTimeMillis() - 1);
         assertTrue(PlannerTaskNotificationStore.replace(context, snoozed, due));
         PlannerTaskNotifications.actionIntent(context, due, PlannerTaskNotifications.WAKE).send();
-        await(() -> context.getSystemService(NotificationManager.class).getActiveNotifications().length == 1);
+        awaitActiveNotifications(1);
         assertEquals("Проверить задачу", notification().extras.getCharSequence(Notification.EXTRA_TEXT).toString());
         assertEquals(2, notification().actions.length);
         assertEquals(0, api.requests.size());
@@ -94,7 +94,7 @@ public class PlannerTaskNotificationInstrumentedTest {
         await(() -> PlannerTaskNotification.SNOOZED.equals(PlannerTaskNotificationStore.find(context, original.key()).state()));
         show();
         assertEquals(PlannerTaskNotification.SNOOZED, PlannerTaskNotificationStore.find(context, original.key()).state());
-        assertEquals(0, context.getSystemService(NotificationManager.class).getActiveNotifications().length);
+        awaitActiveNotifications(0);
         assertEquals(0, api.requests.size());
     }
 
@@ -153,6 +153,9 @@ public class PlannerTaskNotificationInstrumentedTest {
         forceJob();
         await(() -> PlannerTaskNotificationStore.find(context, firstKey) == null);
         assertEquals(0, api.patchCount());
+        // The job removes the entry before cancelling its notification. Both reminders share one
+        // tag, so a late cancel would otherwise remove the next reminder before it can be read.
+        awaitActiveNotifications(0);
 
         api.deleted = true;
         entry = show();
@@ -206,9 +209,15 @@ public class PlannerTaskNotificationInstrumentedTest {
     }
 
     private Notification notification() throws Exception {
-        await(() -> context.getSystemService(NotificationManager.class).getActiveNotifications().length == 1);
+        awaitActiveNotifications(1);
         StatusBarNotification[] active = context.getSystemService(NotificationManager.class).getActiveNotifications();
         return active[0].getNotification();
+    }
+
+    // Receivers and the job update the store before calling NotificationManager, and the system
+    // applies notify/cancel asynchronously. Never read active notifications right after a store change.
+    private void awaitActiveNotifications(int count) throws Exception {
+        await(() -> context.getSystemService(NotificationManager.class).getActiveNotifications().length == count);
     }
 
     private void setSession(String userId, String expiry) {
