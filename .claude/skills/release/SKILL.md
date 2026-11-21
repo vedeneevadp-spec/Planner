@@ -28,10 +28,15 @@ disable-model-invocation: true
 
 1. merge PR в `main`;
 2. `npm run deploy:prod`;
-3. загрузка в Google Play (только `store`), показав версию и текст «Что
+3. публикация обновления внутри приложения (не для `web`), показав версию
+   и текст заметок;
+4. загрузка в Google Play (только `store`), показав версию и текст «Что
    нового»;
-4. отправка в группу Telegram (только при аргументе `group`), показав
+5. отправка в группу Telegram (только при аргументе `group`), показав
    готовый текст.
+
+Эти подтверждения можно собрать одним вопросом, когда все артефакты собраны
+и проверены без публикации.
 
 Отправку себе в личный чат отдельно не подтверждать: она часть `/release`.
 
@@ -54,9 +59,10 @@ disable-model-invocation: true
 4. **Release notes.** В [docs/release-notes.md](../../../docs/release-notes.md)
    перенеси пункты из `Unreleased` в раздел `## vX.Y.Z - YYYY-MM-DD` с этой же
    версией и каналами (`Web`, `PWA`, `API`, `Android` …). Пиши о
-   пользовательском эффекте, без команд, хэшей и внутренних деталей. Для
-   `store` добавь в раздел подраздел `### Google Play` — короткий текст «Что
-   нового» до 500 символов. Затем `npm run version:check` должен пройти: он
+   пользовательском эффекте, без команд, хэшей и внутренних деталей. Если
+   релиз не только `web`, добавь в раздел подраздел `### Google Play` —
+   короткий текст «Что нового» до 500 символов: он идёт и в Google Play, и в
+   заметки обновления внутри приложения. Затем `npm run version:check` должен пройти: он
    сверяет версию в `package.json`, нативных проектах и в последнем разделе
    release notes (то же проверяет CI).
 5. **Проверки.** Всегда `npm run lint`, `npm run typecheck`,
@@ -78,19 +84,43 @@ disable-model-invocation: true
    (дождётся, если CI ещё идёт), выкатит, проверит здоровье и поставит тег
    `deploy/YYYYMMDD-HHMMSS`. Запиши тег из вывода. При ошибке — остановись и
    покажи вывод; флаги `--skip-checks` и `--allow-non-main` без явной просьбы не
-   использовать.
+   использовать. Если деплой отказался из-за CI, посмотри упавший job
+   (`gh run view <id> --json jobs`): job, отменённый из-за нехватки раннеров
+   GitHub (например, macOS для iOS), перезапусти `gh run rerun <id> --failed`
+   и запусти деплой снова — он дождётся CI. Настоящее падение тестов —
+   исправлять, а не перезапускать.
 9. **APK (не для `web`).**
    `npm run mobile:release:rustore:arm64 -- --api-url=https://chaotika.ru`.
    Результат: `android/app/build/outputs/apk/release/app-release.apk`. Если
    подпись не настроена (`android/keystore.properties`), остановись и скажи
-   об этом; содержимое keystore не читать.
+   об этом; содержимое keystore не читать. Скопируй APK во временный каталог
+   как `Chaotika-X.Y.Z-buildN-arm64-v8a.apk`: следующие сборки используют тот же
+   каталог `android/app/build`, а копию дальше отправляют в Telegram.
+
+   **Обновление внутри приложения (не для `web`).** Пользователи APK получают
+   «Обновить» только после публикации. Сохрани текст `### Google Play` в файл
+   заметок (UTF-8):
+
+   ```bash
+   node --input-type=module -e "import {readFileSync,writeFileSync} from 'node:fs'; import {extractGooglePlayNotes} from './scripts/google-play-publish.mjs'; writeFileSync('<заметки>', extractGooglePlayNotes(readFileSync('docs/release-notes.md','utf8'),'X.Y.Z')+'\n')"
+   ```
+
+   Проверь без публикации:
+   `npm run mobile:update:prepare -- --notes-file=<заметки> --apk=<копия APK>`.
+   После подтверждения — `npm run mobile:update:publish` с теми же
+   аргументами, затем убедись, что
+   `https://chaotika.ru/android-updates/latest.json` отдаёт новую версию.
+   Откатить версию этим механизмом нельзя.
 
    **Google Play (только `store`).** Собери AAB:
    `npm run mobile:release:google-play -- --api-url=https://chaotika.ru`, затем
    `npm run mobile:publish:google-play:dry-run` (доступ, версия, текст «Что
    нового»). После подтверждения — `npm run mobile:publish:google-play`: AAB
    уходит в Alpha со статусом `completed` и сразу на проверку Google. Ключ
-   сервисного аккаунта скрипт находит сам; не читай и не выводи его.
+   сервисного аккаунта скрипт находит сам; не читай и не выводи его. Если
+   публикация упала (например, `fetch failed` — смотри строку `cause`), перед
+   повтором запусти dry-run: строка «alpha currently has versionCode up to N»
+   покажет, попала ли сборка в трек, чтобы не опубликовать её дважды.
 10. **Telegram, личный чат.** Подготовь техническую сводку в файл во
     временном каталоге: что изменилось, тег деплоя и commit, результаты
     проверок, статус деплоя, версия и build, имя и размер APK. Затем:
