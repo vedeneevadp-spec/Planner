@@ -43,6 +43,13 @@ const isMain =
 if (isMain) {
   await main(process.argv.slice(2)).catch((error) => {
     console.error(error instanceof Error ? error.message : error)
+    // fetch() reports network problems as "fetch failed" with the reason in cause.
+    const cause = error instanceof Error ? error.cause : undefined
+    if (cause) {
+      console.error(
+        `  cause: ${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}${cause?.code ? ` (${cause.code})` : ''}`,
+      )
+    }
     process.exitCode = 1
   })
 }
