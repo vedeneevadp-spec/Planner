@@ -103,7 +103,10 @@ android {
             if (hasReleaseSigningConfig) {
                 signingConfig = signingConfigs.release
             }
-            minifyEnabled false
+            // R8: shrinking, optimization and obfuscation of native code.
+            // Google Play flags release bundles with an obfuscation rate below 25%.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

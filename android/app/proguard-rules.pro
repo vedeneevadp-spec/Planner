@@ -1,21 +1,22 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# R8 rules for the Chaotika app. Classes referenced from AndroidManifest.xml and
+# layouts are kept automatically by AAPT; only reflection needs explicit rules.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep line numbers so Play Console / logcat stack traces can be deobfuscated
+# with mapping.txt (bundled into the AAB automatically).
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Capacitor reads plugin annotations and invokes plugin methods via reflection,
+# and loads plugin classes by name from capacitor.plugins.json. The library's
+# consumer rules keep Plugin subclasses; keep the bridge and annotations too so
+# R8 full mode does not strip annotation members or bridge internals.
+-keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod
+-keep class com.getcapacitor.** { *; }
+-keep @interface com.getcapacitor.annotation.** { *; }
+-keep class org.apache.cordova.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Credential Manager loads the Play Services provider by class name.
+-if class androidx.credentials.CredentialManager
+-keep class androidx.credentials.playservices.** {
+  *;
+}
