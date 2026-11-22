@@ -64,6 +64,7 @@ export function defineTaskRepositoryContractSuite(input: {
             plannedDate: addDateDays(date, 3),
             dueDate: date,
             plannedStartTime: '10:00',
+            reminderTimeZone: timezone,
           }),
         })
         const done = await repository.create({
@@ -226,6 +227,53 @@ export function defineTaskRepositoryContractSuite(input: {
           literal.items.map((item) => item.id),
           [active.id],
         )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('selects a fixed-zone task by its displayed calendar day before counting and limiting', async () => {
+      const harness = await input.createHarness()
+      const { repository, personalContext: context } = harness
+      try {
+        const task = await repository.create({
+          context,
+          input: createTaskInput({
+            title: 'Late lesson',
+            plannedDate: '2026-11-20',
+            plannedStartTime: '23:30',
+            reminderTimeZone: 'Asia/Almaty',
+          }),
+        })
+        for (const calendarOnly of [true, false]) {
+          for (const [timezone, date, count] of [
+            ['Asia/Novosibirsk', '2026-11-20', 0],
+            ['Asia/Novosibirsk', '2026-11-21', 1],
+            ['Asia/Almaty', '2026-11-20', 1],
+          ] as const) {
+            const page = await repository.listCursorPageByWorkspace(context, {
+              dateMode: 'relevant',
+              direction: 'desc',
+              limit: 1,
+              scope: 'all',
+              contextFilter: {
+                calendarOnly,
+                timezone,
+                from: date,
+                to: date,
+                asOfDate: date,
+                search: 'Late lesson',
+                status: 'todo',
+                userId: context.actorUserId,
+              },
+            })
+            assert.equal(page.totalCount, count)
+            assert.deepEqual(
+              page.items.map((item) => item.id),
+              count ? [task.id] : [],
+            )
+          }
+        }
       } finally {
         await harness.cleanup()
       }

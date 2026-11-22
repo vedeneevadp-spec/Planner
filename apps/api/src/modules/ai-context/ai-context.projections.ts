@@ -3,9 +3,9 @@ import {
   type CleaningListResponse,
   type CleaningTodayResponse,
   getDateKeyInTimeZone,
+  getDisplayedTaskSchedule,
   getIsoWeekStartDate,
   getTodayDate,
-  isValidTimeZone,
   type SelfCareHistoryResponse,
   type SelfCareTodayItem,
   type Task,
@@ -38,8 +38,13 @@ import type {
 import { AiContextValidationError } from './ai-context.validation.js'
 import { getAiDateRangeError } from './ai-context.validation.js'
 const DEFAULT_TIMEZONE = 'Europe/Astrakhan'
+
+export function taskInDisplayTimeZone(task: Task, timezone: string) {
+  return { ...task, ...getDisplayedTaskSchedule(task, timezone) }
+}
+
 export function mapTaskItem(
-  task: Task & { userId?: string },
+  task: ReturnType<typeof taskInDisplayTimeZone>,
   today: string,
 ): AiTaskItem {
   return {
@@ -47,6 +52,15 @@ export function mapTaskItem(
     completedAt: task.completedAt,
     dueDate: task.dueDate,
     plannedDate: task.plannedDate,
+    ...(task.plannedDate && task.plannedStartTime
+      ? {
+          plannedStartTime: task.plannedStartTime,
+          plannedEndTime: task.plannedEndTime,
+          ...(task.plannedEndDate && task.plannedEndDate !== task.plannedDate
+            ? { plannedEndDate: task.plannedEndDate }
+            : {}),
+        }
+      : {}),
     importance: task.importance,
     isFlexible: isFlexibleTask(task),
     obligation: task.necessity,
@@ -91,18 +105,24 @@ function readTaskResourceImpact(
   return 'neutral'
 }
 
-export function mapTaskCalendarEvent(task: Task): AiCalendarEvent {
+export function mapTaskCalendarEvent(
+  task: Task,
+  timezone: string,
+): AiCalendarEvent {
+  const { plannedDate, plannedStartTime, plannedEndDate, plannedEndTime } =
+    getDisplayedTaskSchedule(task, timezone)
   return {
     end:
-      task.plannedDate && task.plannedEndTime
-        ? `${task.plannedDate}T${task.plannedEndTime}:00`
+      plannedEndDate && plannedEndTime
+        ? `${plannedEndDate}T${plannedEndTime}:00`
         : null,
     location: null,
     source: 'calendar',
     start:
-      task.plannedDate && task.plannedStartTime
-        ? `${task.plannedDate}T${task.plannedStartTime}:00`
-        : (task.plannedDate ?? task.dueDate ?? task.createdAt),
+      plannedDate && plannedStartTime
+        ? `${plannedDate}T${plannedStartTime}:00`
+        : (plannedDate ?? task.dueDate ?? task.createdAt),
+    timezone,
     title: task.title,
   }
 }
@@ -1162,28 +1182,6 @@ function getWeekRange(date: string): [string, string] {
   const sunday = addDateDays(monday, 6)
 
   return [monday, sunday]
-}
-
-export function resolveTimezone(timezone?: string): string {
-  if (timezone !== undefined && !isValidTimeZone(timezone.trim())) {
-    throw new AiContextValidationError(
-      'timezone must be a valid IANA time zone.',
-    )
-  }
-  const candidate =
-    timezone?.trim() ||
-    process.env.HAOTIKA_DEFAULT_TIMEZONE?.trim() ||
-    DEFAULT_TIMEZONE
-
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(
-      new Date(0),
-    )
-
-    return candidate
-  } catch {
-    return DEFAULT_TIMEZONE
-  }
 }
 
 export function validateDateRange(from?: string, to?: string): void {

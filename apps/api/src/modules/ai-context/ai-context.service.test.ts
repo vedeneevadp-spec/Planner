@@ -8,11 +8,13 @@ import {
   type CleaningListResponse,
   type CleaningTodayResponse,
   getTodayDate,
+  makeFixedZoneDateTime,
   type SelfCareAnalyticsResponse,
   type SelfCareHistoryResponse,
   type SelfCarePlanResponse,
   type SelfCareTodayItem,
   type Task,
+  type UserPreferences,
 } from '@planner/contracts'
 
 import { matchesTaskContextFilter } from '../tasks/task.context-filter.js'
@@ -26,6 +28,196 @@ const OTHER_USER_ID = '99999999-9999-4999-8999-999999999999'
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 
 void describe('AiContextService', () => {
+  void it('shows the physics lesson in the planner timezone in day, week and search results', async () => {
+    const date = '2026-11-21'
+    const timezone = 'Asia/Novosibirsk'
+    const service = createService(
+      [
+        createTask({
+          title: 'Физика ОГЭ',
+          plannedDate: date,
+          plannedStartTime: '08:00',
+          plannedEndTime: '09:00',
+          schedule: {
+            kind: 'fixed_zone_datetime',
+            localDate: date,
+            localTime: '08:00',
+            timeZone: 'Asia/Almaty',
+            timeZoneInferred: true,
+            instantUtc: '2026-11-21T03:00:00.000Z',
+          },
+        }),
+      ],
+      [],
+      {
+        userPreferences: {
+          timeZoneMode: 'device',
+          lastSeenTimeZone: timezone,
+          defaultTimeZone: null,
+        },
+      },
+    )
+    const day = await service.getTodayContext({ date, userId: USER_ID })
+    const period = { from: date, to: date, userId: USER_ID }
+    const week = await service.getWeekContext({
+      ...period,
+      include: ['calendar'],
+    })
+    const search = await service.searchPlanner({
+      ...period,
+      query: 'Физика',
+      types: ['calendar'],
+    })
+    for (const event of [
+      day.calendar?.events[0],
+      week.calendar?.events[0],
+      search.items[0],
+    ]) {
+      assert.deepEqual(event, {
+        title: 'Физика ОГЭ',
+        source: 'calendar',
+        location: null,
+        timezone,
+        start: '2026-11-21T10:00:00',
+        end: '2026-11-21T11:00:00',
+      })
+    }
+    assert.equal(day.timezone, timezone)
+    const lesson = day.tasks?.activeToday[0]
+    assert.equal(lesson?.plannedStartTime, '10:00')
+    assert.equal(lesson?.plannedEndTime, '11:00')
+    const almaty = await service.getTodayContext({
+      date,
+      timezone: 'Asia/Almaty',
+      userId: USER_ID,
+    })
+    assert.equal(almaty.calendar?.events[0]?.start, '2026-11-21T08:00:00')
+    assert.equal(almaty.calendar?.events[0]?.end, '2026-11-21T09:00:00')
+  })
+
+  void it('uses the displayed day for timed tasks and preserves the end date across midnight', async () => {
+    const timezone = 'Asia/Novosibirsk'
+    const day = '2026-11-21'
+    const previous = '2026-11-20'
+    const timed = (
+      title: string,
+      date: string,
+      start: string,
+      end: string | null,
+    ) =>
+      createTask({
+        title,
+        plannedDate: date,
+        plannedStartTime: start,
+        plannedEndTime: end,
+        schedule: makeFixedZoneDateTime({
+          localDate: date,
+          localTime: start,
+          timeZone: 'Asia/Almaty',
+        }),
+      })
+    const service = createService([
+      timed('After midnight', previous, '23:30', null),
+      timed('Across midnight', day, '21:45', '22:30'),
+      createTask({
+        title: 'Floating',
+        plannedDate: day,
+        plannedStartTime: '08:00',
+        schedule: { kind: 'floating_local_time', localTime: '08:00' },
+      }),
+      createTask({
+        title: 'Legacy',
+        plannedDate: day,
+        plannedStartTime: '12:00',
+        plannedEndTime: '13:00',
+      }),
+      createTask({ title: 'Date only', plannedDate: day }),
+    ])
+    const params = { userId: USER_ID, timezone }
+    const result = await service.getTodayContext({
+      ...params,
+      date: day,
+      include: ['tasks', 'calendar'],
+    })
+    const tasks = result.tasks?.activeToday ?? []
+    const events = result.calendar?.events ?? []
+    assert.equal(tasks.length, 5)
+    assert.equal(events.length, 4)
+    const moved = tasks.find((task) => task.title === 'After midnight')
+    assert.equal(moved?.plannedDate, day)
+    assert.equal(moved?.plannedStartTime, '01:30')
+    const crossing = events.find((event) => event.title === 'Across midnight')
+    assert.equal(crossing?.start, '2026-11-21T23:45:00')
+    assert.equal(crossing?.end, '2026-11-22T00:30:00')
+    assert.equal(
+      tasks.find((task) => task.title === 'Across midnight')?.plannedEndDate,
+      '2026-11-22',
+    )
+    assert.equal(
+      events.find((event) => event.title === 'After midnight')?.end,
+      null,
+    )
+    assert.equal(
+      events.find((event) => event.title === 'Floating')?.start,
+      '2026-11-21T08:00:00',
+    )
+    assert.equal(
+      events.find((event) => event.title === 'Legacy')?.end,
+      '2026-11-21T13:00:00',
+    )
+    const search = {
+      ...params,
+      query: 'After midnight',
+      types: ['tasks', 'calendar'] as const,
+    }
+    for (const [date, count] of [
+      [previous, 0],
+      [day, 2],
+    ] as const) {
+      const found = await service.searchPlanner({
+        ...search,
+        types: [...search.types],
+        from: date,
+        to: date,
+      })
+      assert.equal(found.totalCount, count)
+    }
+    const oldDay = await service.getTodayContext({
+      ...params,
+      date: previous,
+      include: ['tasks', 'calendar'],
+    })
+    assert.equal(oldDay.tasks?.activeToday.length, 0)
+    assert.equal(oldDay.calendar?.totalCount, 0)
+  })
+
+  void it('uses the selected planner timezone to choose today when the request omits both', async () => {
+    mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2026-11-20T18:00:00Z'),
+    })
+    for (const [mode, timezone, date] of [
+      ['device', 'Asia/Almaty', '2026-11-20'],
+      ['manual', 'UTC', '2026-11-20'],
+      ['workspace', 'Asia/Novosibirsk', '2026-11-21'],
+    ] as const) {
+      const service = createService([], [], {
+        userPreferences: {
+          timeZoneMode: mode,
+          lastSeenTimeZone: 'Asia/Almaty',
+          defaultTimeZone: 'UTC',
+        },
+        workspaceTimeZone: 'Asia/Novosibirsk',
+      })
+      const result = await service.getTodayContext({
+        userId: USER_ID,
+        include: ['calendar'],
+      })
+      assert.equal(result.timezone, timezone)
+      assert.equal(result.date, date)
+    }
+  })
+
   void it('reports exact calendar coverage without reading unrelated task snapshots', async () => {
     const taskReadModelCalls: unknown[] = []
     const service = createService(
@@ -1787,6 +1979,11 @@ void describe('AiContextService', () => {
 })
 
 interface CreateServiceOptions {
+  userPreferences?: Pick<
+    UserPreferences,
+    'timeZoneMode' | 'lastSeenTimeZone' | 'defaultTimeZone'
+  >
+  workspaceTimeZone?: string
   cleaningList?: CleaningListResponse | undefined
   cleaningToday?: CleaningTodayResponse | undefined
   selfCareAnalytics?: SelfCareAnalyticsResponse | undefined
@@ -1825,6 +2022,10 @@ function createService(
           actorUserId: USER_ID,
           groupRole: null,
           role: 'owner',
+          userPreferences: options.userPreferences,
+          workspaceSettings: {
+            defaultTimeZone: options.workspaceTimeZone ?? null,
+          },
           workspace: {
             kind: 'personal',
             name: 'Personal',
