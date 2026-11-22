@@ -2,6 +2,7 @@ package ru.chaotika.app;
 
 import android.content.Intent;
 import android.os.Bundle;
+import androidx.activity.EdgeToEdge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -29,6 +30,10 @@ public class MainActivity extends BridgeActivity {
         } finally {
             initializingBridge = false;
         }
+        // Android 15+ (targetSdk 35+) always draws edge-to-edge; enable it on older
+        // versions too so layout is identical everywhere. Capacitor's SystemBars
+        // plugin passes the insets to the WebView as safe-area-inset-* values.
+        EdgeToEdge.enable(this);
         captureWidgetRoute(getIntent());
         try {
             PlannerTaskNotificationScheduler.restore(this);
