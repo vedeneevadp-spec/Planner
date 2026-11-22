@@ -1,3 +1,4 @@
+export { getDisplayedTaskSchedule } from './task-schedule.js'
 export { getTimeInTimeZone as formatTimeInTimeZone } from './time.format.js'
 export {
   parseDateOnlyValue,

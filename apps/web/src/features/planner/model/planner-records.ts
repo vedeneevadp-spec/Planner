@@ -1,7 +1,6 @@
 import {
   generateUuidV7,
-  getDateKeyInTimeZone,
-  getTimeInTimeZone,
+  getDisplayedTaskSchedule,
   type LifeSphereRecord,
   makeFixedZoneDateTime,
   type TaskNextStageInput,
@@ -100,96 +99,6 @@ export function prepareTaskUpdateInput(
     reminderTimeZone:
       input.plannedDate && input.plannedStartTime ? plannerTimeZone : undefined,
   }
-}
-
-function getDisplayedTaskSchedule(
-  task: TaskRecord,
-  displayTimeZone: string,
-): TaskScheduleInput {
-  if (task.schedule?.kind !== 'fixed_zone_datetime') {
-    return {
-      plannedDate: task.plannedDate,
-      plannedEndTime: task.plannedEndTime,
-      plannedStartTime: task.plannedStartTime,
-    }
-  }
-
-  try {
-    const startInstant = new Date(task.schedule.instantUtc)
-
-    if (Number.isNaN(startInstant.getTime())) {
-      return getLegacyTaskSchedule(task)
-    }
-
-    const durationMinutes = getTaskDurationMinutes(task)
-
-    return {
-      plannedDate: getDateKeyInTimeZone(startInstant, displayTimeZone),
-      plannedEndTime:
-        durationMinutes === null
-          ? null
-          : getTimeInTimeZone(
-              new Date(startInstant.getTime() + durationMinutes * 60_000),
-              displayTimeZone,
-            ),
-      plannedStartTime: getTimeInTimeZone(startInstant, displayTimeZone),
-    }
-  } catch {
-    return getLegacyTaskSchedule(task)
-  }
-}
-
-function getLegacyTaskSchedule(task: TaskRecord): TaskScheduleInput {
-  return {
-    plannedDate: task.plannedDate,
-    plannedEndTime: task.plannedEndTime,
-    plannedStartTime: task.plannedStartTime,
-  }
-}
-
-function getTaskDurationMinutes(task: TaskRecord): number | null {
-  if (!task.plannedEndTime) {
-    return null
-  }
-
-  const startMinutes = parseTimeMinutes(
-    task.plannedStartTime ??
-      (task.schedule?.kind === 'fixed_zone_datetime'
-        ? task.schedule.localTime
-        : null),
-  )
-  const endMinutes = parseTimeMinutes(task.plannedEndTime)
-
-  if (
-    startMinutes === null ||
-    endMinutes === null ||
-    endMinutes <= startMinutes
-  ) {
-    return null
-  }
-
-  return endMinutes - startMinutes
-}
-
-function parseTimeMinutes(value: string | null): number | null {
-  if (!value) {
-    return null
-  }
-
-  const match = /^(\d{2}):(\d{2})$/u.exec(value)
-
-  if (!match?.[1] || !match[2]) {
-    return null
-  }
-
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-
-  if (hours > 23 || minutes > 59) {
-    return null
-  }
-
-  return hours * 60 + minutes
 }
 
 export function toPlannerTaskTemplate(
