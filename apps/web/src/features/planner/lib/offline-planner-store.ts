@@ -36,6 +36,8 @@ import Dexie, { type Table } from 'dexie'
 
 import { readWorkspaceWriteEpoch } from '@/shared/lib/api-client'
 
+import { mergePlannerTaskSnapshot } from './merge-planner-task-snapshot'
+
 export class PlannerOfflinePurgeUnavailableError extends Error {
   constructor(options?: ErrorOptions) {
     super(
@@ -335,28 +337,13 @@ export async function replaceCachedTaskRecords(
     return
   }
 
-  const updatedAt = new Date().toISOString()
-  const rows = tasks.map((task): PlannerCachedTaskRow => ({
-    key: createCachedTaskKey(workspaceId, task.id),
-    task,
-    taskId: task.id,
-    updatedAt,
-    workspaceId,
-  }))
-
   await runPlannerCacheWrite(
     db,
     workspaceId,
     'tasks',
     expectedWriteGeneration,
-    [db.cachedTasks],
-    async () => {
-      await db.cachedTasks.where('workspaceId').equals(workspaceId).delete()
-
-      if (rows.length > 0) {
-        await db.cachedTasks.bulkPut(rows)
-      }
-    },
+    [db.cachedTasks, db.mutationQueue],
+    () => writeTaskSnapshot(db, workspaceId, tasks, new Date().toISOString()),
   )
 }
 
@@ -375,20 +362,12 @@ export async function replaceCachedTaskRecordsFromServer(
     return
   }
 
-  const rows = tasks.map((task): PlannerCachedTaskRow => ({
-    key: createCachedTaskKey(workspaceId, task.id),
-    task,
-    taskId: task.id,
-    updatedAt: lastSuccessfulSyncAt,
-    workspaceId,
-  }))
-
   await runPlannerCacheWrite(
     db,
     workspaceId,
     'tasks',
     expectedWriteGeneration,
-    [db.cachedTasks, db.dataSyncMetadata],
+    [db.cachedTasks, db.mutationQueue, db.dataSyncMetadata],
     async () => {
       const taskEventKey = createSyncMetadataKey(workspaceId)
       const currentTaskEventCursor =
@@ -403,11 +382,7 @@ export async function replaceCachedTaskRecordsFromServer(
         return
       }
 
-      await db.cachedTasks.where('workspaceId').equals(workspaceId).delete()
-
-      if (rows.length > 0) {
-        await db.cachedTasks.bulkPut(rows)
-      }
+      await writeTaskSnapshot(db, workspaceId, tasks, lastSuccessfulSyncAt)
 
       await putPlannerDataSyncMetadata(
         db,
@@ -426,6 +401,44 @@ export async function replaceCachedTaskRecordsFromServer(
       }
     },
   )
+}
+
+async function writeTaskSnapshot(
+  db: PlannerOfflineDatabase,
+  workspaceId: string,
+  tasks: TaskRecord[],
+  updatedAt: string,
+): Promise<void> {
+  // A render or server response can reach disk after a newer queued edit.
+  // Read its durable projection in the same transaction as the replacement.
+  const queued = await db.mutationQueue
+    .where('workspaceId')
+    .equals(workspaceId)
+    .toArray()
+  const projections = queued.filter(
+    (mutation) =>
+      'taskId' in mutation && mutation.hasCachedTaskProjection !== false,
+  )
+  const cache = db.cachedTasks.where('workspaceId').equals(workspaceId)
+  const snapshot = projections.length
+    ? mergePlannerTaskSnapshot(
+        tasks,
+        (await cache.toArray()).map((row) => row.task),
+        projections,
+      )
+    : tasks
+  await cache.delete()
+  if (snapshot.length) {
+    await db.cachedTasks.bulkPut(
+      snapshot.map((task): PlannerCachedTaskRow => ({
+        key: createCachedTaskKey(workspaceId, task.id),
+        task,
+        taskId: task.id,
+        updatedAt,
+        workspaceId,
+      })),
+    )
+  }
 }
 
 export async function replaceCachedLifeSphereRecords(
@@ -722,20 +735,6 @@ export async function enqueuePlannerOfflineMutation(
     return null
   }
 
-  const now = new Date().toISOString()
-  const mutation = {
-    ...input,
-    writeEpoch,
-    attemptCount: 0,
-    conflictActualVersion: null,
-    conflictExpectedVersion: null,
-    createdAt: now,
-    id: generateUuidV7(),
-    lastError: null,
-    status: 'pending',
-    updatedAt: now,
-  } satisfies PlannerOfflineMutationRecord
-
   if (options.optimisticTask && options.optimisticTasks) {
     throw new Error(
       'Use either optimisticTask or optimisticTasks for a planner mutation.',
@@ -792,6 +791,22 @@ export async function enqueuePlannerOfflineMutation(
     optimisticTasks.length > 0 || removeCachedTaskId,
   )
 
+  // Queue-only callers persist their optimistic view separately. Older queue
+  // records have no flag and keep their existing cached task when available.
+  const now = new Date().toISOString()
+  const mutation = {
+    ...input,
+    ...('taskId' in input && { hasCachedTaskProjection: updatesCachedTask }),
+    writeEpoch,
+    attemptCount: 0,
+    conflictActualVersion: null,
+    conflictExpectedVersion: null,
+    createdAt: now,
+    id: generateUuidV7(),
+    lastError: null,
+    status: 'pending',
+    updatedAt: now,
+  } satisfies PlannerOfflineMutationRecord
   const stored = await runPlannerCacheWrite(
     db,
     input.workspaceId,

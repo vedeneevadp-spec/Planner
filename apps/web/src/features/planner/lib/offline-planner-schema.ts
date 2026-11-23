@@ -65,6 +65,7 @@ export interface PlannerDataSyncMetadataRow {
 }
 
 export interface PlannerOfflineMutationBase {
+  hasCachedTaskProjection?: boolean
   writeEpoch?: string
   actorUserId: string
   attemptCount: number

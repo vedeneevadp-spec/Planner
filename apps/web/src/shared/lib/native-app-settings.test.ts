@@ -5,12 +5,12 @@ import { openAndroidSystemAppSettings } from './native-app-settings'
 const mocks = vi.hoisted(() => ({
   isAndroidNativeRuntime: vi.fn(() => true),
   openSystemAppSettings: vi.fn<() => Promise<void>>(),
-  registerPlugin: vi.fn(),
+  registeredPluginNames: new Set<string>(),
 }))
 
 vi.mock('@capacitor/core', () => ({
   registerPlugin: (name: string) => {
-    mocks.registerPlugin(name)
+    mocks.registeredPluginNames.add(name)
     return { openSystemAppSettings: mocks.openSystemAppSettings }
   },
 }))
@@ -30,7 +30,7 @@ describe('openAndroidSystemAppSettings', () => {
 
     await openAndroidSystemAppSettings()
 
-    expect(mocks.registerPlugin).toHaveBeenCalledWith('PlannerAppSettings')
+    expect(mocks.registeredPluginNames).toContain('PlannerAppSettings')
     expect(mocks.openSystemAppSettings).toHaveBeenCalledOnce()
   })
 
