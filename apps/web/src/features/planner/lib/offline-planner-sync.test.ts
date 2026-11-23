@@ -522,6 +522,62 @@ describe('offline planner sync', () => {
     ).toBe(syncedAt)
   })
 
+  it.each([
+    ['query cache', replaceCachedTaskRecords],
+    ['server', replaceCachedTaskRecordsFromServer],
+  ] as const)(
+    'keeps a queued edit and deletion when an older %s snapshot arrives',
+    async (_source, replaceSnapshot) => {
+      const original = createTaskRecord('edited')
+      const edited = { ...original, title: 'Edited offline' }
+      const deleted = createTaskRecord('deleted')
+      const other = createTaskRecord('other')
+      await replaceCachedTaskRecords(WORKSPACE_ID, [original, deleted])
+      await enqueuePlannerOfflineMutation(
+        {
+          actorUserId: ACTOR_USER_ID,
+          workspaceId: WORKSPACE_ID,
+          taskId: original.id,
+          type: 'task.update',
+          expectedVersion: original.version,
+          input: { ...updateInput, title: edited.title },
+        },
+        { optimisticTask: edited },
+      )
+      await enqueuePlannerOfflineMutation(
+        {
+          actorUserId: ACTOR_USER_ID,
+          workspaceId: WORKSPACE_ID,
+          taskId: deleted.id,
+          type: 'task.delete',
+          expectedVersion: deleted.version,
+        },
+        { removeCachedTaskId: deleted.id },
+      )
+
+      await replaceSnapshot(WORKSPACE_ID, [original, deleted, other])
+      expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([edited, other])
+      await replaceSnapshot(WORKSPACE_ID, [])
+      expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([edited])
+    },
+  )
+
+  it('allows a queue-only caller to persist its optimistic edit separately', async () => {
+    const original = createTaskRecord('edited')
+    const edited = { ...original, title: 'Edited offline' }
+    await replaceCachedTaskRecords(WORKSPACE_ID, [original])
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      taskId: original.id,
+      type: 'task.update',
+      expectedVersion: original.version,
+      input: { ...updateInput, title: edited.title },
+    })
+    await replaceCachedTaskRecords(WORKSPACE_ID, [edited])
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([edited])
+  })
+
   it('does not advance freshness when a server snapshot cannot be stored', async () => {
     const invalidRecord = {
       ...createTaskRecord('task-invalid'),
