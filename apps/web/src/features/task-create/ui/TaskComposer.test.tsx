@@ -98,6 +98,48 @@ describe('TaskComposer', () => {
     expect(screen.getByLabelText('План')).not.toBeVisible()
   })
 
+  it.each([
+    ['Сегодня', '2026-12-31'],
+    ['Завтра', '2027-01-01'],
+  ])(
+    'saves the date selected with %s in the planner time zone',
+    async (label, plannedDate) => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime('2026-12-30T16:55:00Z')
+      mocks.addTask.mockResolvedValue(true)
+      render(<TaskComposer initialPlannedDate={null} />)
+      fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
+      fireEvent.change(screen.getByRole('textbox', { name: 'Задача' }), {
+        target: { value: 'Проверить документы' },
+      })
+
+      // Midnight in the planner time zone passed while the composer was open.
+      vi.setSystemTime('2026-12-30T17:30:00Z')
+      const shortcut = screen.getByRole('button', { name: label })
+      fireEvent.click(shortcut)
+      expect(shortcut).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByLabelText('План')).toBeVisible()
+      expect(screen.getByLabelText('План')).toHaveValue(plannedDate)
+      expect(mocks.addTask).not.toHaveBeenCalled()
+
+      fireEvent.change(screen.getByLabelText('Старт'), {
+        target: { value: '00:15' },
+      })
+      fireEvent.click(
+        screen.getAllByRole('button', { name: 'Добавить задачу' }).at(-1)!,
+      )
+      await waitFor(() =>
+        expect(mocks.addTask).toHaveBeenCalledWith(
+          expect.objectContaining({
+            plannedDate,
+            plannedStartTime: '00:15',
+            reminderOffsets: [15],
+          }),
+        ),
+      )
+    },
+  )
+
   it('removes a chosen schedule without losing importance, recurrence, resource or note', async () => {
     mocks.addTask.mockResolvedValue(true)
     render(<TaskComposer initialPlannedDate={null} />)

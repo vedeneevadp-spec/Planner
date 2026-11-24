@@ -2,6 +2,14 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "include": ["files", "dependencies", "unlisted", "unresolved"],
   "entry": ["examples/public-api/*.mjs"],
+  "workspaces": {
+    ".": {
+      "entry": ["examples/public-api/*.mjs"]
+    },
+    "apps/api": {
+      "entry": ["src/testing/postgres-global-setup.ts"]
+    }
+  },
   "ignoreDependencies": [
     "@capacitor/app",
     "@capacitor/preferences",
