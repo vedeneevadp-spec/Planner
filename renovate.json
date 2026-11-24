@@ -113,7 +113,7 @@
       "groupName": "ESLint core updates"
     },
     {
-      "description": "Keep the dedicated PostgreSQL 17 compatibility job on 17.x; PostgreSQL 18 is tested separately.",
+      "description": "Keep the dedicated PostgreSQL 17 compatibility job on 17.x while the main CI job tests newer versions.",
       "matchManagers": ["github-actions"],
       "matchDatasources": ["docker"],
       "matchFileNames": [".github/workflows/ci.yml"],

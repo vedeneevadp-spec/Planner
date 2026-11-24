@@ -19,7 +19,7 @@ import {
   usePlannerTimeZone,
   useWorkspaceUsers,
 } from '@/features/session'
-import { getTodayDate } from '@/shared/time/time.service'
+import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 
 import {
@@ -100,7 +100,9 @@ export function TaskComposer({
   const [requiresConfirmation, setRequiresConfirmation] = useState(false)
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
-  const [preservePlannedDate, setPreservePlannedDate] = useState(false)
+  const [dateSource, setDateSource] = useState<
+    'manual' | 'shortcut' | 'fixedDraft'
+  >('manual')
   const [plannedEndTime, setPlannedEndTime] = useState('')
   const [reminderOffsets, setReminderOffsets] = useState<
     TaskReminderOffsetMinutes[]
@@ -214,7 +216,7 @@ export function TaskComposer({
         : (openDraft.plannedDate ?? ''),
     )
     setPlannedStartTime(openDraft.plannedStartTime ?? '')
-    setPreservePlannedDate(openDraft.preservePlannedDate ?? false)
+    setDateSource(openDraft.preservePlannedDate ? 'fixedDraft' : 'manual')
     setPlannedEndTime(openDraft.plannedEndTime ?? '')
     setReminderOffsets([])
     reminderAvailabilityRef.current = false
@@ -251,13 +253,24 @@ export function TaskComposer({
     reminderAvailabilityRef.current = true
   }, [isReminderAvailable, reminderOffsets.length])
 
-  function handlePlannedDateChange(nextPlannedDate: string) {
+  function handlePlannedDateChange(
+    nextPlannedDate: string,
+    source: 'manual' | 'shortcut' = 'manual',
+  ) {
     setPlannedDate(nextPlannedDate)
+    setDateSource((current) => (current === 'fixedDraft' ? current : source))
 
     if (!nextPlannedDate) {
       setPlannedStartTime('')
       setPlannedEndTime('')
     }
+  }
+
+  function handleDateShortcut(daysFromToday: number) {
+    handlePlannedDateChange(
+      addDateDays(getTodayDate(plannerTimeZone), daysFromToday),
+      'shortcut',
+    )
   }
 
   function handlePlannedStartTimeChange(nextStartTime: string) {
@@ -285,7 +298,7 @@ export function TaskComposer({
       plannedDate,
       plannedEndTime,
       plannedStartTime,
-      preservePlannedDate,
+      preservePlannedDate: dateSource !== 'manual',
       plannerTimeZone,
       projectId,
       recurrenceForm,
@@ -314,7 +327,7 @@ export function TaskComposer({
     setRequiresConfirmation(false)
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
-    setPreservePlannedDate(false)
+    setDateSource('manual')
     setPlannedEndTime('')
     setReminderOffsets([])
     reminderAvailabilityRef.current = false
@@ -432,6 +445,8 @@ export function TaskComposer({
                       title={title}
                       titleFieldLabel={titleFieldLabel}
                       titleInputRef={titleInputRef}
+                      todayKey={todayKey}
+                      onDateShortcut={handleDateShortcut}
                       onImportantChange={setIsImportant}
                       onNoteChange={setNote}
                       onPlannedDateChange={handlePlannedDateChange}

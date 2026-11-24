@@ -16,6 +16,8 @@ interface TaskComposerPrimaryFieldsProps {
   title: string
   titleFieldLabel: string
   titleInputRef: RefObject<HTMLInputElement | null>
+  todayKey: string
+  onDateShortcut: (daysFromToday: number) => void
   onImportantChange: (isImportant: boolean) => void
   onNoteChange: (note: string) => void
   onPlannedDateChange: (plannedDate: string) => void
@@ -34,6 +36,8 @@ export function TaskComposerPrimaryFields({
   title,
   titleFieldLabel,
   titleInputRef,
+  todayKey,
+  onDateShortcut,
   onImportantChange,
   onNoteChange,
   onPlannedDateChange,
@@ -71,6 +75,8 @@ export function TaskComposerPrimaryFields({
         plannedEndTime={plannedEndTime}
         plannedStartTime={plannedStartTime}
         showTimeFields={showTimeFields}
+        todayKey={todayKey}
+        onDateShortcut={onDateShortcut}
         onPlannedDateChange={onPlannedDateChange}
         onPlannedEndTimeChange={onPlannedEndTimeChange}
         onPlannedStartTimeChange={onPlannedStartTimeChange}

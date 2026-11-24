@@ -240,23 +240,47 @@
   display: none;
 }
 
-.scheduleToggle {
-  display: inline-flex;
-  justify-self: start;
+.scheduleActions {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.25rem 0.5rem;
+}
+
+.scheduleToggle,
+.dateShortcut {
   min-height: 2.25rem;
-  padding: 0.3rem 0;
-  border: 0;
-  background: transparent;
-  color: var(--accent);
   font: inherit;
   font-size: 0.82rem;
   cursor: pointer;
 }
 
+.scheduleToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+}
+
+.dateShortcut {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field-bg);
+  color: var(--accent-strong);
+}
+
+.dateShortcut[aria-pressed='true'] {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
+}
+
 @media (pointer: coarse) {
-  .scheduleToggle {
+  .scheduleToggle,
+  .dateShortcut {
     min-height: 44px;
   }
 }
@@ -780,5 +804,15 @@
     width: 1.35rem;
     height: 1.35rem;
     background: rgba(255, 253, 248, 0.12);
+  }
+}
+
+@media (max-width: 340px) {
+  .scheduleActions {
+    column-gap: 0.3rem;
+  }
+
+  .dateShortcut {
+    padding-inline: 0.4rem;
   }
 }

@@ -59,14 +59,14 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 `apps/web/.env.example`; без `.env` клиент использует локальный API по
 умолчанию. Production runtime использует Timeweb PostgreSQL и Chaotika Auth.
 
-Локальный Docker Compose использует официальный образ PostgreSQL 18. У него
-`PGDATA` находится в version-specific директории `/var/lib/postgresql/18/docker`,
-поэтому volume монтируется в `/var/lib/postgresql`. Если локальный volume был
-создан на PostgreSQL 16, после смены образа PostgreSQL 18 увидит пустую
-version-specific директорию и поднимет fresh dev-базу. Для disposable локальных
-данных проще выполнить `docker compose down --volumes`, затем `npm run db:setup`.
-Если локальные данные нужно сохранить, сначала сделайте `npm run db:backup`, а
-после пересоздания volume восстановите `.dump` через `pg_restore`.
+Локальный Docker Compose запускает PostgreSQL 19 с отдельным томом
+`planner-postgres-19-data`. При первом запуске в нём создаётся пустая база.
+Чтобы перенести локальные данные с версии 18, до переключения образа
+сделайте дамп работающей базы через `npm run db:backup` с клиентскими утилитами
+PostgreSQL 18 или новее. Запустите новый контейнер через `npm run db:up`,
+создайте в новом кластере роли из старой базы и восстановите дамп через
+`pg_restore` до первого запуска `npm run dev:local`. Исходные данные
+остаются в томе `planner-postgres-18-data`.
 
 ## Основные скрипты
 
@@ -522,14 +522,14 @@ Workspace`: роли, права, жизненный цикл и правила 
 - `npm run check` начинается с `npm run toolchain:check` и
   `npm run db:migrations:check`, чтобы Node/npm и SQL-миграции не расходились
   до запуска тяжелых проверок
-- основной CI job поднимает PostgreSQL 18, применяет миграции, запускает
+- основной CI job поднимает PostgreSQL 19, применяет миграции, запускает
   `npm run db:security:check`, `npm run test:api:postgres`,
   `npm run smoke:api:prod` и `npm run test:e2e`
 - отдельный CI job `postgres-17-compat` применяет те же миграции и проверяет
   security invariants, PostgreSQL contract tests и production API smoke на
   production-compatible PostgreSQL 17
-- Renovate сохраняет ветку 17.x для образа в `postgres-17-compat`; PostgreSQL
-  18 в основном CI и локальном Docker Compose обновляется независимо
+- Renovate сохраняет ветку 17.x для образа в `postgres-17-compat`. PostgreSQL
+  19 в основном CI и локальном Docker Compose обновляется независимо
 - `eslint` и `@eslint/js` обновляются одной группой Renovate; major/minor
   требуют approval в Dependency Dashboard. ESLint 10 пока блокируется
   peer dependency `eslint-plugin-jsx-a11y@6.10.2`, которая допускает ESLint
