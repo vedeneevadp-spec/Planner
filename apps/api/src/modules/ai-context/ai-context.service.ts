@@ -154,9 +154,9 @@ interface SessionServiceLike {
   }): Promise<SessionSnapshotLike>
 }
 
-function resolveContextTimeZone(
-  requested: string | undefined,
-  session: SessionSnapshotLike,
+export function resolveContextTimeZone(
+  session: Pick<SessionSnapshotLike, 'userPreferences' | 'workspaceSettings'>,
+  requested?: string,
 ): string {
   if (requested !== undefined) {
     const timezone = requested.trim()
@@ -1307,7 +1307,7 @@ export class AiContextService {
     return {
       actorUserId: userId,
       auth,
-      clientTimeZone: resolveContextTimeZone(timezone, session),
+      clientTimeZone: resolveContextTimeZone(session, timezone),
       groupRole: session.groupRole,
       role: session.role,
       workspaceKind: session.workspace.kind,

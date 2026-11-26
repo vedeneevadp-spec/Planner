@@ -999,6 +999,33 @@ export function defineTaskRepositoryContractSuite(input: {
       }
     })
 
+    void test('saves a start at the last minute of the day without a zero-length block', async (t) => {
+      const harness = await input.createHarness()
+      t.after(harness.cleanup)
+      const context = {
+        ...harness.personalContext,
+        clientTimeZone: 'Asia/Novosibirsk',
+      }
+      const fields = { plannedDate: '2026-11-27', plannedStartTime: '23:59' }
+      const task = await harness.repository.create({
+        context,
+        input: createTaskInput(fields),
+      })
+      const updated = await harness.repository.update({
+        context,
+        taskId: task.id,
+        expectedVersion: task.version,
+        input: createTaskUpdateInput({ ...fields, note: 'Keep the start' }),
+      })
+      const saved = await harness.repository.findById(context, task.id)
+      for (const record of [task, updated, saved]) {
+        assert.equal(record?.plannedStartTime, '23:59')
+        assert.equal(record?.plannedEndTime, null)
+        assert.equal(record?.schedule?.kind, 'fixed_zone_datetime')
+        assert.equal(record.schedule.instantUtc, '2026-11-27T16:59:00.000Z')
+      }
+    })
+
     void test('keeps task chain stage creation, undo, and detach consistent', async () => {
       const harness = await input.createHarness()
 

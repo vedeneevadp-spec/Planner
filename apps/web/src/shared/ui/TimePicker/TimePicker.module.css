@@ -1,0 +1,295 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--select-picker-height, 2.6rem);
+  padding: var(--select-picker-padding, 0.58rem 0.72rem);
+  border: 1px solid var(--line);
+  border-radius: var(--select-picker-radius, 13px);
+  background: var(--field-bg);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.trigger:enabled:hover,
+.trigger:focus-visible {
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+}
+
+.trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.validationInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.dialog {
+  --clock-panel: #fbfaf7;
+  --clock-face: #e9ebe5;
+  --clock-text: #262c28;
+  --clock-soft: #59625b;
+  --clock-accent: var(--accent);
+  --clock-on-accent: #fff;
+  box-sizing: border-box;
+  width: min(19rem, calc(100% - 2rem));
+  max-height: calc(
+    100dvh - var(--safe-area-top) - var(--safe-area-bottom) - 1.5rem
+  );
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 4px;
+  background: var(--clock-panel);
+  color: var(--clock-text);
+  box-shadow: var(--shadow-elevated);
+  font-family: Roboto, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+:global(:root[data-theme='dark']) .dialog {
+  --clock-panel: #404040;
+  --clock-face: #555;
+  --clock-text: #fff;
+  --clock-soft: #d8d8d8;
+  --clock-accent: #8bd3cb;
+  --clock-on-accent: #142b29;
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.57);
+}
+
+.readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6.25rem;
+  padding: 0.65rem;
+  box-sizing: border-box;
+  background: var(--clock-face);
+  color: var(--clock-soft);
+  font-size: 3.75rem;
+  font-weight: 400;
+  line-height: 1.05;
+}
+
+.readout button,
+.actions button {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.readout button {
+  padding: 0.15rem 0.06rem;
+}
+
+.readout button[aria-pressed='true'] {
+  color: var(--clock-text);
+}
+
+.numericField {
+  position: relative;
+  padding-bottom: 1.2rem;
+}
+
+.numericField input {
+  box-sizing: border-box;
+  width: 2.6ch;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid var(--clock-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--clock-text);
+  font: inherit;
+  text-align: center;
+}
+
+.numericField input:focus {
+  border-color: var(--clock-accent);
+  outline: 0;
+}
+
+.numericField span {
+  position: absolute;
+  inset: auto 0 0;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.readout:has(input) > span {
+  align-self: flex-start;
+}
+
+.error {
+  margin: 0.85rem 1.25rem 0;
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+.dial {
+  position: relative;
+  width: min(15rem, 80%);
+  aspect-ratio: 1;
+  margin: 1.1rem auto 0.6rem;
+  border-radius: 50%;
+  background: var(--clock-face);
+  user-select: none;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.hand,
+.selection,
+.dial::after,
+.selection[data-between='true']::after {
+  position: absolute;
+  background: var(--clock-accent);
+  pointer-events: none;
+}
+
+.hand {
+  bottom: 50%;
+  left: calc(50% - 1px);
+  width: 2px;
+  transform-origin: center bottom;
+}
+
+.selection,
+.dial::after,
+.selection[data-between='true']::after {
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.selection {
+  width: 17%;
+  aspect-ratio: 1;
+}
+
+.dial::after,
+.selection[data-between='true']::after {
+  content: '';
+  top: 50%;
+  left: 50%;
+  width: 0.38rem;
+  height: 0.38rem;
+}
+
+.selection[data-between='true']::after {
+  background: var(--clock-on-accent);
+}
+
+.tick {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  color: var(--clock-text);
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.tick[data-inner='true'] {
+  color: var(--clock-soft);
+  font-size: 0.82rem;
+}
+
+.tick[data-selected='true'] {
+  color: var(--clock-on-accent);
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  padding: 0.15rem 0.85rem 0.5rem;
+}
+
+.actions button {
+  min-width: 2.75rem;
+  min-height: 2.85rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--clock-accent);
+  font-size: 0.86rem;
+  font-weight: 550;
+  text-transform: uppercase;
+}
+
+.actions button:enabled:hover,
+.readout button:hover {
+  background: var(--button-ghost-bg-hover);
+}
+
+.actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mode {
+  display: grid;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  place-items: center;
+}
+
+.actions:has(.clear) .mode {
+  grid-row: 2;
+}
+
+.actions .mode {
+  color: var(--clock-text);
+}
+
+.set,
+.cancel,
+.clear {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.set {
+  grid-row: 1;
+}
+.cancel {
+  grid-row: 2;
+}
+.clear {
+  grid-row: 3;
+}
+
+@media (max-height: 34rem) and (min-width: 32rem) {
+  .dialog {
+    width: 30rem;
+  }
+  .panel:has(.dial) {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+  }
+  .panel:has(.dial) .readout {
+    grid-row: 1 / 3;
+  }
+  .dial {
+    width: min(13rem, 48dvh);
+  }
+}

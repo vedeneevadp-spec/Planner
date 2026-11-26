@@ -21,6 +21,7 @@ import {
 import { cx } from '@/shared/lib/classnames'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
+import { TimePicker } from '@/shared/ui/TimePicker'
 
 import {
   getEmptyProjectLabel,
@@ -132,17 +133,13 @@ export function TaskComposerDetailsFields({
         <section
           className={cx(styles.columnSection, styles.mobileFinishSection)}
         >
-          <label className={styles.field}>
-            <span>Финиш</span>
-            <input
-              type="time"
-              value={plannedEndTime}
-              disabled={!plannedDate || !plannedStartTime}
-              onChange={(event) => {
-                onPlannedEndTimeChange(event.target.value)
-              }}
-            />
-          </label>
+          <TimePicker
+            className={styles.field}
+            label="Финиш"
+            value={plannedEndTime}
+            disabled={!plannedDate || !plannedStartTime}
+            onChange={onPlannedEndTimeChange}
+          />
         </section>
       ) : null}
 

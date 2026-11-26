@@ -17,6 +17,7 @@ import { syncTaskReminder } from './task.repository.postgres.artifacts.js'
 import { mapTaskRecordFromListRow } from './task.repository.postgres.mapper.js'
 import {
   executePoolerWriteStatement,
+  hasTaskTimeBlock,
   resolveTaskWriteConflict,
 } from './task.repository.postgres.mutations.js'
 import {
@@ -58,9 +59,8 @@ export class PostgresTaskPoolerWriteFallback {
       )
     }
 
-    const insertedTimeBlockCte =
-      params.startsAt && params.endsAt
-        ? sql`
+    const insertedTimeBlockCte = hasTaskTimeBlock(params)
+      ? sql`
             inserted_time_block as (
               insert into app.task_time_blocks (
                 created_by,
@@ -89,7 +89,7 @@ export class PostgresTaskPoolerWriteFallback {
               returning starts_at, ends_at, timezone
             ),
           `
-        : sql`
+      : sql`
             inserted_time_block as (
               select
                 null::timestamptz as starts_at,
@@ -387,9 +387,8 @@ export class PostgresTaskPoolerWriteFallback {
       command.expectedVersion !== undefined
         ? sql`and version = ${command.expectedVersion}`
         : sql``
-    const insertedTimeBlockCte =
-      params.startsAt && params.endsAt
-        ? sql`
+    const insertedTimeBlockCte = hasTaskTimeBlock(params)
+      ? sql`
             inserted_time_block as (
               insert into app.task_time_blocks (
                 created_by,
@@ -418,7 +417,7 @@ export class PostgresTaskPoolerWriteFallback {
               returning starts_at, ends_at, timezone
             ),
           `
-        : sql`
+      : sql`
             inserted_time_block as (
               select
                 null::timestamptz as starts_at,
@@ -741,9 +740,8 @@ export class PostgresTaskPoolerWriteFallback {
       command.expectedVersion !== undefined
         ? sql`and task.version = cast(${command.expectedVersion} as bigint)`
         : sql``
-    const insertedTimeBlockCte =
-      params.startsAt && params.endsAt
-        ? sql`
+    const insertedTimeBlockCte = hasTaskTimeBlock(params)
+      ? sql`
             inserted_time_block as (
               insert into app.task_time_blocks (
                 created_by,
@@ -772,7 +770,7 @@ export class PostgresTaskPoolerWriteFallback {
               returning starts_at, ends_at, timezone
             ),
           `
-        : sql`
+      : sql`
             inserted_time_block as (
               select
                 null::timestamptz as starts_at,

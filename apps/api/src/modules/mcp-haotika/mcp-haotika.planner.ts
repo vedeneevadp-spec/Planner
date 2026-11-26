@@ -1,7 +1,10 @@
 import {
   type ChaosInboxItemRecord,
   createChaosInboxItemsInputSchema,
-  getPlannerTimeZone,
+  getDateKeyInTimeZone,
+  getDisplayedTaskSchedule,
+  getTimeInTimeZone,
+  makeFixedZoneDateTime,
   newTaskInputSchema,
   taskDetailsUpdateInputSchema,
   type TaskRecord,
@@ -10,10 +13,10 @@ import {
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
+import { resolveContextTimeZone } from '../ai-context/index.js'
 import type { ChaosInboxService } from '../chaos-inbox/index.js'
 import type { SessionService } from '../session/index.js'
 import type { TaskService } from '../tasks/index.js'
-import type { TaskWriteContext } from '../tasks/task.model.js'
 import {
   plannerToolInputSchemas,
   type PlannerToolName,
@@ -63,6 +66,11 @@ export class McpPlannerService {
           input,
           'invalid_input',
         )
+        validateTaskStartTime(
+          fields.plannedDate,
+          fields.plannedStartTime,
+          context.clientTimeZone,
+        )
         const task = await tasks.createTask(
           context,
           newTaskInputSchema.parse(fields),
@@ -88,26 +96,36 @@ export class McpPlannerService {
           'invalid_input',
         )
         const current = await tasks.getTask(context, id)
+        const savedTimeZone =
+          current.schedule?.kind === 'fixed_zone_datetime'
+            ? current.schedule.timeZone
+            : context.clientTimeZone
+        const timeZone =
+          patch.plannedStartTime === undefined
+            ? savedTimeZone
+            : context.clientTimeZone
         const fields = taskDetailsUpdateInputSchema.parse({
           ...current,
-          ...patch,
-          ...(patch.plannedDate === null
-            ? {
-                plannedStartTime: null,
-                plannedEndTime: null,
-                remindBeforeStart: false,
-                reminderOffsets: [],
-              }
+          ...(timeZone !== savedTimeZone
+            ? getDisplayedTaskSchedule(current, timeZone)
             : {}),
+          ...patch,
         })
+        if (patch.plannedDate || patch.plannedStartTime) {
+          validateTaskStartTime(
+            fields.plannedDate,
+            fields.plannedStartTime,
+            timeZone,
+          )
+        }
+        if (patch.plannedDate === null || patch.plannedStartTime === null) {
+          fields.plannedStartTime = null
+          fields.plannedEndTime = null
+          fields.remindBeforeStart = false
+          fields.reminderOffsets = []
+        }
         const updated = await tasks.updateTask(
-          {
-            ...context,
-            clientTimeZone:
-              current.schedule?.kind === 'fixed_zone_datetime'
-                ? current.schedule.timeZone
-                : context.clientTimeZone,
-          },
+          { ...context, clientTimeZone: timeZone },
           id,
           fields,
         )
@@ -207,10 +225,7 @@ export class McpPlannerService {
     return this.dependencies.shoppingService
   }
 
-  private async resolveContext(
-    userId: string,
-    credentialIssuedAt?: string,
-  ): Promise<TaskWriteContext> {
+  private async resolveContext(userId: string, credentialIssuedAt?: string) {
     // The subject comes only from the verified MCP OAuth token, never tool arguments.
     const auth: AuthenticatedRequestContext = {
       accessToken: 'mcp-planner',
@@ -270,13 +285,38 @@ export class McpPlannerService {
       workspaceKind: session.workspace.kind,
       role: session.role,
       groupRole: session.groupRole,
-      clientTimeZone: getPlannerTimeZone({
-        deviceTimeZone: session.userPreferences.lastSeenTimeZone,
-        timeZoneMode: session.userPreferences.timeZoneMode,
-        userTimeZone: session.userPreferences.defaultTimeZone,
-        workspaceTimeZone: session.workspaceSettings.defaultTimeZone,
-      }),
+      clientTimeZone: resolveContextTimeZone(session),
     }
+  }
+}
+
+function validateTaskStartTime(
+  plannedDate: string | null | undefined,
+  plannedStartTime: string | null | undefined,
+  timeZone: string,
+) {
+  if (!plannedStartTime) return
+  if (!plannedDate) {
+    throw new HttpError(
+      400,
+      'invalid_input',
+      'Set plannedDate to schedule a start time.',
+    )
+  }
+  const { instantUtc } = makeFixedZoneDateTime({
+    localDate: plannedDate,
+    localTime: plannedStartTime,
+    timeZone,
+  })
+  if (
+    getTimeInTimeZone(instantUtc, timeZone) !== plannedStartTime ||
+    getDateKeyInTimeZone(instantUtc, timeZone) !== plannedDate
+  ) {
+    throw new HttpError(
+      400,
+      'invalid_input',
+      `The local time ${plannedDate} ${plannedStartTime} does not exist in ${timeZone}.`,
+    )
   }
 }
 

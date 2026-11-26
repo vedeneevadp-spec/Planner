@@ -48,7 +48,7 @@ const TOOL_DEFINITIONS: Record<
   create_task: {
     title: 'Create task',
     description:
-      'Create a task when the user asks to add one. Supply a fresh UUIDv7 id; reuse identical arguments and id on retry to prevent duplicates. Without plannedDate or dueDate the task stays flexible. Supports title, note, project, dates, importance, necessity and resource; does not set time, recurrence or reminders.',
+      'Create a task when the user asks to add one. Supply a fresh UUIDv7 id and reuse identical arguments and id on retry. For a requested time, send plannedDate (YYYY-MM-DD) and plannedStartTime (HH:mm) in the user’s planner time zone. Verify the saved time in task.plannedStartTime and task.schedule.timeZone. Without a planned date or deadline the task stays flexible.',
     scopes: ['haotika:tasks.write'],
     readOnly: false,
   },
@@ -56,7 +56,7 @@ const TOOL_DEFINITIONS: Record<
     destructive: true,
     title: 'Update task',
     description:
-      'Change only requested fields of an existing task. Read get_task first and pass its exact id and version as expectedVersion. Omitted fields are preserved; null clears a date. Clearing plannedDate also clears time and reminders. On CONFLICT reread and reconsider; never blindly overwrite. Use complete_task for completion.',
+      'Change only requested fields. Read get_task first and pass its id and version as expectedVersion. Set plannedStartTime (HH:mm) in the user’s planner time zone. Use the existing planned date or provide plannedDate. Omit the time to preserve it. Setting the start or planned date to null clears the time and its reminders. On CONFLICT reread the task before retrying. Use complete_task for completion.',
     scopes: ['haotika:tasks.write'],
     readOnly: false,
   },

@@ -25,6 +25,14 @@ const versionSchema = z
   .describe(
     'Version from the latest get_task result. On CONFLICT, reread the task and reconsider the change.',
   )
+const plannedStartTimeSchema = z
+  .string()
+  .regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u)
+  .nullable()
+  .optional()
+  .describe(
+    'Local start in the user’s planner time zone, HH:mm (00:00–23:59). Requires a planned date. Omit to keep the time on update, or pass null to clear it.',
+  )
 
 export const plannerToolInputSchemas = {
   list_tasks: publicTaskListSchema.safeExtend({
@@ -32,9 +40,16 @@ export const plannerToolInputSchemas = {
     offset: z.number().int().nonnegative().default(0),
   }),
   get_task: z.object({ id: idSchema }).strict(),
-  create_task: publicTaskCreateSchema.safeExtend({ id: creationIdSchema }),
+  create_task: publicTaskCreateSchema.safeExtend({
+    id: creationIdSchema,
+    plannedStartTime: plannedStartTimeSchema,
+  }),
   update_task: publicTaskUpdateSchema
-    .safeExtend({ id: idSchema, expectedVersion: versionSchema })
+    .safeExtend({
+      id: idSchema,
+      expectedVersion: versionSchema,
+      plannedStartTime: plannedStartTimeSchema,
+    })
     .refine(
       (value) =>
         Object.keys(value).some(

@@ -322,6 +322,15 @@ export function ClockIcon(props: IconProps) {
   )
 }
 
+export function KeyboardIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M6 9h.1m3.9 0h.1m3.9 0h.1m3.9 0h.1M6 12h.1m3.9 0h.1m3.9 0h.1m3.9 0h.1M8 15h8" />
+    </SvgIcon>
+  )
+}
+
 export function TimelinePageIcon(props: IconProps) {
   return (
     <SvgIcon {...props} viewBox="0 0 36 36" fill="currentColor" stroke="none">

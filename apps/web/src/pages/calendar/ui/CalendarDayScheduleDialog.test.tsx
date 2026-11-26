@@ -7,6 +7,7 @@ import type {
   TaskStatus,
   TaskUpdateInput,
 } from '@/entities/task'
+import { setTimeWithKeyboard } from '@/test/set-time'
 
 import { CalendarDayScheduleDialog } from './CalendarDayScheduleDialog'
 
@@ -106,12 +107,8 @@ describe('CalendarDayScheduleDialog', () => {
     const mocks = createMocks()
     renderDialog({ mocks })
 
-    fireEvent.change(screen.getByLabelText('Старт'), {
-      target: { value: '09:00' },
-    })
-    fireEvent.change(screen.getByLabelText('Финиш'), {
-      target: { value: '10:30' },
-    })
+    setTimeWithKeyboard(screen.getByLabelText('Старт'), '09:00')
+    setTimeWithKeyboard(screen.getByLabelText('Финиш'), '10:30')
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     expect(mocks.onSetSchedule).toHaveBeenCalledWith('task-1', {
@@ -132,12 +129,8 @@ describe('CalendarDayScheduleDialog', () => {
   it('blocks invalid time ranges', () => {
     renderDialog()
 
-    fireEvent.change(screen.getByLabelText('Старт'), {
-      target: { value: '10:00' },
-    })
-    fireEvent.change(screen.getByLabelText('Финиш'), {
-      target: { value: '09:30' },
-    })
+    setTimeWithKeyboard(screen.getByLabelText('Старт'), '10:00')
+    setTimeWithKeyboard(screen.getByLabelText('Финиш'), '09:30')
 
     expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
     expect(screen.getByText('Финиш должен быть позже старта.')).toBeVisible()
