@@ -10,6 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task, TaskUpdateInput } from '@/entities/task'
+import { setTimeWithKeyboard } from '@/test/set-time'
 
 import { TaskEditDialog } from './TaskEditDialog'
 
@@ -134,12 +135,8 @@ describe('TaskEditDialog', () => {
     fireEvent.change(screen.getByLabelText('План'), {
       target: { value: '2026-05-20' },
     })
-    fireEvent.change(screen.getByLabelText('Старт'), {
-      target: { value: '10:30' },
-    })
-    fireEvent.change(screen.getAllByLabelText('Финиш')[0]!, {
-      target: { value: '11:00' },
-    })
+    setTimeWithKeyboard(screen.getByLabelText('Старт'), '10:30')
+    setTimeWithKeyboard(screen.getAllByLabelText('Финиш')[0]!, '11:00')
     fireEvent.change(screen.getByLabelText('Заметка'), {
       target: { value: 'Updated note' },
     })
@@ -382,9 +379,7 @@ describe('TaskEditDialog', () => {
     fireEvent.change(screen.getByLabelText('План'), {
       target: { value: '2026-05-20' },
     })
-    fireEvent.change(screen.getByLabelText('Старт'), {
-      target: { value: '10:00' },
-    })
+    setTimeWithKeyboard(screen.getByLabelText('Старт'), '10:00')
     fireEvent.click(
       screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
     )

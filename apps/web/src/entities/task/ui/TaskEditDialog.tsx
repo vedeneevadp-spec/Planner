@@ -12,6 +12,7 @@ import {
 } from '@/shared/ui/Icon'
 import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
+import { TimePicker } from '@/shared/ui/TimePicker'
 
 import {
   buildRoutineTaskFromForm,
@@ -371,30 +372,22 @@ export function TaskEditDialog({
                     />
                   </label>
 
-                  <label className={styles.field}>
-                    <span>Старт</span>
-                    <input
-                      type="time"
-                      value={plannedStartTime}
-                      disabled={!plannedDate}
-                      onChange={(event) =>
-                        handlePlannedStartTimeChange(event.target.value)
-                      }
-                    />
-                  </label>
+                  <TimePicker
+                    className={styles.field}
+                    label="Старт"
+                    value={plannedStartTime}
+                    disabled={!plannedDate}
+                    onChange={handlePlannedStartTimeChange}
+                  />
 
                   {hasPlannedStartTime ? (
-                    <label className={cx(styles.field, styles.finishField)}>
-                      <span>Финиш</span>
-                      <input
-                        type="time"
-                        value={plannedEndTime}
-                        disabled={!plannedDate || !plannedStartTime}
-                        onChange={(event) =>
-                          setPlannedEndTime(event.target.value)
-                        }
-                      />
-                    </label>
+                    <TimePicker
+                      className={cx(styles.field, styles.finishField)}
+                      label="Финиш"
+                      value={plannedEndTime}
+                      disabled={!plannedDate || !plannedStartTime}
+                      onChange={setPlannedEndTime}
+                    />
                   ) : null}
                 </div>
               </section>
@@ -443,17 +436,13 @@ export function TaskEditDialog({
                     styles.mobileFinishSection,
                   )}
                 >
-                  <label className={styles.field}>
-                    <span>Финиш</span>
-                    <input
-                      type="time"
-                      value={plannedEndTime}
-                      disabled={!plannedDate || !plannedStartTime}
-                      onChange={(event) =>
-                        setPlannedEndTime(event.target.value)
-                      }
-                    />
-                  </label>
+                  <TimePicker
+                    className={styles.field}
+                    label="Финиш"
+                    value={plannedEndTime}
+                    disabled={!plannedDate || !plannedStartTime}
+                    onChange={setPlannedEndTime}
+                  />
                 </section>
               ) : null}
 

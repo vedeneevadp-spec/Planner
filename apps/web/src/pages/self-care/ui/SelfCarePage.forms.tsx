@@ -11,6 +11,7 @@ import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
+import { TimePicker } from '@/shared/ui/TimePicker'
 
 import { SelfCareReminderOffsetsField } from './SelfCarePage.form-controls'
 import {
@@ -436,15 +437,13 @@ export function SelfCareCustomCreateForm({
             </label>
 
             {showExactScheduleTimeField ? (
-              <label className={styles.dateField}>
-                <span>{getExactScheduleTimeLabel(type)}</span>
-                <input
-                  type="time"
-                  required={usesExactTimePreference}
-                  value={scheduledTime}
-                  onChange={(event) => setScheduledTime(event.target.value)}
-                />
-              </label>
+              <TimePicker
+                className={styles.dateField}
+                label={getExactScheduleTimeLabel(type)}
+                required={usesExactTimePreference}
+                value={scheduledTime}
+                onChange={setScheduledTime}
+              />
             ) : null}
           </div>
 
@@ -462,15 +461,13 @@ export function SelfCareCustomCreateForm({
           <div
             className={cx(styles.createFormGrid, styles.createFormGridSingle)}
           >
-            <label className={styles.dateField}>
-              <span>{getExactScheduleTimeLabel(type)}</span>
-              <input
-                type="time"
-                required
-                value={scheduledTime}
-                onChange={(event) => setScheduledTime(event.target.value)}
-              />
-            </label>
+            <TimePicker
+              className={styles.dateField}
+              label={getExactScheduleTimeLabel(type)}
+              required
+              value={scheduledTime}
+              onChange={setScheduledTime}
+            />
           </div>
 
           <SelfCareReminderOffsetsField
@@ -1336,15 +1333,13 @@ export function SelfCareEditForm({
             </label>
 
             {showExactScheduleTimeField ? (
-              <label className={styles.dateField}>
-                <span>{getExactScheduleTimeLabel(entry.item.type)}</span>
-                <input
-                  type="time"
-                  required={usesExactTimePreference}
-                  value={scheduledTime}
-                  onChange={(event) => setScheduledTime(event.target.value)}
-                />
-              </label>
+              <TimePicker
+                className={styles.dateField}
+                label={getExactScheduleTimeLabel(entry.item.type)}
+                required={usesExactTimePreference}
+                value={scheduledTime}
+                onChange={setScheduledTime}
+              />
             ) : null}
           </div>
 
@@ -1362,15 +1357,13 @@ export function SelfCareEditForm({
           <div
             className={cx(styles.createFormGrid, styles.createFormGridSingle)}
           >
-            <label className={styles.dateField}>
-              <span>{getExactScheduleTimeLabel(entry.item.type)}</span>
-              <input
-                type="time"
-                required
-                value={scheduledTime}
-                onChange={(event) => setScheduledTime(event.target.value)}
-              />
-            </label>
+            <TimePicker
+              className={styles.dateField}
+              label={getExactScheduleTimeLabel(entry.item.type)}
+              required
+              value={scheduledTime}
+              onChange={setScheduledTime}
+            />
           </div>
 
           <SelfCareReminderOffsetsField

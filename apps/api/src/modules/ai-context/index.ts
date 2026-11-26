@@ -19,6 +19,7 @@ export {
   AiContextService,
   type AiContextServiceDependencies,
   AiContextValidationError,
+  resolveContextTimeZone,
 } from './ai-context.service.js'
 export type {
   AiCalendarEvent,

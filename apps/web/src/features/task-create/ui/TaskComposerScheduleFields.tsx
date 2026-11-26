@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { cx } from '@/shared/lib/classnames'
 import { addDateDays } from '@/shared/time/time.service'
 import { CalendarIcon } from '@/shared/ui/Icon'
+import { TimePicker } from '@/shared/ui/TimePicker'
 
 import styles from './TaskComposer.module.css'
 
@@ -92,30 +93,22 @@ export function TaskComposerScheduleFields({
 
         {showTimeFields ? (
           <>
-            <label className={styles.field}>
-              <span>Старт</span>
-              <input
-                type="time"
-                value={plannedStartTime}
-                disabled={!plannedDate}
-                onChange={(event) => {
-                  onPlannedStartTimeChange(event.target.value)
-                }}
-              />
-            </label>
+            <TimePicker
+              className={styles.field}
+              label="Старт"
+              value={plannedStartTime}
+              disabled={!plannedDate}
+              onChange={onPlannedStartTimeChange}
+            />
 
             {plannedStartTime ? (
-              <label className={cx(styles.field, styles.finishField)}>
-                <span>Финиш</span>
-                <input
-                  type="time"
-                  value={plannedEndTime}
-                  disabled={!plannedDate || !plannedStartTime}
-                  onChange={(event) => {
-                    onPlannedEndTimeChange(event.target.value)
-                  }}
-                />
-              </label>
+              <TimePicker
+                className={cx(styles.field, styles.finishField)}
+                label="Финиш"
+                value={plannedEndTime}
+                disabled={!plannedDate || !plannedStartTime}
+                onChange={onPlannedEndTimeChange}
+              />
             ) : null}
           </>
         ) : null}

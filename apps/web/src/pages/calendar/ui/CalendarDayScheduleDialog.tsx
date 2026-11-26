@@ -19,6 +19,7 @@ import {
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
+import { TimePicker } from '@/shared/ui/TimePicker'
 
 import styles from './CalendarPage.module.css'
 
@@ -254,25 +255,21 @@ function CalendarDayScheduleTask({
       </div>
 
       <form className={styles.scheduleForm} onSubmit={handleSubmit}>
-        <label className={styles.field}>
-          <span>Старт</span>
-          <input
-            type="time"
-            value={plannedStartTime}
-            disabled={isPending}
-            onChange={(event) => setPlannedStartTime(event.target.value)}
-          />
-        </label>
+        <TimePicker
+          className={styles.field}
+          label="Старт"
+          value={plannedStartTime}
+          disabled={isPending}
+          onChange={setPlannedStartTime}
+        />
 
-        <label className={styles.field}>
-          <span>Финиш</span>
-          <input
-            type="time"
-            value={plannedEndTime}
-            disabled={isPending || !plannedStartTime}
-            onChange={(event) => setPlannedEndTime(event.target.value)}
-          />
-        </label>
+        <TimePicker
+          className={styles.field}
+          label="Финиш"
+          value={plannedEndTime}
+          disabled={isPending || !plannedStartTime}
+          onChange={setPlannedEndTime}
+        />
 
         <button
           className={styles.primaryButton}

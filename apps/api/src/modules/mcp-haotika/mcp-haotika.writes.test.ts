@@ -34,6 +34,7 @@ import { MCP_HAOTIKA_TOOLS } from './mcp-haotika.tools.js'
 
 const USER = '11111111-1111-4111-8111-111111111111'
 const OTHER = '44444444-4444-4444-8444-444444444444'
+const sessionContext = { actorUserId: USER, auth: null, workspaceId: undefined }
 const CONFIG = {
   allowedRedirectUris: ['https://chatgpt.test/oauth/callback'],
   devNoAuth: false,
@@ -278,6 +279,157 @@ void test('tasks can be created, found, changed and completed with duplicate and
   assert.equal((h.audit.logs[0]?.input as { note: string }).note, '[redacted]')
 })
 
+void test('MCP schedules Friday at 16:00 in the planner zone and returns the saved time', async (t) => {
+  const h = await harness()
+  t.after(() => h.app.close())
+  const timezone = 'Asia/Novosibirsk'
+  await h.sessions.updateUserPreferences(sessionContext, {
+    lastSeenTimeZone: timezone,
+    timeZoneMode: 'device',
+  })
+  const input = {
+    id: generateUuidV7(),
+    title: 'Занятие',
+    plannedDate: '2026-11-27',
+    plannedStartTime: '16:00',
+  }
+  const created = entity((await h.call('create_task', input)).result, 'task')
+  assert.partialDeepStrictEqual(created, {
+    ...input,
+    note: '',
+    schedule: {
+      kind: 'fixed_zone_datetime',
+      localDate: input.plannedDate,
+      localTime: input.plannedStartTime,
+      timeZone: timezone,
+      instantUtc: '2026-11-27T09:00:00.000Z',
+    },
+  })
+  assert.deepEqual(
+    entity((await h.call('create_task', input)).result, 'task'),
+    created,
+  )
+  const duplicate = await h.call('create_task', {
+    ...input,
+    plannedStartTime: '16:30',
+  })
+  assert.partialDeepStrictEqual(duplicate.result.structuredContent, {
+    error: { code: 'CONFLICT' },
+  })
+  const day = await h.call('get_today_context', {
+    date: input.plannedDate,
+    include: ['calendar'],
+  })
+  assert.partialDeepStrictEqual(day.result.structuredContent, {
+    calendar: {
+      totalCount: 1,
+      events: [{ title: input.title, start: '2026-11-27T16:00:00', timezone }],
+    },
+  })
+
+  const later = entity(
+    (
+      await h.call('update_task', {
+        id: created.id,
+        expectedVersion: created.version,
+        plannedStartTime: '18:15',
+      })
+    ).result,
+    'task',
+  )
+  assert.partialDeepStrictEqual(later, {
+    plannedDate: input.plannedDate,
+    plannedStartTime: '18:15',
+    schedule: { timeZone: timezone, instantUtc: '2026-11-27T11:15:00.000Z' },
+  })
+  const reread = entity(
+    (await h.call('get_task', { id: created.id })).result,
+    'task',
+  )
+  assert.deepEqual(reread, later)
+})
+
+void test('a start requires a valid local date and time before any task is written', async (t) => {
+  const h = await harness()
+  t.after(() => h.app.close())
+  await h.sessions.updateUserPreferences(sessionContext, {
+    timeZoneMode: 'manual',
+    defaultTimeZone: 'Europe/Berlin',
+  })
+  const input = {
+    id: generateUuidV7(),
+    title: 'Без даты',
+    dueDate: '2026-11-27',
+  }
+  for (const fields of [
+    { plannedStartTime: '16:00' },
+    { plannedDate: '2026-11-27', plannedStartTime: '24:00' },
+    { plannedDate: '2026-11-27', plannedStartTime: '12:60' },
+    { plannedDate: '2026-11-27', plannedStartTime: '9:05' },
+    { plannedDate: '2026-03-29', plannedStartTime: '02:30' },
+  ]) {
+    const { result } = await h.call('create_task', { ...input, ...fields })
+    assert.partialDeepStrictEqual(result.structuredContent, {
+      error: { code: 'VALIDATION_ERROR' },
+    })
+  }
+  const missing = await h.call('get_task', { id: input.id })
+  assert.partialDeepStrictEqual(missing.result.structuredContent, {
+    error: { code: 'NOT_FOUND' },
+  })
+  const task = entity((await h.call('create_task', input)).result, 'task')
+  const patch = {
+    id: task.id,
+    expectedVersion: task.version,
+    plannedStartTime: '00:00',
+  }
+  for (const fields of [patch, { ...patch, plannedDate: null }]) {
+    const { result } = await h.call('update_task', fields)
+    assert.partialDeepStrictEqual(result.structuredContent, {
+      error: { code: 'VALIDATION_ERROR' },
+    })
+  }
+  const midnight = entity(
+    (
+      await h.call('update_task', {
+        ...patch,
+        plannedDate: '2026-11-27',
+      })
+    ).result,
+    'task',
+  )
+  assert.partialDeepStrictEqual(midnight, {
+    plannedStartTime: '00:00',
+    schedule: { instantUtc: '2026-11-26T23:00:00.000Z' },
+  })
+  const beforeClockChange = entity(
+    (
+      await h.call('create_task', {
+        id: generateUuidV7(),
+        title: 'Ранняя задача',
+        plannedDate: '2026-03-28',
+        plannedStartTime: '02:30',
+      })
+    ).result,
+    'task',
+  )
+  const gap = await h.call('update_task', {
+    id: beforeClockChange.id,
+    expectedVersion: beforeClockChange.version,
+    plannedDate: '2026-03-29',
+  })
+  assert.partialDeepStrictEqual(gap.result.structuredContent, {
+    error: { code: 'VALIDATION_ERROR' },
+  })
+  assert.deepEqual(
+    entity(
+      (await h.call('get_task', { id: beforeClockChange.id })).result,
+      'task',
+    ),
+    beforeClockChange,
+  )
+})
+
 void test('shopping writes preserve other fields, do not duplicate purchases and reject foreign or non-shopping records', async (t) => {
   const h = await harness()
   t.after(() => h.app.close())
@@ -438,7 +590,7 @@ void test('OAuth consent shows exactly the requested read and write permissions'
   assert.doesNotMatch(readPage.body, /создание, изменение|чтение задач/)
 })
 
-void test('task detail updates preserve fixed time zones and recurrence', async (t) => {
+void test('edits preserve a fixed schedule until the user changes or clears the start', async (t) => {
   const h = await harness()
   t.after(() => h.app.close())
   const context = {
@@ -448,7 +600,7 @@ void test('task detail updates preserve fixed time zones and recurrence', async 
     workspaceId: '22222222-2222-4222-8222-222222222222',
     role: 'owner' as const,
     workspaceKind: 'personal' as const,
-    clientTimeZone: 'Asia/Novosibirsk',
+    clientTimeZone: 'UTC',
   }
   const task = await h.tasks.createTask(
     context,
@@ -456,12 +608,17 @@ void test('task detail updates preserve fixed time zones and recurrence', async 
       title: 'Timed task',
       note: '',
       project: '',
-      plannedDate: '2026-11-13',
-      plannedStartTime: '10:00',
-      plannedEndTime: '11:00',
-      recurrence: { frequency: 'daily', startDate: '2026-11-13' },
+      plannedDate: '2026-11-26',
+      plannedStartTime: '20:00',
+      plannedEndTime: '21:00',
+      recurrence: { frequency: 'daily', startDate: '2026-11-26' },
+      reminderOffsets: [15],
     }),
   )
+  await h.sessions.updateUserPreferences(sessionContext, {
+    defaultTimeZone: 'Asia/Novosibirsk',
+    timeZoneMode: 'manual',
+  })
   const updated = (
     await h.call('update_task', {
       id: task.id,
@@ -473,5 +630,48 @@ void test('task detail updates preserve fixed time zones and recurrence', async 
   const current = await h.tasks.getTask(context, task.id)
   assert.deepEqual(current.schedule, task.schedule)
   assert.deepEqual(current.recurrence, task.recurrence)
-  assert.equal(current.plannedStartTime, '10:00')
+  assert.equal(current.plannedStartTime, '20:00')
+  assert.deepEqual(current.reminderOffsets, [15])
+
+  // Thursday at 20:00 UTC is already Friday at 03:00 in the planner.
+  const moved = entity(
+    (
+      await h.call('update_task', {
+        id: task.id,
+        expectedVersion: current.version,
+        plannedStartTime: '03:30',
+      })
+    ).result,
+    'task',
+  )
+  assert.partialDeepStrictEqual(moved, {
+    plannedDate: '2026-11-27',
+    plannedStartTime: '03:30',
+    plannedEndTime: '04:00',
+    schedule: {
+      timeZone: 'Asia/Novosibirsk',
+      instantUtc: '2026-11-26T20:30:00.000Z',
+    },
+    reminderOffsets: [15],
+    recurrence: task.recurrence,
+  })
+  const cleared = entity(
+    (
+      await h.call('update_task', {
+        id: task.id,
+        expectedVersion: moved.version,
+        plannedStartTime: null,
+      })
+    ).result,
+    'task',
+  )
+  assert.partialDeepStrictEqual(cleared, {
+    plannedDate: '2026-11-27',
+    plannedStartTime: null,
+    plannedEndTime: null,
+    schedule: { kind: 'date_only' },
+  })
+  const saved = await h.tasks.getTask(context, task.id)
+  assert.deepEqual(saved.reminderOffsets ?? [], [])
+  assert.deepEqual(saved.recurrence, task.recurrence)
 })

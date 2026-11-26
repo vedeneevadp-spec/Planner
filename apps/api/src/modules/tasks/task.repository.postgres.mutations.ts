@@ -76,6 +76,18 @@ export async function resolveTaskWriteConflict(
   throw new Error(message)
 }
 
+// A task can start at 23:59 even though its default same-day block has no duration.
+export function hasTaskTimeBlock(range: {
+  startsAt: string | null
+  endsAt: string | null
+}): range is { startsAt: string; endsAt: string } {
+  return (
+    range.startsAt !== null &&
+    range.endsAt !== null &&
+    range.endsAt > range.startsAt
+  )
+}
+
 export function insertPrimaryTimeBlock(
   executor: DatabaseExecutor,
   params: {
@@ -87,7 +99,7 @@ export function insertPrimaryTimeBlock(
     workspaceId: string
   },
 ): Promise<TaskTimeBlockRow | undefined> {
-  if (!params.startsAt || !params.endsAt) {
+  if (!hasTaskTimeBlock(params)) {
     return Promise.resolve(undefined)
   }
 

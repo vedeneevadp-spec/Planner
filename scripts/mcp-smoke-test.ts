@@ -102,6 +102,12 @@ try {
   )
   if (!properties.taskCursor || !properties.timezone)
     throw new Error('Search pagination/timezone schema is outdated.')
+  for (const name of ['create_task', 'update_task']) {
+    const tool = tools.find((entry) => entry.name === name)
+    const schema = readRecord(tool?.inputSchema, name)
+    if (!readRecord(schema.properties, name).plannedStartTime)
+      throw new Error(`${name} is missing plannedStartTime.`)
+  }
 
   const unauthorizedResponse = await mcpRequest(
     'tools/call',
@@ -232,12 +238,36 @@ async function checkPlannerWrites(
       id: generateUuidV7(),
       title: 'MCP disposable task',
       note: 'Synthetic verification',
+      plannedDate: '2026-11-27',
+      plannedStartTime: '16:00',
     }
     let task = readRecord(
       (await call('create_task', taskInput)).task,
       'created task',
     )
     assertEqual(task.id, taskInput.id, 'created task ID')
+    assertEqual(
+      task.plannedStartTime,
+      taskInput.plannedStartTime,
+      'created task start',
+    )
+    const schedule = readRecord(task.schedule, 'created task schedule')
+    const day = await call('get_today_context', {
+      date: taskInput.plannedDate,
+      include: ['calendar'],
+    })
+    const events = readRecord(day.calendar, 'calendar').events
+    if (
+      !Array.isArray(events) ||
+      !events.some(
+        (event: unknown) =>
+          isRecord(event) &&
+          event.title === taskInput.title &&
+          event.start === '2026-11-27T16:00:00' &&
+          event.timezone === schedule.timeZone,
+      )
+    )
+      throw new Error('Timed task missing from its local calendar slot.')
     const replay = readRecord(
       (await call('create_task', taskInput)).task,
       'replayed task',
@@ -253,12 +283,28 @@ async function checkPlannerWrites(
           id: task.id,
           expectedVersion: task.version,
           title: 'MCP disposable task updated',
-          plannedDate: '2026-11-14',
+          plannedDate: '2026-11-28',
         })
       ).task,
       'updated task',
     )
     assertEqual(task.title, 'MCP disposable task updated', 'updated task title')
+    assertEqual(
+      task.plannedStartTime,
+      taskInput.plannedStartTime,
+      'preserved task start',
+    )
+    task = readRecord(
+      (
+        await call('update_task', {
+          id: task.id,
+          expectedVersion: task.version,
+          plannedStartTime: '17:30',
+        })
+      ).task,
+      'rescheduled task',
+    )
+    assertEqual(task.plannedStartTime, '17:30', 'updated task start')
     task = readRecord(
       (
         await call('complete_task', {

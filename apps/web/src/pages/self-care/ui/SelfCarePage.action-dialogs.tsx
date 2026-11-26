@@ -15,6 +15,7 @@ import { cx } from '@/shared/lib/classnames'
 import { CloseIcon, EditIcon, MinusIcon, PlusIcon } from '@/shared/ui/Icon'
 import { ModalSurface } from '@/shared/ui/PlannerDialog/ModalSurface'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
+import { TimePicker } from '@/shared/ui/TimePicker'
 
 import { SelfCareReminderOffsetsField } from './SelfCarePage.form-controls'
 import {
@@ -393,14 +394,12 @@ export function SelfCareScheduleDialog({
               />
             </label>
 
-            <label className={styles.dateField}>
-              <span>Время</span>
-              <input
-                type="time"
-                value={scheduledTime}
-                onChange={(event) => setScheduledTime(event.target.value)}
-              />
-            </label>
+            <TimePicker
+              className={styles.dateField}
+              label="Время"
+              value={scheduledTime}
+              onChange={setScheduledTime}
+            />
           </div>
 
           <SelfCareReminderOffsetsField

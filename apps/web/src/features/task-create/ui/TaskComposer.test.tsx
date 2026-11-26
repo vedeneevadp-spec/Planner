@@ -8,6 +8,8 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { setTimeWithKeyboard } from '@/test/set-time'
+
 const mocks = vi.hoisted(() => ({
   addTask: vi.fn(),
   createHabit: vi.fn(),
@@ -122,9 +124,7 @@ describe('TaskComposer', () => {
       expect(screen.getByLabelText('План')).toHaveValue(plannedDate)
       expect(mocks.addTask).not.toHaveBeenCalled()
 
-      fireEvent.change(screen.getByLabelText('Старт'), {
-        target: { value: '00:15' },
-      })
+      setTimeWithKeyboard(screen.getByLabelText('Старт'), '00:15')
       fireEvent.click(
         screen.getAllByRole('button', { name: 'Добавить задачу' }).at(-1)!,
       )
@@ -160,9 +160,7 @@ describe('TaskComposer', () => {
     fireEvent.change(screen.getByLabelText('План'), {
       target: { value: '2026-11-06' },
     })
-    fireEvent.change(screen.getByLabelText('Старт'), {
-      target: { value: '18:00' },
-    })
+    setTimeWithKeyboard(screen.getByLabelText('Старт'), '18:00')
     expect(screen.getByText('Напомнить')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Оставить без даты' }))
     expect(screen.getByLabelText('План')).not.toBeVisible()
@@ -223,9 +221,9 @@ describe('TaskComposer', () => {
       />,
     )
     expect(screen.getByLabelText('План')).toHaveValue('2026-11-05')
-    expect(screen.getByLabelText('Старт')).toHaveValue('18:40')
+    expect(screen.getByLabelText('Старт')).toHaveTextContent('18:40')
     for (const field of screen.getAllByLabelText('Финиш')) {
-      expect(field).toHaveValue('19:30')
+      expect(field).toHaveTextContent('19:30')
     }
     expect(mocks.addTask).not.toHaveBeenCalled()
     fireEvent.click(
@@ -278,7 +276,7 @@ describe('TaskComposer', () => {
     )
 
     expect(screen.getByLabelText('План')).toHaveValue('2026-10-08')
-    expect(screen.getByLabelText('Старт')).toHaveValue('09:00')
+    expect(screen.getByLabelText('Старт')).toHaveTextContent('09:00')
     fireEvent.change(screen.getByRole('textbox', { name: 'Задача' }), {
       target: { value: 'Задача из календаря' },
     })
@@ -302,7 +300,7 @@ describe('TaskComposer', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Новая задача' }))
     expect(screen.getByLabelText('План')).toHaveValue('2026-10-08')
-    expect(screen.getByLabelText('Старт')).toHaveValue('')
+    expect(screen.getByLabelText('Старт')).toHaveTextContent('––:––')
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
 
     rerender(
@@ -317,7 +315,7 @@ describe('TaskComposer', () => {
       />,
     )
     expect(screen.getByLabelText('План')).toHaveValue('2026-10-11')
-    expect(screen.getByLabelText('Старт')).toHaveValue('23:00')
+    expect(screen.getByLabelText('Старт')).toHaveTextContent('23:00')
     expect(screen.getByRole('textbox', { name: 'Задача' })).toHaveValue('')
   })
 

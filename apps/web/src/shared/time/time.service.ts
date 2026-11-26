@@ -1,3 +1,16 @@
+import {
+  EMERGENCY_FALLBACK_TIME_ZONE,
+  getDeviceTimeZone,
+  getTimeInTimeZone,
+} from '@planner/contracts'
+
+export function getCurrentDeviceTime(): string {
+  return getTimeInTimeZone(
+    new Date(),
+    getDeviceTimeZone() ?? EMERGENCY_FALLBACK_TIME_ZONE,
+  )
+}
+
 export {
   addDateDays,
   addDateMonthsClamped,
